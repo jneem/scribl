@@ -1,0 +1,112 @@
+#![allow(unused_variables)]
+
+#[derive(Clone, Debug)]
+pub struct Lerp {
+    original_values: Vec<i64>,
+    lerped_values: Vec<i64>,
+}
+
+impl Lerp {
+    pub fn first(&self) -> i64 {
+        *self.lerped_values.first().unwrap()
+    }
+
+    pub fn last(&self) -> i64 {
+        *self.lerped_values.last().unwrap()
+    }
+
+    pub fn lerp(&self, t: i64) -> Option<i64> {
+        todo!()
+    }
+
+    pub fn lerp_clamped(&self, t: i64) -> i64 {
+        todo!()
+    }
+
+    pub fn unlerp(&self, t: i64) -> Option<i64> {
+        todo!()
+    }
+
+    pub fn unlerp_clamped(&self, t: i64) -> i64 {
+        todo!()
+    }
+}
+
+enum LerpResult {
+    AfterEnd(i64),
+    BeforeStart(i64),
+    SingleTime(i64),
+    Interval(i64, i64),
+}
+
+fn lerp_interval(t: i64, orig: &[i64], new: &[i64]) -> LerpResult {
+    debug_assert!(orig.len() == new.len());
+
+    if t > *orig.last().unwrap() {
+        LerpResult::AfterEnd(t - orig.last().unwrap())
+    } else if t < *orig.first().unwrap() {
+        LerpResult::BeforeStart(t - orig.first().unwrap())
+    } else {
+        let (begin, end) = search_interval(t, orig);
+        if new[begin] == new[end] {
+            LerpResult::SingleTime(new[begin])
+        } else if orig[begin] == orig[end] {
+            LerpResult::Interval(new[begin], new[end])
+        } else {
+            debug_assert!(end == begin + 1);
+            let ratio = ((t - orig[begin]) as f64) / ((orig[end] - orig[begin]) as f64);
+            LerpResult::SingleTime(new[begin] + (((new[end] - new[begin]) as f64) * ratio) as i64)
+        }
+    }
+}
+
+// Assumes that `slice` is sorted, and that slice[0] <= x <= slice.last().unwrap().
+//
+// Returns a pair of indices (a, b) such that
+// * slice[a] <= x
+// * slice[b] >= x,
+// and the interval (a, b) is the largest possible such interval.
+fn search_interval(x: i64, slice: &[i64]) -> (usize, usize) {
+    debug_assert!(slice[0] <= x && x <= *slice.last().unwrap());
+
+    match slice.binary_search(&x) {
+        Ok(idx) => {
+            // We found one matching index, but there could be lots of them.
+            let end = slice[(idx + 1)..]
+                .iter()
+                .position(|&y| y > x)
+                .map(|i| i + idx)
+                .unwrap_or(slice.len() - 1);
+
+            let begin = slice[..idx]
+                .iter()
+                .rev()
+                .position(|&y| y < x)
+                .map(|i| idx - i)
+                .unwrap_or(0);
+
+            (begin, end)
+        }
+        Err(idx) => {
+            // Under our assumptions above, idx must be positive, and strictly less than slice.len().
+            debug_assert!(0 < idx && idx < slice.len());
+            (idx - 1, idx)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_search_interval() {
+        assert_eq!((0, 0), search_interval(1, &[1, 2, 3]));
+        assert_eq!((2, 2), search_interval(3, &[1, 2, 3]));
+        assert_eq!((1, 2), search_interval(3, &[1, 2, 4]));
+        assert_eq!((1, 3), search_interval(1, &[0, 1, 1, 1, 2]));
+        assert_eq!((1, 3), search_interval(1, &[0, 1, 1, 1]));
+        assert_eq!((0, 2), search_interval(1, &[1, 1, 1, 2]));
+        assert_eq!((0, 2), search_interval(1, &[1, 1, 1]));
+    }
+}
