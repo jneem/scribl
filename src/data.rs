@@ -58,7 +58,7 @@ pub struct ScribbleState {
 
     // This is a bit of an odd one out, since it's specifically for input handling in the
     // drawing-pane widget. If there get to be more of these, maybe they should get split out.
-   pub mouse_down: bool,
+    pub mouse_down: bool,
 }
 
 impl Default for ScribbleState {
@@ -91,7 +91,10 @@ impl ScribbleState {
 
     pub fn stop_recording(&mut self) {
         assert_eq!(self.action, CurrentAction::Recording);
-        let new_snippet = self.new_snippet.take().expect("Tried to stop recording, but we hadn't started!");
+        let new_snippet = self
+            .new_snippet
+            .take()
+            .expect("Tried to stop recording, but we hadn't started!");
         self.action = CurrentAction::Idle;
         let new_curve = new_snippet.curve.replace(Curve::new());
         if !new_curve.path.elements().is_empty() {
@@ -119,7 +122,9 @@ pub enum CurrentAction {
 }
 
 impl Default for CurrentAction {
-    fn default() -> CurrentAction { CurrentAction::Idle }
+    fn default() -> CurrentAction {
+        CurrentAction::Idle
+    }
 }
 
 impl CurrentAction {
@@ -151,4 +156,3 @@ impl CurrentAction {
         *self == CurrentAction::Recording
     }
 }
-

@@ -1,5 +1,5 @@
-use druid::Color;
 use druid::kurbo::{BezPath, PathEl, Point};
+use druid::Color;
 
 use crate::lerp::Lerp;
 
@@ -21,10 +21,7 @@ impl From<Curve> for LerpedCurve {
     fn from(c: Curve) -> LerpedCurve {
         let start_end = vec![*c.time_us.first().unwrap(), *c.time_us.last().unwrap()];
         let lerp = Lerp::new(start_end.clone(), start_end);
-        LerpedCurve {
-            curve: c,
-            lerp,
-        }
+        LerpedCurve { curve: c, lerp }
     }
 }
 
@@ -80,4 +77,3 @@ impl Default for Curve {
         Curve::new()
     }
 }
-

@@ -1,4 +1,7 @@
-use druid::{BoxConstraints, Env, Event, EventCtx, LifeCycle, LifeCycleCtx, Size, UpdateCtx, PaintCtx, Widget, LayoutCtx, RenderContext, TimerToken};
+use druid::{
+    BoxConstraints, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx,
+    RenderContext, Size, TimerToken, UpdateCtx, Widget,
+};
 use std::convert::TryInto;
 use std::time::Instant;
 
@@ -25,7 +28,7 @@ impl Widget<ScribbleState> for DrawingPane {
                     state.new_snippet.as_mut().unwrap().line_to(ev.pos);
                     ctx.request_paint();
                 }
-            },
+            }
             Event::MouseDown(ev) => {
                 if ev.button.is_left() && state.action.is_recording() {
                     if state.new_snippet.is_none() {
@@ -38,7 +41,7 @@ impl Widget<ScribbleState> for DrawingPane {
                     state.mouse_down = true;
                     ctx.request_paint();
                 }
-            },
+            }
             Event::MouseUp(ev) => {
                 if ev.button.is_left() && state.action.is_recording() {
                     state.mouse_down = false;
@@ -57,17 +60,35 @@ impl Widget<ScribbleState> for DrawingPane {
 
                 self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);
             }
-            _ => {},
+            _ => {}
         }
     }
 
-    fn update(&mut self, _ctx: &mut UpdateCtx, _old_state: &ScribbleState, _state: &ScribbleState, _env: &Env) {
+    fn update(
+        &mut self,
+        _ctx: &mut UpdateCtx,
+        _old_state: &ScribbleState,
+        _state: &ScribbleState,
+        _env: &Env,
+    ) {
     }
 
-    fn lifecycle(&mut self, _ctx: &mut LifeCycleCtx, _: &LifeCycle, _state: &ScribbleState, _env: &Env) {
+    fn lifecycle(
+        &mut self,
+        _ctx: &mut LifeCycleCtx,
+        _: &LifeCycle,
+        _state: &ScribbleState,
+        _env: &Env,
+    ) {
     }
 
-    fn layout(&mut self, _ctx: &mut LayoutCtx, bc: &BoxConstraints, _data: &ScribbleState, _env: &Env) -> Size {
+    fn layout(
+        &mut self,
+        _ctx: &mut LayoutCtx,
+        bc: &BoxConstraints,
+        _data: &ScribbleState,
+        _env: &Env,
+    ) -> Size {
         dbg!(bc);
         bc.max()
     }
@@ -78,8 +99,11 @@ impl Widget<ScribbleState> for DrawingPane {
         }
 
         for curve in &data.snippets.borrow().curves {
-            ctx.stroke(curve.path_until(data.time_us), &curve.curve.color, curve.curve.thickness);
+            ctx.stroke(
+                curve.path_until(data.time_us),
+                &curve.curve.color,
+                curve.curve.thickness,
+            );
         }
     }
 }
-

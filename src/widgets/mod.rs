@@ -1,5 +1,6 @@
-mod toggle_button;
 mod drawing_pane;
+mod timeline;
+mod toggle_button;
 
-pub use toggle_button::{ToggleButton, ToggleButtonState};
 pub use drawing_pane::DrawingPane;
+pub use toggle_button::{ToggleButton, ToggleButtonState};

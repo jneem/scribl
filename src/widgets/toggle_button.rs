@@ -1,6 +1,9 @@
-use druid::widget::{Label, LabelText};
-use druid::{Affine, Data, Env, EventCtx, Event, Insets, LinearGradient, Point, Rect, RenderContext, UpdateCtx, LifeCycle, LifeCycleCtx, LayoutCtx, BoxConstraints, PaintCtx, Size, UnitPoint, Widget};
 use druid::theme;
+use druid::widget::{Label, LabelText};
+use druid::{
+    Affine, BoxConstraints, Data, Env, Event, EventCtx, Insets, LayoutCtx, LifeCycle, LifeCycleCtx,
+    LinearGradient, PaintCtx, Point, Rect, RenderContext, Size, UnitPoint, UpdateCtx, Widget,
+};
 
 // copy-paste from the Button source
 const LABEL_INSETS: Insets = Insets::uniform_xy(8., 2.);
@@ -73,7 +76,9 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
                 }
             }
             Event::MouseMoved(_) => {}
-            e => { dbg!(e); }
+            e => {
+                dbg!(e);
+            }
         }
     }
 
@@ -115,7 +120,10 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
             .to_rounded_rect(env.get(theme::BUTTON_BORDER_RADIUS));
 
         let gradient = if is_disabled {
-            (env.get(crate::BUTTON_DISABLED), env.get(crate::BUTTON_DISABLED))
+            (
+                env.get(crate::BUTTON_DISABLED),
+                env.get(crate::BUTTON_DISABLED),
+            )
         } else if is_toggled != is_active {
             (env.get(theme::BUTTON_LIGHT), env.get(theme::BUTTON_DARK))
         } else {
@@ -129,7 +137,11 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
             env.get(theme::BORDER_DARK)
         };
 
-        ctx.stroke(rounded_rect, &border_color, env.get(theme::BUTTON_BORDER_WIDTH));
+        ctx.stroke(
+            rounded_rect,
+            &border_color,
+            env.get(theme::BUTTON_BORDER_WIDTH),
+        );
         ctx.fill(rounded_rect, &gradient);
 
         let label_offset = (size.to_vec2() - self.label_size.to_vec2()) / 2.0;
