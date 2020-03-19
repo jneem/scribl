@@ -18,56 +18,34 @@ impl ToggleButtonState {
     }
 }
 
-pub trait Toggleable {
-    fn state(&self) -> ToggleButtonState;
-    fn set(&mut self, toggle: ToggleButtonState);
-
-    fn toggle(&mut self) {
-        use ToggleButtonState::*;
-
-        match self.state() {
-            ToggledOn => self.set(ToggledOff),
-            ToggledOff => self.set(ToggledOn),
-            Disabled => panic!("tried to toggle a disabled button"),
-        }
-    }
-}
-
-impl Toggleable for ToggleButtonState {
-    fn state(&self) -> ToggleButtonState {
-        *self
-    }
-
-    fn set(&mut self, t: ToggleButtonState) {
-        *self = t;
-    }
-}
-
-pub struct ToggleButton<T: Toggleable> {
+pub struct ToggleButton<T> {
     label: Label<T>,
     label_size: Size,
+    toggle_state: Box<dyn Fn(&T) -> ToggleButtonState + 'static>,
     toggle_action: Box<dyn Fn(&mut EventCtx, &mut T, &Env) + 'static>,
     untoggle_action: Box<dyn Fn(&mut EventCtx, &mut T, &Env) + 'static>,
 }
 
-impl<T: Data + Toggleable> ToggleButton<T> {
+impl<T: Data> ToggleButton<T> {
     pub fn new(
         text: impl Into<LabelText<T>>,
+        toggle_state: impl Fn(&T) -> ToggleButtonState + 'static,
         toggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
         untoggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
     ) -> ToggleButton<T> {
         ToggleButton {
             label: Label::new(text),
             label_size: Size::ZERO,
+            toggle_state: Box::new(toggle_state),
             toggle_action: Box::new(toggle_action),
             untoggle_action: Box::new(untoggle_action),
         }
     }
 }
 
-impl<T: Data + Toggleable> Widget<T> for ToggleButton<T> {
+impl<T: Data> Widget<T> for ToggleButton<T> {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut T, env: &Env) {
-        if data.state().is_disabled() {
+        if (self.toggle_state)(data).is_disabled() {
             if ctx.is_active() {
                 ctx.set_active(false);
                 ctx.request_paint();
@@ -84,17 +62,18 @@ impl<T: Data + Toggleable> Widget<T> for ToggleButton<T> {
                 if ctx.is_active() {
                     ctx.set_active(false);
                     ctx.request_paint();
+                    let state = (self.toggle_state)(data);
                     if ctx.is_hot() {
-                        data.toggle();
-                        if data.state() == ToggleButtonState::ToggledOn {
-                            (self.toggle_action)(ctx, data, env);
-                        } else {
-                            (self.untoggle_action)(ctx, data, env);
+                        match state {
+                            ToggleButtonState::ToggledOn => (self.untoggle_action)(ctx, data, env),
+                            ToggleButtonState::ToggledOff => (self.toggle_action)(ctx, data, env),
+                            ToggleButtonState::Disabled => {}
                         }
                     }
                 }
             }
-            _ => {}
+            Event::MouseMoved(_) => {}
+            e => { dbg!(e); }
         }
     }
 
@@ -126,8 +105,9 @@ impl<T: Data + Toggleable> Widget<T> for ToggleButton<T> {
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &T, env: &Env) {
         let is_active = ctx.is_active();
-        let is_toggled = data.state() == ToggleButtonState::ToggledOn;
-        let is_disabled = data.state().is_disabled();
+        let state = (self.toggle_state)(data);
+        let is_toggled = state == ToggleButtonState::ToggledOn;
+        let is_disabled = state.is_disabled();
         let is_hot = ctx.is_hot();
         let size = ctx.size();
 

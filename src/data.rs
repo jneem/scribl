@@ -1,4 +1,4 @@
-use druid::{Data, Lens, Point};
+use druid::{Data, Lens, Point, TimerToken};
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -29,33 +29,7 @@ impl CurveInProgress {
             wall_start_time: Instant::now(),
         }
     }
-}
 
-/// This data contains the entire state of the app.
-#[derive(Clone, Data, Default, Lens)]
-pub struct ScribbleState {
-    pub new_snippet: Option<CurveInProgress>,
-    pub snippets: Arc<Snippets>,
-    pub action: CurrentAction,
-
-    pub time_us: i64,
-
-    // This is a bit of an odd one out, since it's specifically for input handling in the
-    // drawing-pane widget. If there get to be more of these, maybe they should get split out.
-   pub mouse_down: bool,
-}
-
-impl ScribbleState {
-    pub fn curve_in_progress(&self) -> Option<std::cell::Ref<Curve>> {
-        self.new_snippet.as_ref().map(|s| s.curve.borrow())
-    }
-
-    pub fn curve_in_progress_mut(&mut self) -> Option<std::cell::RefMut<Curve>> {
-        self.new_snippet.as_mut().map(|s| s.curve.borrow_mut())
-    }
-}
-
-impl CurveInProgress {
     fn elapsed_us(&self) -> i64 {
         Instant::now()
             .duration_since(self.wall_start_time)
@@ -71,16 +45,71 @@ impl CurveInProgress {
     pub fn line_to(&mut self, p: Point) {
         self.curve.borrow_mut().line_to(p, self.elapsed_us());
     }
+}
 
-    pub fn initialize_if_necessary(&mut self, time_us: i64) {
-        if self.curve.borrow().path.elements().is_empty() {
-            dbg!("Starting recording at time {}", time_us);
-            self.logical_start_time_us = time_us;
-            self.wall_start_time = std::time::Instant::now();
+/// This data contains the entire state of the app.
+#[derive(Clone, Data, Lens)]
+pub struct ScribbleState {
+    pub new_snippet: Option<CurveInProgress>,
+    pub snippets: Arc<RefCell<Snippets>>,
+    pub action: CurrentAction,
+
+    pub time_us: i64,
+
+    // This is a bit of an odd one out, since it's specifically for input handling in the
+    // drawing-pane widget. If there get to be more of these, maybe they should get split out.
+   pub mouse_down: bool,
+}
+
+impl Default for ScribbleState {
+    fn default() -> ScribbleState {
+        ScribbleState {
+            new_snippet: None,
+            snippets: Arc::default(),
+            action: CurrentAction::Idle,
+            time_us: 0,
+            mouse_down: false,
         }
     }
 }
 
+impl ScribbleState {
+    pub fn curve_in_progress(&self) -> Option<std::cell::Ref<Curve>> {
+        self.new_snippet.as_ref().map(|s| s.curve.borrow())
+    }
+
+    pub fn curve_in_progress_mut(&mut self) -> Option<std::cell::RefMut<Curve>> {
+        self.new_snippet.as_mut().map(|s| s.curve.borrow_mut())
+    }
+
+    pub fn start_recording(&mut self) {
+        assert!(self.new_snippet.is_none());
+        assert_eq!(self.action, CurrentAction::Idle);
+        self.new_snippet = Some(CurveInProgress::new(self.time_us));
+        self.action = CurrentAction::Recording;
+    }
+
+    pub fn stop_recording(&mut self) {
+        assert_eq!(self.action, CurrentAction::Recording);
+        let new_snippet = self.new_snippet.take().expect("Tried to stop recording, but we hadn't started!");
+        self.action = CurrentAction::Idle;
+        let new_curve = new_snippet.curve.replace(Curve::new());
+        if !new_curve.path.elements().is_empty() {
+            self.snippets.borrow_mut().insert(new_curve);
+        }
+    }
+
+    pub fn start_playing(&mut self) {
+        assert_eq!(self.action, CurrentAction::Idle);
+        self.action = CurrentAction::Playing;
+        self.time_us = 0;
+    }
+
+    pub fn stop_playing(&mut self) {
+        assert_eq!(self.action, CurrentAction::Playing);
+        self.action = CurrentAction::Idle;
+    }
+}
 
 #[derive(Clone, Copy, Data, Debug, PartialEq)]
 pub enum CurrentAction {
@@ -94,7 +123,7 @@ impl Default for CurrentAction {
 }
 
 impl CurrentAction {
-    pub fn get_rec_toggle(&self) -> ToggleButtonState {
+    pub fn rec_toggle(&self) -> ToggleButtonState {
         use CurrentAction::*;
         use ToggleButtonState::*;
         match *self {
@@ -104,14 +133,18 @@ impl CurrentAction {
         }
     }
 
-    pub fn put_rec_toggle(&mut self, t: ToggleButtonState) {
+    pub fn play_toggle(&self) -> ToggleButtonState {
         use CurrentAction::*;
         use ToggleButtonState::*;
-        *self = match t {
-            ToggledOn => Recording,
-            ToggledOff => Idle,
-            Disabled => Playing,
-        };
+        match *self {
+            Recording => Disabled,
+            Playing => ToggledOn,
+            Idle => ToggledOff,
+        }
+    }
+
+    pub fn is_idle(&self) -> bool {
+        *self == CurrentAction::Idle
     }
 
     pub fn is_recording(&self) -> bool {

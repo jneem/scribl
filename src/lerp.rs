@@ -7,6 +7,16 @@ pub struct Lerp {
 }
 
 impl Lerp {
+    pub fn new(original: Vec<i64>, lerped: Vec<i64>) -> Lerp {
+        //assert!(original.is_sorted()); // is_sorted is nightly-only
+        //assert!(lerped.is_sorted());
+        assert_eq!(original.len(), lerped.len());
+        Lerp {
+            original_values: original,
+            lerped_values: lerped,
+        }
+    }
+
     pub fn first(&self) -> i64 {
         *self.lerped_values.first().unwrap()
     }
@@ -16,19 +26,43 @@ impl Lerp {
     }
 
     pub fn lerp(&self, t: i64) -> Option<i64> {
-        todo!()
+        use LerpResult::*;
+        match lerp_interval(t, &self.original_values, &self.lerped_values) {
+            AfterEnd(_) => None,
+            BeforeStart(_) => None,
+            SingleTime(t) => Some(t),
+            Interval(t, _) => Some(t),
+        }
     }
 
     pub fn lerp_clamped(&self, t: i64) -> i64 {
-        todo!()
+        use LerpResult::*;
+        match lerp_interval(t, &self.original_values, &self.lerped_values) {
+            AfterEnd(_) => self.last(),
+            BeforeStart(_) => self.first(),
+            SingleTime(t) => t,
+            Interval(t, _) => t,
+        }
     }
 
     pub fn unlerp(&self, t: i64) -> Option<i64> {
-        todo!()
+        use LerpResult::*;
+        match lerp_interval(t, &self.lerped_values, &self.original_values) {
+            AfterEnd(_) => None,
+            BeforeStart(_) => None,
+            SingleTime(t) => Some(t),
+            Interval(t, _) => Some(t),
+        }
     }
 
     pub fn unlerp_clamped(&self, t: i64) -> i64 {
-        todo!()
+        use LerpResult::*;
+        match lerp_interval(t, &self.lerped_values, &self.original_values) {
+            AfterEnd(_) => *self.original_values.last().unwrap(),
+            BeforeStart(_) => *self.original_values.first().unwrap(),
+            SingleTime(t) => t,
+            Interval(t, _) => t,
+        }
     }
 }
 
