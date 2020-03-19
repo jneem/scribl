@@ -1,4 +1,4 @@
-use druid::{Data, Lens, Point, TimerToken};
+use druid::{Color, Data, Lens, Point};
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -22,20 +22,21 @@ pub struct CurveInProgress {
 }
 
 impl CurveInProgress {
-    pub fn new(time_us: i64) -> CurveInProgress {
+    pub fn new(time_us: i64, color: &Color, thickness: f64) -> CurveInProgress {
         CurveInProgress {
-            curve: Arc::new(RefCell::new(Curve::new())),
+            curve: Arc::new(RefCell::new(Curve::new(color, thickness))),
             logical_start_time_us: time_us,
             wall_start_time: Instant::now(),
         }
     }
 
     fn elapsed_us(&self) -> i64 {
-        Instant::now()
+        let elapsed: i64 = Instant::now()
             .duration_since(self.wall_start_time)
             .as_micros()
             .try_into()
-            .expect("this has been running too long!")
+            .expect("this has been running too long!");
+        elapsed + self.logical_start_time_us
     }
 
     pub fn move_to(&mut self, p: Point) {
@@ -59,6 +60,9 @@ pub struct ScribbleState {
     // This is a bit of an odd one out, since it's specifically for input handling in the
     // drawing-pane widget. If there get to be more of these, maybe they should get split out.
     pub mouse_down: bool,
+
+    pub line_thickness: f64,
+    pub line_color: Color,
 }
 
 impl Default for ScribbleState {
@@ -69,6 +73,8 @@ impl Default for ScribbleState {
             action: CurrentAction::Idle,
             time_us: 0,
             mouse_down: false,
+            line_thickness: 5.0,
+            line_color: Color::rgb8(0, 255, 0),
         }
     }
 }
@@ -85,7 +91,12 @@ impl ScribbleState {
     pub fn start_recording(&mut self) {
         assert!(self.new_snippet.is_none());
         assert_eq!(self.action, CurrentAction::Idle);
-        self.new_snippet = Some(CurveInProgress::new(self.time_us));
+        dbg!(self.time_us);
+        self.new_snippet = Some(CurveInProgress::new(
+            self.time_us,
+            &self.line_color,
+            self.line_thickness,
+        ));
         self.action = CurrentAction::Recording;
     }
 
@@ -96,7 +107,9 @@ impl ScribbleState {
             .take()
             .expect("Tried to stop recording, but we hadn't started!");
         self.action = CurrentAction::Idle;
-        let new_curve = new_snippet.curve.replace(Curve::new());
+        let new_curve = new_snippet
+            .curve
+            .replace(Curve::new(&Color::rgb8(0, 0, 0), 1.0));
         if !new_curve.path.elements().is_empty() {
             self.snippets.borrow_mut().insert(new_curve);
         }

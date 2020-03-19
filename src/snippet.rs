@@ -1,16 +1,18 @@
 use druid::kurbo::{BezPath, PathEl, Point};
-use druid::Color;
+use druid::{Color, Data};
 
 use crate::lerp::Lerp;
 
-#[derive(Debug)]
+#[derive(Clone, Data, Debug)]
 pub struct Curve {
     pub path: BezPath,
+    #[druid(same_fn = "PartialEq::eq")]
     pub time_us: Vec<i64>,
     pub color: Color,
     pub thickness: f64,
 }
 
+#[derive(Data, Clone)]
 pub struct LerpedCurve {
     pub curve: Curve,
     pub lerp: Lerp,
@@ -47,15 +49,19 @@ impl Snippets {
         dbg!(&curve);
         self.curves.push(curve.into());
     }
+
+    pub fn last_time(&self) -> i64 {
+        self.curves.iter().map(|c| c.lerp.last()).max().unwrap_or(0)
+    }
 }
 
 impl Curve {
-    pub fn new() -> Curve {
+    pub fn new(color: &Color, thickness: f64) -> Curve {
         Curve {
             path: BezPath::new(),
             time_us: Vec::new(),
-            color: Color::rgb8(0, 255, 0),
-            thickness: 1.0,
+            color: color.clone(),
+            thickness,
         }
     }
 }
@@ -69,11 +75,5 @@ impl Curve {
     pub fn move_to(&mut self, p: Point, time_us: i64) {
         self.path.move_to(p);
         self.time_us.push(time_us);
-    }
-}
-
-impl Default for Curve {
-    fn default() -> Curve {
-        Curve::new()
     }
 }

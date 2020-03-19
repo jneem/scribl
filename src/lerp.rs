@@ -1,8 +1,12 @@
 #![allow(unused_variables)]
 
-#[derive(Clone, Debug)]
+use druid::Data;
+
+#[derive(Clone, Data, Debug, PartialEq)]
 pub struct Lerp {
+    #[druid(same_fn = "PartialEq::eq")]
     original_values: Vec<i64>,
+    #[druid(same_fn = "PartialEq::eq")]
     lerped_values: Vec<i64>,
 }
 
