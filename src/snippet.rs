@@ -1,5 +1,8 @@
 use druid::kurbo::{BezPath, PathEl, Point};
 use druid::{Color, Data};
+use std::collections::BTreeMap;
+use std::convert::TryInto;
+use std::time::Instant;
 
 use crate::lerp::Lerp;
 
@@ -12,10 +15,44 @@ pub struct Curve {
     pub thickness: f64,
 }
 
+/// A curve under construction.
+pub struct CurveInProgress {
+    pub curve: Curve,
+    pub logical_start_time_us: i64,
+    pub wall_start_time: Instant,
+}
+
 #[derive(Data, Clone)]
 pub struct LerpedCurve {
     pub curve: Curve,
     pub lerp: Lerp,
+}
+
+impl CurveInProgress {
+    pub fn new(time_us: i64, color: &Color, thickness: f64) -> CurveInProgress {
+        CurveInProgress {
+            curve: Curve::new(color, thickness),
+            logical_start_time_us: time_us,
+            wall_start_time: Instant::now(),
+        }
+    }
+
+    fn elapsed_us(&self) -> i64 {
+        let elapsed: i64 = Instant::now()
+            .duration_since(self.wall_start_time)
+            .as_micros()
+            .try_into()
+            .expect("this has been running too long!");
+        elapsed + self.logical_start_time_us
+    }
+
+    pub fn move_to(&mut self, p: Point) {
+        self.curve.move_to(p, self.elapsed_us());
+    }
+
+    pub fn line_to(&mut self, p: Point) {
+        self.curve.line_to(p, self.elapsed_us());
+    }
 }
 
 impl From<Curve> for LerpedCurve {
@@ -38,20 +75,38 @@ impl LerpedCurve {
     }
 }
 
-#[derive(Default)]
+/// Snippets are identified by unique ids.
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+// TODO: remove the pub
+pub struct SnippetId(pub u64);
+
+#[derive(Clone, Default)]
 pub struct Snippets {
     // TODO: we'll want maps for accessing curves by start/end indices, etc.
-    pub curves: Vec<LerpedCurve>,
+    pub curves: BTreeMap<SnippetId, LerpedCurve>,
+    pub last_id: u64,
 }
 
 impl Snippets {
-    pub fn insert(&mut self, curve: Curve) {
+    pub fn insert(&mut self, curve: Curve) -> SnippetId {
         dbg!(&curve);
-        self.curves.push(curve.into());
+        self.last_id += 1;
+        let id = SnippetId(self.last_id);
+
+        self.curves.insert(id, curve.into());
+        id
+    }
+
+    pub fn curves(&self) -> impl Iterator<Item=&LerpedCurve> {
+        self.curves.values()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item=(SnippetId, &LerpedCurve)> {
+        self.curves.iter().map(|(a, b)| (*a, b))
     }
 
     pub fn last_time(&self) -> i64 {
-        self.curves.iter().map(|c| c.lerp.last()).max().unwrap_or(0)
+        self.curves().map(|c| c.lerp.last()).max().unwrap_or(0)
     }
 }
 

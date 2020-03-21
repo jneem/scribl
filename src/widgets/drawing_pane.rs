@@ -143,7 +143,7 @@ impl Widget<ScribbleState> for DrawingPane {
                 ctx.stroke(&curve.path, &curve.color, curve.thickness);
             }
 
-            for curve in &data.snippets.borrow().curves {
+            for curve in data.snippets.snippets().curves() {
                 ctx.stroke(
                     curve.path_until(data.time_us),
                     &curve.curve.color,

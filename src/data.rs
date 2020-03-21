@@ -1,58 +1,78 @@
 use druid::{Color, Data, Lens, Point};
 use std::cell::RefCell;
-use std::convert::TryInto;
 use std::sync::Arc;
-use std::time::Instant;
 
-use crate::snippet::{Curve, Snippets};
+use crate::snippet::{Curve, CurveInProgress, LerpedCurve, Snippets, SnippetId};
 use crate::widgets::ToggleButtonState;
 
-/// A curve that is currently being drawn.
-#[derive(Clone, Data, Lens)]
-pub struct CurveInProgress {
-    curve: Arc<RefCell<Curve>>,
-
-    /// The time (in microseconds) that this curve started. This is in logical time (i.e., relative
-    /// to the animation being created).
-    logical_start_time_us: i64,
-
-    /// The actual time (according to the system time) that we started recording this curve.
+#[derive(Clone, Data)]
+pub struct CurveInProgressData {
     #[druid(ignore)]
-    wall_start_time: Instant,
+    inner: Arc<RefCell<CurveInProgress>>,
+
+    // Data comparison is done using only the curve's length, since the length grows with
+    // every modification.
+    len: usize,
 }
 
-impl CurveInProgress {
-    pub fn new(time_us: i64, color: &Color, thickness: f64) -> CurveInProgress {
-        CurveInProgress {
-            curve: Arc::new(RefCell::new(Curve::new(color, thickness))),
-            logical_start_time_us: time_us,
-            wall_start_time: Instant::now(),
+impl CurveInProgressData {
+    pub fn new(time_us: i64, color: &Color, thickness: f64) -> CurveInProgressData {
+        CurveInProgressData {
+            inner: Arc::new(RefCell::new(CurveInProgress::new(time_us, color, thickness))),
+            len: 0,
         }
     }
 
-    fn elapsed_us(&self) -> i64 {
-        let elapsed: i64 = Instant::now()
-            .duration_since(self.wall_start_time)
-            .as_micros()
-            .try_into()
-            .expect("this has been running too long!");
-        elapsed + self.logical_start_time_us
-    }
-
     pub fn move_to(&mut self, p: Point) {
-        self.curve.borrow_mut().move_to(p, self.elapsed_us());
+        self.inner.borrow_mut().move_to(p);
+        self.len += 1;
     }
 
     pub fn line_to(&mut self, p: Point) {
-        self.curve.borrow_mut().line_to(p, self.elapsed_us());
+        self.inner.borrow_mut().line_to(p);
+        self.len += 1;
+    }
+
+    pub fn into_curve(self) -> Curve {
+        // The cloning isn't so efficient, but replacing the CurveInProgress with a new one is
+        // even less efficient because it involves a syscall to get the current time.
+        self.inner.borrow().curve.clone()
+    }
+}
+
+#[derive(Clone, Data, Default)]
+pub struct SnippetsData {
+    #[druid(ignore)]
+    inner: Arc<RefCell<Snippets>>,
+
+    // Increments on every change.
+    dirty: u64,
+}
+
+impl SnippetsData {
+    pub fn insert(&mut self, curve: Curve) -> SnippetId {
+        self.dirty += 1;
+        self.inner.borrow_mut().insert(curve)
+    }
+
+    pub fn snippets(&self) -> std::cell::Ref<Snippets> {
+        self.inner.borrow()
+    }
+
+    pub fn snippet(&self, id: SnippetId) -> std::cell::Ref<LerpedCurve> {
+        std::cell::Ref::map(self.inner.borrow(), |s| &s.curves[&id])
+    }
+
+    pub fn snippet_mut(&mut self, id: SnippetId) -> std::cell::RefMut<LerpedCurve> {
+        std::cell::RefMut::map(self.inner.borrow_mut(), |s| s.curves.get_mut(&id).unwrap())
     }
 }
 
 /// This data contains the entire state of the app.
 #[derive(Clone, Data, Lens)]
 pub struct ScribbleState {
-    pub new_snippet: Option<CurveInProgress>,
-    pub snippets: Arc<RefCell<Snippets>>,
+    pub new_snippet: Option<CurveInProgressData>,
+    pub snippets: SnippetsData,
     pub action: CurrentAction,
 
     pub time_us: i64,
@@ -69,7 +89,7 @@ impl Default for ScribbleState {
     fn default() -> ScribbleState {
         ScribbleState {
             new_snippet: None,
-            snippets: Arc::default(),
+            snippets: SnippetsData::default(),
             action: CurrentAction::Idle,
             time_us: 0,
             mouse_down: false,
@@ -80,19 +100,16 @@ impl Default for ScribbleState {
 }
 
 impl ScribbleState {
-    pub fn curve_in_progress(&self) -> Option<std::cell::Ref<Curve>> {
-        self.new_snippet.as_ref().map(|s| s.curve.borrow())
-    }
-
-    pub fn curve_in_progress_mut(&mut self) -> Option<std::cell::RefMut<Curve>> {
-        self.new_snippet.as_mut().map(|s| s.curve.borrow_mut())
+    pub fn curve_in_progress<'a>(&'a self) -> Option<impl std::ops::Deref<Target=Curve> + 'a> {
+        use std::cell::Ref;
+        self.new_snippet.as_ref().map(|s| Ref::map(s.inner.borrow(), |cip| &cip.curve))
     }
 
     pub fn start_recording(&mut self) {
         assert!(self.new_snippet.is_none());
         assert_eq!(self.action, CurrentAction::Idle);
         dbg!(self.time_us);
-        self.new_snippet = Some(CurveInProgress::new(
+        self.new_snippet = Some(CurveInProgressData::new(
             self.time_us,
             &self.line_color,
             self.line_thickness,
@@ -107,11 +124,9 @@ impl ScribbleState {
             .take()
             .expect("Tried to stop recording, but we hadn't started!");
         self.action = CurrentAction::Idle;
-        let new_curve = new_snippet
-            .curve
-            .replace(Curve::new(&Color::rgb8(0, 0, 0), 1.0));
+        let new_curve = new_snippet.into_curve();
         if !new_curve.path.elements().is_empty() {
-            self.snippets.borrow_mut().insert(new_curve);
+            self.snippets.insert(new_curve);
         }
     }
 
