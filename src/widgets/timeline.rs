@@ -12,13 +12,15 @@ use crate::ScribbleState;
 const SNIPPET_HEIGHT: f64 = 20.0;
 const NUM_SNIPPETS: f64 = 5.0;
 const MIN_WIDTH: f64 = 100.0;
-const PIXELS_PER_USEC: f64 = 20.0 / 1000000.0;
+const PIXELS_PER_USEC: f64 = 40.0 / 1000000.0;
 const TIMELINE_BG_COLOR: Color = Color::rgb8(0x66, 0x66, 0x66);
 const CURSOR_COLOR: Color = Color::rgb8(0x10, 0x10, 0xaa);
 const CURSOR_THICKNESS: f64 = 3.0;
 
 const SNIPPET_COLOR: Color = Color::rgb8(0x99, 0x99, 0x22);
-const SNIPPET_STROKE_COLOR: Color = Color::rgb8(0, 0, 0);
+const SNIPPET_SELECTED_COLOR: Color = Color::rgb8(0x77, 0x77, 0x11);
+const SNIPPET_STROKE_COLOR: Color = Color::rgb8(0x22, 0x22, 0x22);
+const SNIPPET_HOVER_STROKE_COLOR: Color = Color::rgb8(0, 0, 0);
 const SNIPPET_STROKE_THICKNESS: f64 = 1.0;
 
 fn timeline_snippet_same(c: &LerpedCurve, d: &LerpedCurve) -> bool {
@@ -28,67 +30,32 @@ fn timeline_snippet_same(c: &LerpedCurve, d: &LerpedCurve) -> bool {
 #[derive(Default)]
 pub struct Timeline {
     snippet_offsets: HashMap<SnippetId, usize>,
-    children: HashMap<SnippetId, WidgetPod<ScribbleState, LensWrap<LerpedCurve, SnippetLens, TimelineSnippet>>>,
-}
-
-struct SnippetBounds {
-    start_us: i64,
-    end_us: i64,
-    id: SnippetId,
-}
-
-impl SnippetBounds {
-    fn new(data: (SnippetId, &LerpedCurve)) -> SnippetBounds {
-        SnippetBounds {
-            start_us: data.1.lerp.first(),
-            end_us: data.1.lerp.last(),
-            id: data.0,
-        }
-    }
+    children: HashMap<SnippetId, WidgetPod<ScribbleState, TimelineSnippet>>,
 }
 
 impl Timeline {
     fn recalculate_snippet_offsets(&mut self, snippets: &Snippets) {
-        let mut bounds: Vec<_> = snippets
-            .iter()
-            .map(SnippetBounds::new)
-            .collect();
-        bounds.sort_by_key(|b| b.start_us);
-
-        let mut row_ends = vec![0i64; NUM_SNIPPETS as usize];
-        self.snippet_offsets.clear();
-        'bounds: for b in &bounds {
-            for (row_idx, end) in row_ends.iter_mut().enumerate() {
-                if *end == 0 || b.start_us > *end
-                /* TODO: more padding */
-                {
-                    *end = b.end_us;
-                    self.snippet_offsets.insert(b.id, row_idx);
-                    continue 'bounds;
-                }
-            }
-            panic!("Too many overlapping snippets");
-        }
+        self.snippet_offsets = snippets.layout_non_overlapping(NUM_SNIPPETS as usize)
+            .expect("Couldn't fit all the snippets in!"); // FIXME: don't panic
 
         self.children.clear();
-        for b in &bounds {
+        for (id, _) in snippets.iter() {
             self.children.insert(
-                b.id,
-                WidgetPod::new(LensWrap::new(TimelineSnippet {}, SnippetLens(b.id)))
+                id,
+                WidgetPod::new(TimelineSnippet { id })
             );
         }
     }
 }
 
-#[derive(Default)]
-struct TimelineSnippet {}
+struct TimelineSnippet {
+    id: SnippetId,
+}
 
-// TODO: need something better than an index
 struct SnippetLens(pub SnippetId);
 
 impl Lens<ScribbleState, LerpedCurve> for SnippetLens {
     fn with<V, F: FnOnce(&LerpedCurve) -> V>(&self, data: &ScribbleState, f: F) -> V {
-        // FIXME: use snippet id, not index
         f(&data.snippets.snippet(self.0))
     }
 
@@ -97,15 +64,31 @@ impl Lens<ScribbleState, LerpedCurve> for SnippetLens {
     }
 }
 
+impl TimelineSnippet {
+    fn width(&self, data: &ScribbleState) -> f64 {
+        let snippet = data.snippets.snippet(self.id);
+        if let Some(end_time) = snippet.end_time() {
+            (end_time - snippet.start_time()) as f64 * PIXELS_PER_USEC
+        } else {
+            std::f64::INFINITY
+        }
+    }
+}
+
 #[allow(unused_variables)]
-impl Widget<LerpedCurve> for TimelineSnippet {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, state: &mut LerpedCurve, _env: &Env) {
+impl Widget<ScribbleState> for TimelineSnippet {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut ScribbleState, _env: &Env) {
         match event {
-            Event::MouseDown(_) => {
-                todo!()
+            Event::MouseDown(ev) if ev.button.is_left() => {
+                ctx.set_active(true);
+                ctx.set_handled();
             }
-            Event::MouseUp(_) => {
-                todo!()
+            Event::MouseUp(ev) if ev.button.is_left() => {
+                if ctx.is_active() && ctx.is_hot() {
+                    data.selected_snippet = Some(self.id);
+                    ctx.request_paint();
+                    ctx.set_handled();
+                }
             }
             _ => {}
         }
@@ -114,74 +97,111 @@ impl Widget<LerpedCurve> for TimelineSnippet {
     fn update(
         &mut self,
         _ctx: &mut UpdateCtx,
-        _old_state: &LerpedCurve,
-        _state: &LerpedCurve,
+        _old_state: &ScribbleState,
+        _state: &ScribbleState,
         _env: &Env,
     ) {
     }
 
     fn lifecycle(
         &mut self,
-        _ctx: &mut LifeCycleCtx,
-        _: &LifeCycle,
-        _state: &LerpedCurve,
+        ctx: &mut LifeCycleCtx,
+        event: &LifeCycle,
+        _data: &ScribbleState,
         _env: &Env,
     ) {
-    }
-
-    fn layout(
-        &mut self,
-        _ctx: &mut LayoutCtx,
-        bc: &BoxConstraints,
-        data: &LerpedCurve,
-        _env: &Env,
-    ) -> Size {
-        let width = (data.lerp.last() - data.lerp.first()) as f64 * PIXELS_PER_USEC;
-        let height = SNIPPET_HEIGHT;
-        bc.constrain((width, height))
-    }
-
-    fn paint(&mut self, ctx: &mut PaintCtx, data: &LerpedCurve, env: &Env) {
-        let width = (data.lerp.last() - data.lerp.first()) as f64 * PIXELS_PER_USEC;
-        let height = SNIPPET_HEIGHT;
-        let rect = Rect::from_origin_size(Point::ZERO, (width, height))
-            .to_rounded_rect(env.get(theme::BUTTON_BORDER_RADIUS));
-
-        ctx.stroke(&rect, &SNIPPET_STROKE_COLOR, SNIPPET_STROKE_THICKNESS);
-        ctx.fill(&rect, &SNIPPET_COLOR);
-    }
-}
-
-impl Widget<ScribbleState> for Timeline {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, _data: &mut ScribbleState, _env: &Env) {
         match event {
-            Event::WindowConnected => {
+            LifeCycle::HotChanged(_) => {
                 ctx.request_paint();
             }
             _ => {}
         }
     }
 
+    fn layout(
+        &mut self,
+        _ctx: &mut LayoutCtx,
+        bc: &BoxConstraints,
+        data: &ScribbleState,
+        _env: &Env,
+    ) -> Size {
+        let snippet = data.snippets.snippet(self.id);
+        let width = self.width(data);
+        let height = SNIPPET_HEIGHT;
+        bc.constrain((width, height))
+    }
+
+    fn paint(&mut self, ctx: &mut PaintCtx, data: &ScribbleState, env: &Env) {
+        let snippet = data.snippets.snippet(self.id);
+        let width = self.width(data).min(10000.0); // FIXME: there are bugs drawing infinite rects.
+        let height = SNIPPET_HEIGHT;
+        let rect = Rect::from_origin_size(Point::ZERO, (width, height))
+            .to_rounded_rect(env.get(theme::BUTTON_BORDER_RADIUS));
+        let stroke_color = if ctx.is_hot() {
+            &SNIPPET_STROKE_COLOR
+        } else {
+            &SNIPPET_HOVER_STROKE_COLOR
+        };
+        let fill_color = if data.selected_snippet == Some(self.id) {
+            &SNIPPET_SELECTED_COLOR
+        } else {
+            &SNIPPET_COLOR
+        };
+
+        dbg!(rect);
+        ctx.fill(&rect, fill_color);
+        ctx.stroke(&rect, stroke_color, SNIPPET_STROKE_THICKNESS);
+
+        // Draw the span of the edited region.
+        let draw_width = (snippet.last_draw_time() - snippet.start_time()) as f64 * PIXELS_PER_USEC;
+        let color = Color::rgb8(0, 0, 0);
+        ctx.stroke(Line::new((0.0, height/2.0), (draw_width, height/2.0)), &color, 1.0);
+        ctx.stroke(Line::new((draw_width, height * 0.25), (draw_width, height * 0.75)), &color, 1.0);
+    }
+}
+
+impl Widget<ScribbleState> for Timeline {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut ScribbleState, env: &Env) {
+        match event {
+            Event::WindowConnected => {
+                ctx.request_paint();
+            }
+            Event::MouseDown(_) => {
+                dbg!(event);
+            }
+            _ => {}
+        }
+
+        for child in self.children.values_mut() {
+            child.event(ctx, event, data, env);
+        }
+    }
+
     fn update(
         &mut self,
         ctx: &mut UpdateCtx,
-        _old_state: &ScribbleState,
-        state: &ScribbleState,
+        _old_data: &ScribbleState,
+        data: &ScribbleState,
         _env: &Env,
     ) {
         // TODO: do this better
-        if state.snippets.snippets().curves().count() != self.children.len() {
+        if data.snippets.snippets().curves().count() != self.children.len() {
             ctx.request_layout();
+            self.recalculate_snippet_offsets(&data.snippets.snippets());
+            ctx.children_changed();
         }
     }
 
     fn lifecycle(
         &mut self,
-        _ctx: &mut LifeCycleCtx,
-        _: &LifeCycle,
-        _state: &ScribbleState,
-        _env: &Env,
+        ctx: &mut LifeCycleCtx,
+        event: &LifeCycle,
+        data: &ScribbleState,
+        env: &Env,
     ) {
+        for child in self.children.values_mut() {
+            child.lifecycle(ctx, event, data, env);
+        }
     }
 
     fn layout(
@@ -191,8 +211,6 @@ impl Widget<ScribbleState> for Timeline {
         data: &ScribbleState,
         env: &Env,
     ) -> Size {
-        self.recalculate_snippet_offsets(&data.snippets.snippets());
-
         for (&id, &offset) in &self.snippet_offsets {
             let x = (data.snippets.snippet(id).lerp.first() as f64) * PIXELS_PER_USEC;
             let y = offset as f64 * SNIPPET_HEIGHT;
@@ -200,7 +218,7 @@ impl Widget<ScribbleState> for Timeline {
             // FIXME: shouldn't we modify bc before recursing?
             let child = self.children.get_mut(&id).unwrap();
             let size = child.layout(ctx, bc, data, env);
-            child.set_layout_rect(Rect::from_origin_size((x, y), size));
+            child.set_layout_rect(dbg!(Rect::from_origin_size((x, y), size)));
         }
 
         let height = SNIPPET_HEIGHT * NUM_SNIPPETS;

@@ -16,20 +16,20 @@ pub struct CurveInProgressData {
 }
 
 impl CurveInProgressData {
-    pub fn new(time_us: i64, color: &Color, thickness: f64) -> CurveInProgressData {
+    pub fn new(color: &Color, thickness: f64) -> CurveInProgressData {
         CurveInProgressData {
-            inner: Arc::new(RefCell::new(CurveInProgress::new(time_us, color, thickness))),
+            inner: Arc::new(RefCell::new(CurveInProgress::new(color, thickness))),
             len: 0,
         }
     }
 
-    pub fn move_to(&mut self, p: Point) {
-        self.inner.borrow_mut().move_to(p);
+    pub fn move_to(&mut self, p: Point, time: i64) {
+        self.inner.borrow_mut().move_to(p, time);
         self.len += 1;
     }
 
-    pub fn line_to(&mut self, p: Point) {
-        self.inner.borrow_mut().line_to(p);
+    pub fn line_to(&mut self, p: Point, time: i64) {
+        self.inner.borrow_mut().line_to(p, time);
         self.len += 1;
     }
 
@@ -73,6 +73,7 @@ impl SnippetsData {
 pub struct ScribbleState {
     pub new_snippet: Option<CurveInProgressData>,
     pub snippets: SnippetsData,
+    pub selected_snippet: Option<SnippetId>,
     pub action: CurrentAction,
 
     pub time_us: i64,
@@ -90,6 +91,7 @@ impl Default for ScribbleState {
         ScribbleState {
             new_snippet: None,
             snippets: SnippetsData::default(),
+            selected_snippet: None,
             action: CurrentAction::Idle,
             time_us: 0,
             mouse_down: false,
@@ -110,15 +112,14 @@ impl ScribbleState {
         assert_eq!(self.action, CurrentAction::Idle);
         dbg!(self.time_us);
         self.new_snippet = Some(CurveInProgressData::new(
-            self.time_us,
             &self.line_color,
             self.line_thickness,
         ));
-        self.action = CurrentAction::Recording;
+        self.action = CurrentAction::WaitingToRecord;
     }
 
     pub fn stop_recording(&mut self) {
-        assert_eq!(self.action, CurrentAction::Recording);
+        assert!(self.action == CurrentAction::Recording || self.action == CurrentAction::WaitingToRecord);
         let new_snippet = self
             .new_snippet
             .take()
@@ -144,6 +145,7 @@ impl ScribbleState {
 
 #[derive(Clone, Copy, Data, Debug, PartialEq)]
 pub enum CurrentAction {
+    WaitingToRecord,
     Recording,
     Playing,
     Idle,
@@ -160,6 +162,7 @@ impl CurrentAction {
         use CurrentAction::*;
         use ToggleButtonState::*;
         match *self {
+            WaitingToRecord => ToggledOn,
             Recording => ToggledOn,
             Playing => Disabled,
             Idle => ToggledOff,
@@ -170,6 +173,7 @@ impl CurrentAction {
         use CurrentAction::*;
         use ToggleButtonState::*;
         match *self {
+            WaitingToRecord => Disabled,
             Recording => Disabled,
             Playing => ToggledOn,
             Idle => ToggledOff,
@@ -182,5 +186,13 @@ impl CurrentAction {
 
     pub fn is_recording(&self) -> bool {
         *self == CurrentAction::Recording
+    }
+
+    pub fn is_waiting_to_record(&self) -> bool {
+        *self == CurrentAction::WaitingToRecord
+    }
+
+    pub fn is_ticking(&self) -> bool {
+        *self == CurrentAction::Recording || *self == CurrentAction::Playing
     }
 }

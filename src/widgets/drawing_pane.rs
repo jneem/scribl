@@ -1,11 +1,12 @@
 use druid::{
-    Affine, BoxConstraints, Color, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
-    PaintCtx, Point, Rect, RenderContext, Size, TimerToken, UpdateCtx, Vec2, Widget,
+    Affine,
+    BoxConstraints, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx,
+    RenderContext, Size, TimerToken, UpdateCtx, Widget, Rect, Point, Color, Vec2,
 };
 use std::convert::TryInto;
 use std::time::Instant;
 
-use crate::data::ScribbleState;
+use crate::data::{CurrentAction, ScribbleState};
 use crate::FRAME_TIME;
 
 // Width/height of the drawing in image coordinates.
@@ -50,21 +51,21 @@ impl Widget<ScribbleState> for DrawingPane {
         match event {
             Event::MouseMoved(ev) => {
                 if state.mouse_down && state.action.is_recording() {
-                    state
-                        .new_snippet
-                        .as_mut()
-                        .unwrap()
-                        .line_to(self.to_image_coords() * ev.pos);
+                    // TODO: get the time with higher resolution by measuring the time elapsed
+                    // since the last tick
+                    state.new_snippet.as_mut().unwrap().line_to(self.to_image_coords() * ev.pos, state.time_us);
                     ctx.request_paint();
                 }
             }
-            Event::MouseDown(ev) => {
-                if ev.button.is_left() && state.action.is_recording() {
-                    let snip = state
-                        .new_snippet
-                        .as_mut()
-                        .expect("Recording, but no snippet!");
-                    snip.move_to(self.to_image_coords() * ev.pos);
+            Event::MouseDown(ev) if ev.button.is_left() => {
+                if state.action.is_waiting_to_record() {
+                    state.action = CurrentAction::Recording;
+                }
+                if state.action.is_recording() {
+                    let snip = state.new_snippet.as_mut().expect("Recording, but no snippet!");
+                    // TODO: get the time with higher resolution by measuring the time elapsed
+                    // since the last tick
+                    snip.move_to(self.to_image_coords() * ev.pos, state.time_us);
 
                     state.mouse_down = true;
                     ctx.request_paint();
@@ -80,7 +81,8 @@ impl Widget<ScribbleState> for DrawingPane {
                 self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);
             }
             Event::Timer(tok) => {
-                if tok == &self.timer_id && !state.action.is_idle() {
+                // TODO: does it make sense to have all the timer stuff here instead of globally?
+                if tok == &self.timer_id && state.action.is_ticking() {
                     let frame_time_micros: i64 = FRAME_TIME.as_micros().try_into().unwrap();
                     state.time_us += frame_time_micros;
                     ctx.request_paint();
@@ -125,8 +127,7 @@ impl Widget<ScribbleState> for DrawingPane {
         dbg!(size);
         dbg!((paper_width, paper_height));
         self.paper_rect = Rect::from_origin_size(Point::ZERO, (paper_width, paper_height));
-        self.paper_rect =
-            self.paper_rect + size.to_vec2() / 2.0 - self.paper_rect.center().to_vec2();
+        self.paper_rect = self.paper_rect + size.to_vec2() / 2.0 - self.paper_rect.center().to_vec2();
         dbg!(self.paper_rect);
         self.paper_rect = self.paper_rect.inset(PAPER_BDY_THICKNESS).round();
 
@@ -145,13 +146,12 @@ impl Widget<ScribbleState> for DrawingPane {
 
             for curve in data.snippets.snippets().curves() {
                 ctx.stroke(
-                    curve.path_until(data.time_us),
+                    curve.path_at(data.time_us),
                     &curve.curve.color,
                     curve.curve.thickness,
                 );
             }
             Ok(())
-        })
-        .unwrap();
+        }).unwrap();
     }
 }
