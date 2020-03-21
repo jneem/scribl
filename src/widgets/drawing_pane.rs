@@ -1,7 +1,6 @@
 use druid::{
-    Affine,
-    BoxConstraints, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx,
-    RenderContext, Size, TimerToken, UpdateCtx, Widget, Rect, Point, Color, Vec2,
+    Affine, BoxConstraints, Color, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
+    PaintCtx, Point, Rect, RenderContext, Size, TimerToken, UpdateCtx, Vec2, Widget,
 };
 use std::convert::TryInto;
 use std::time::Instant;
@@ -53,7 +52,11 @@ impl Widget<ScribbleState> for DrawingPane {
                 if state.mouse_down && state.action.is_recording() {
                     // TODO: get the time with higher resolution by measuring the time elapsed
                     // since the last tick
-                    state.new_snippet.as_mut().unwrap().line_to(self.to_image_coords() * ev.pos, state.time_us);
+                    state
+                        .new_snippet
+                        .as_mut()
+                        .unwrap()
+                        .line_to(self.to_image_coords() * ev.pos, state.time_us);
                     ctx.request_paint();
                 }
             }
@@ -62,7 +65,10 @@ impl Widget<ScribbleState> for DrawingPane {
                     state.action = CurrentAction::Recording;
                 }
                 if state.action.is_recording() {
-                    let snip = state.new_snippet.as_mut().expect("Recording, but no snippet!");
+                    let snip = state
+                        .new_snippet
+                        .as_mut()
+                        .expect("Recording, but no snippet!");
                     // TODO: get the time with higher resolution by measuring the time elapsed
                     // since the last tick
                     snip.move_to(self.to_image_coords() * ev.pos, state.time_us);
@@ -127,7 +133,8 @@ impl Widget<ScribbleState> for DrawingPane {
         dbg!(size);
         dbg!((paper_width, paper_height));
         self.paper_rect = Rect::from_origin_size(Point::ZERO, (paper_width, paper_height));
-        self.paper_rect = self.paper_rect + size.to_vec2() / 2.0 - self.paper_rect.center().to_vec2();
+        self.paper_rect =
+            self.paper_rect + size.to_vec2() / 2.0 - self.paper_rect.center().to_vec2();
         dbg!(self.paper_rect);
         self.paper_rect = self.paper_rect.inset(PAPER_BDY_THICKNESS).round();
 
@@ -152,6 +159,7 @@ impl Widget<ScribbleState> for DrawingPane {
                 );
             }
             Ok(())
-        }).unwrap();
+        })
+        .unwrap();
     }
 }

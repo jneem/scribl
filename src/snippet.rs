@@ -1,8 +1,6 @@
 use druid::kurbo::{BezPath, PathEl, Point};
 use druid::{Color, Data};
 use std::collections::{BTreeMap, HashMap};
-use std::convert::TryInto;
-use std::time::Instant;
 
 use crate::lerp::Lerp;
 
@@ -51,7 +49,11 @@ impl From<Curve> for LerpedCurve {
     fn from(c: Curve) -> LerpedCurve {
         let start_end = vec![*c.time_us.first().unwrap(), *c.time_us.last().unwrap()];
         let lerp = Lerp::new(start_end.clone(), start_end);
-        LerpedCurve { curve: c, lerp, end: None }
+        LerpedCurve {
+            curve: c,
+            lerp,
+            end: None,
+        }
     }
 }
 
@@ -108,11 +110,11 @@ impl Snippets {
         id
     }
 
-    pub fn curves(&self) -> impl Iterator<Item=&LerpedCurve> {
+    pub fn curves(&self) -> impl Iterator<Item = &LerpedCurve> {
         self.curves.values()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item=(SnippetId, &LerpedCurve)> {
+    pub fn iter(&self) -> impl Iterator<Item = (SnippetId, &LerpedCurve)> {
         self.curves.iter().map(|(a, b)| (*a, b))
     }
 
@@ -121,10 +123,7 @@ impl Snippets {
     }
 
     pub fn layout_non_overlapping(&self, num_slots: usize) -> Option<HashMap<SnippetId, usize>> {
-        let mut bounds: Vec<_> = self
-            .iter()
-            .map(SnippetBounds::new)
-            .collect();
+        let mut bounds: Vec<_> = self.iter().map(SnippetBounds::new).collect();
         bounds.sort_by_key(|b| b.start_us);
 
         let mut row_ends = vec![Some(0i64); num_slots as usize];

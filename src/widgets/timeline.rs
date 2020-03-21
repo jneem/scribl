@@ -1,12 +1,12 @@
 use druid::kurbo::Line;
 use druid::theme;
 use druid::{
-    BoxConstraints, Color, Env, Event, EventCtx, LayoutCtx, Lens, LensWrap, LifeCycle,
-    LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetPod,
+    BoxConstraints, Color, Env, Event, EventCtx, LayoutCtx, Lens, LifeCycle, LifeCycleCtx,
+    PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetPod,
 };
 use std::collections::HashMap;
 
-use crate::snippet::{LerpedCurve, Snippets, SnippetId};
+use crate::snippet::{LerpedCurve, SnippetId, Snippets};
 use crate::ScribbleState;
 
 const SNIPPET_HEIGHT: f64 = 20.0;
@@ -35,15 +35,14 @@ pub struct Timeline {
 
 impl Timeline {
     fn recalculate_snippet_offsets(&mut self, snippets: &Snippets) {
-        self.snippet_offsets = snippets.layout_non_overlapping(NUM_SNIPPETS as usize)
+        self.snippet_offsets = snippets
+            .layout_non_overlapping(NUM_SNIPPETS as usize)
             .expect("Couldn't fit all the snippets in!"); // FIXME: don't panic
 
         self.children.clear();
         for (id, _) in snippets.iter() {
-            self.children.insert(
-                id,
-                WidgetPod::new(TimelineSnippet { id })
-            );
+            self.children
+                .insert(id, WidgetPod::new(TimelineSnippet { id }));
         }
     }
 }
@@ -155,8 +154,16 @@ impl Widget<ScribbleState> for TimelineSnippet {
         // Draw the span of the edited region.
         let draw_width = (snippet.last_draw_time() - snippet.start_time()) as f64 * PIXELS_PER_USEC;
         let color = Color::rgb8(0, 0, 0);
-        ctx.stroke(Line::new((0.0, height/2.0), (draw_width, height/2.0)), &color, 1.0);
-        ctx.stroke(Line::new((draw_width, height * 0.25), (draw_width, height * 0.75)), &color, 1.0);
+        ctx.stroke(
+            Line::new((0.0, height / 2.0), (draw_width, height / 2.0)),
+            &color,
+            1.0,
+        );
+        ctx.stroke(
+            Line::new((draw_width, height * 0.25), (draw_width, height * 0.75)),
+            &color,
+            1.0,
+        );
     }
 }
 

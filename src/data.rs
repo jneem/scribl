@@ -2,7 +2,7 @@ use druid::{Color, Data, Lens, Point};
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use crate::snippet::{Curve, CurveInProgress, LerpedCurve, Snippets, SnippetId};
+use crate::snippet::{Curve, CurveInProgress, LerpedCurve, SnippetId, Snippets};
 use crate::widgets::ToggleButtonState;
 
 #[derive(Clone, Data)]
@@ -102,9 +102,11 @@ impl Default for ScribbleState {
 }
 
 impl ScribbleState {
-    pub fn curve_in_progress<'a>(&'a self) -> Option<impl std::ops::Deref<Target=Curve> + 'a> {
+    pub fn curve_in_progress<'a>(&'a self) -> Option<impl std::ops::Deref<Target = Curve> + 'a> {
         use std::cell::Ref;
-        self.new_snippet.as_ref().map(|s| Ref::map(s.inner.borrow(), |cip| &cip.curve))
+        self.new_snippet
+            .as_ref()
+            .map(|s| Ref::map(s.inner.borrow(), |cip| &cip.curve))
     }
 
     pub fn start_recording(&mut self) {
@@ -119,7 +121,10 @@ impl ScribbleState {
     }
 
     pub fn stop_recording(&mut self) {
-        assert!(self.action == CurrentAction::Recording || self.action == CurrentAction::WaitingToRecord);
+        assert!(
+            self.action == CurrentAction::Recording
+                || self.action == CurrentAction::WaitingToRecord
+        );
         let new_snippet = self
             .new_snippet
             .take()
