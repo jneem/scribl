@@ -173,8 +173,22 @@ impl Widget<ScribbleState> for Timeline {
             Event::WindowConnected => {
                 ctx.request_paint();
             }
-            Event::MouseDown(_) => {
-                dbg!(event);
+            Event::MouseDown(ev) => {
+                data.time_us = (ev.pos.x / PIXELS_PER_USEC) as i64;
+                ctx.set_active(true);
+                ctx.request_paint();
+            }
+            Event::MouseMoved(ev) => {
+                // On click-and-drag, we change the time with the drag.
+                if ctx.is_active() {
+                    data.time_us = (ev.pos.x / PIXELS_PER_USEC) as i64;
+                    ctx.request_paint();
+                }
+            }
+            Event::MouseUp(_) => {
+                if ctx.is_active() {
+                    ctx.set_active(false);
+                }
             }
             _ => {}
         }
