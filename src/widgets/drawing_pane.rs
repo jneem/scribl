@@ -135,7 +135,7 @@ impl Widget<ScribbleState> for DrawingPane {
                 ctx.stroke(&curve.path, &curve.color, curve.thickness);
             }
 
-            for curve in data.snippets.snippets().curves() {
+            for (_, curve) in data.snippets.snippets() {
                 ctx.stroke(
                     curve.path_at(data.time_us),
                     &curve.curve.color,

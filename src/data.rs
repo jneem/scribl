@@ -1,14 +1,18 @@
+use druid::kurbo::PathEl;
 use druid::{Color, Data, Lens, Point};
 use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
+use std::ops::Deref;
 use std::sync::Arc;
 
-use crate::snippet::{Curve, CurveInProgress, LerpedCurve, SnippetId, Snippets};
+use crate::lerp::Lerp;
+use crate::snippet::{Curve, SnippetId};
 use crate::widgets::ToggleButtonState;
 
 #[derive(Clone, Data)]
 pub struct CurveInProgressData {
     #[druid(ignore)]
-    inner: Arc<RefCell<CurveInProgress>>,
+    inner: Arc<RefCell<Curve>>,
 
     // Data comparison is done using only the curve's length, since the length grows with
     // every modification.
@@ -18,7 +22,7 @@ pub struct CurveInProgressData {
 impl CurveInProgressData {
     pub fn new(color: &Color, thickness: f64) -> CurveInProgressData {
         CurveInProgressData {
-            inner: Arc::new(RefCell::new(CurveInProgress::new(color, thickness))),
+            inner: Arc::new(RefCell::new(Curve::new(color, thickness))),
             len: 0,
         }
     }
@@ -34,37 +38,126 @@ impl CurveInProgressData {
     }
 
     pub fn into_curve(self) -> Curve {
-        // The cloning isn't so efficient, but replacing the CurveInProgress with a new one is
-        // even less efficient because it involves a syscall to get the current time.
-        self.inner.borrow().curve.clone()
+        self.inner.replace(Curve::new(&Color::rgb8(0, 0, 0), 1.0))
     }
+}
+
+#[derive(Data, Clone)]
+pub struct SnippetData {
+    pub curve: Arc<Curve>,
+    pub lerp: Arc<Lerp>,
+
+    /// Controls whether the snippet ever ends. If `None`, it means that the snippet will remain
+    /// forever; if `Some(t)` it means that the snippet will disappear at time `t`.
+    pub end: Option<i64>,
 }
 
 #[derive(Clone, Data, Default)]
 pub struct SnippetsData {
-    #[druid(ignore)]
-    inner: Arc<RefCell<Snippets>>,
+    last_id: u64,
+    snippets: Arc<BTreeMap<SnippetId, SnippetData>>,
+}
 
-    // Increments on every change.
-    dirty: u64,
+impl SnippetData {
+    // TODO: this panics if the curve is empty
+    pub fn new(curve: Curve) -> SnippetData {
+        let start_end = vec![
+            *curve.time_us.first().unwrap(),
+            *curve.time_us.last().unwrap(),
+        ];
+        let lerp = Lerp::new(start_end.clone(), start_end);
+        SnippetData {
+            curve: Arc::new(curve),
+            lerp: Arc::new(lerp),
+            end: None,
+        }
+    }
+
+    pub fn path_at(&self, time_us: i64) -> &[PathEl] {
+        if let Some(end) = self.end {
+            if time_us > end {
+                return &[];
+            }
+        }
+
+        let local_time = self.lerp.unlerp_clamped(time_us);
+        let idx = match self.curve.time_us.binary_search(&local_time) {
+            Ok(i) => i + 1,
+            Err(i) => i,
+        };
+        &self.curve.path.elements()[..idx]
+    }
+
+    pub fn start_time(&self) -> i64 {
+        self.lerp.first()
+    }
+
+    /// The last time at which the snippet changed.
+    pub fn last_draw_time(&self) -> i64 {
+        self.lerp.last()
+    }
+
+    /// The time at which this snippet should disappear.
+    pub fn end_time(&self) -> Option<i64> {
+        self.end
+    }
 }
 
 impl SnippetsData {
-    pub fn insert(&mut self, curve: Curve) -> SnippetId {
-        self.dirty += 1;
-        self.inner.borrow_mut().insert(curve)
+    pub fn with_new_snippet(&self, curve: Curve) -> SnippetsData {
+        let mut ret = self.clone();
+        ret.last_id += 1;
+        let id = SnippetId(ret.last_id);
+        let new_snippet = SnippetData::new(curve);
+        let mut map = ret.snippets.deref().clone();
+        map.insert(id, new_snippet);
+        ret.snippets = Arc::new(map);
+        ret
     }
 
-    pub fn snippets(&self) -> std::cell::Ref<Snippets> {
-        self.inner.borrow()
+    pub fn snippet(&self, id: SnippetId) -> &SnippetData {
+        self.snippets.get(&id).unwrap()
     }
 
-    pub fn snippet(&self, id: SnippetId) -> std::cell::Ref<LerpedCurve> {
-        std::cell::Ref::map(self.inner.borrow(), |s| &s.curves[&id])
+    pub fn snippets(&self) -> impl Iterator<Item = (SnippetId, &SnippetData)> {
+        self.snippets.iter().map(|(k, v)| (*k, v))
     }
 
-    pub fn snippet_mut(&mut self, id: SnippetId) -> std::cell::RefMut<LerpedCurve> {
-        std::cell::RefMut::map(self.inner.borrow_mut(), |s| s.curves.get_mut(&id).unwrap())
+    pub fn layout_non_overlapping(&self, num_slots: usize) -> Option<HashMap<SnippetId, usize>> {
+        let mut bounds: Vec<_> = self.snippets().map(SnippetBounds::new).collect();
+        bounds.sort_by_key(|b| b.start_us);
+
+        let mut row_ends = vec![Some(0i64); num_slots as usize];
+        let mut ret = HashMap::new();
+        'bounds: for b in &bounds {
+            for (row_idx, end) in row_ends.iter_mut().enumerate() {
+                if let Some(finite_end_time) = *end {
+                    if finite_end_time == 0 || b.start_us > finite_end_time {
+                        *end = b.end_us;
+                        ret.insert(b.id, row_idx);
+                        continue 'bounds;
+                    }
+                }
+            }
+            return None;
+        }
+        Some(ret)
+    }
+}
+
+struct SnippetBounds {
+    start_us: i64,
+    end_us: Option<i64>,
+    id: SnippetId,
+}
+
+impl SnippetBounds {
+    fn new(data: (SnippetId, &SnippetData)) -> SnippetBounds {
+        SnippetBounds {
+            start_us: data.1.lerp.first(),
+            end_us: data.1.end,
+            id: data.0,
+        }
     }
 }
 
@@ -105,10 +198,7 @@ impl Default for ScribbleState {
 
 impl ScribbleState {
     pub fn curve_in_progress<'a>(&'a self) -> Option<impl std::ops::Deref<Target = Curve> + 'a> {
-        use std::cell::Ref;
-        self.new_snippet
-            .as_ref()
-            .map(|s| Ref::map(s.inner.borrow(), |cip| &cip.curve))
+        self.new_snippet.as_ref().map(|s| s.inner.borrow())
     }
 
     pub fn start_recording(&mut self) {
@@ -134,7 +224,7 @@ impl ScribbleState {
         self.action = CurrentAction::Idle;
         let new_curve = new_snippet.into_curve();
         if !new_curve.path.elements().is_empty() {
-            self.snippets.insert(new_curve);
+            self.snippets = self.snippets.with_new_snippet(new_curve);
         }
     }
 
@@ -214,5 +304,43 @@ impl CurrentAction {
         } else {
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Creates a snippet that is empty, but has a starting and (possibly) an ending time.
+    fn snip(begin: i64, end: Option<i64>) -> SnippetData {
+        SnippetData {
+            curve: Arc::new(Curve::new(&Color::rgb8(0, 0, 0), 1.0)),
+            lerp: Arc::new(Lerp::new(vec![0], vec![begin])),
+            end,
+        }
+    }
+
+    macro_rules! snips {
+        ( $(($begin:expr, $end:expr)),* ) => {
+            {
+                let mut ret = SnippetsData::default();
+                let mut map = BTreeMap::new();
+                $(
+                    ret.last_id += 1;
+                    map.insert(SnippetId(ret.last_id), snip($begin, $end));
+                )*
+                ret.snippets = Arc::new(map);
+                ret
+            }
+        }
+    }
+
+    #[test]
+    fn layout_infinite() {
+        let snips = snips!((0, None), (1, None));
+        let layout = snips.layout_non_overlapping(3).unwrap();
+        dbg!(&layout);
+        assert_eq!(layout[&SnippetId(1)], 0);
+        assert_eq!(layout[&SnippetId(2)], 1);
     }
 }

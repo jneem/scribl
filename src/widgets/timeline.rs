@@ -1,12 +1,13 @@
 use druid::kurbo::{BezPath, Line};
 use druid::theme;
 use druid::{
-    BoxConstraints, Color, Env, Event, EventCtx, LayoutCtx, Lens, LifeCycle, LifeCycleCtx,
-    PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetPod,
+    BoxConstraints, Color, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx,
+    Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetPod,
 };
 use std::collections::HashMap;
 
-use crate::snippet::{LerpedCurve, SnippetId, Snippets};
+use crate::data::SnippetsData;
+use crate::snippet::SnippetId;
 use crate::ScribbleState;
 
 const SNIPPET_HEIGHT: f64 = 20.0;
@@ -25,10 +26,6 @@ const SNIPPET_STROKE_THICKNESS: f64 = 1.0;
 
 const MARK_COLOR: Color = Color::rgb8(0x33, 0x33, 0x99);
 
-fn timeline_snippet_same(c: &LerpedCurve, d: &LerpedCurve) -> bool {
-    c.lerp == d.lerp
-}
-
 #[derive(Default)]
 pub struct Timeline {
     snippet_offsets: HashMap<SnippetId, usize>,
@@ -36,13 +33,13 @@ pub struct Timeline {
 }
 
 impl Timeline {
-    fn recalculate_snippet_offsets(&mut self, snippets: &Snippets) {
+    fn recalculate_snippet_offsets(&mut self, snippets: &SnippetsData) {
         self.snippet_offsets = snippets
             .layout_non_overlapping(NUM_SNIPPETS as usize)
             .expect("Couldn't fit all the snippets in!"); // FIXME: don't panic
 
         self.children.clear();
-        for (id, _) in snippets.iter() {
+        for (id, _) in snippets.snippets() {
             self.children
                 .insert(id, WidgetPod::new(TimelineSnippet { id }));
         }
@@ -51,18 +48,6 @@ impl Timeline {
 
 struct TimelineSnippet {
     id: SnippetId,
-}
-
-struct SnippetLens(pub SnippetId);
-
-impl Lens<ScribbleState, LerpedCurve> for SnippetLens {
-    fn with<V, F: FnOnce(&LerpedCurve) -> V>(&self, data: &ScribbleState, f: F) -> V {
-        f(&data.snippets.snippet(self.0))
-    }
-
-    fn with_mut<V, F: FnOnce(&mut LerpedCurve) -> V>(&self, data: &mut ScribbleState, f: F) -> V {
-        f(&mut data.snippets.snippet_mut(self.0))
-    }
 }
 
 impl TimelineSnippet {
@@ -208,9 +193,9 @@ impl Widget<ScribbleState> for Timeline {
         _env: &Env,
     ) {
         // TODO: do this better
-        if data.snippets.snippets().curves().count() != self.children.len() {
+        if data.snippets.snippets().count() != self.children.len() {
             ctx.request_layout();
-            self.recalculate_snippet_offsets(&data.snippets.snippets());
+            self.recalculate_snippet_offsets(&data.snippets);
             ctx.children_changed();
         }
     }
