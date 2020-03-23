@@ -85,7 +85,9 @@ impl Widget<ScribbleState> for Root {
                         data.action = CurrentAction::Idle;
                     }
                     ctx.set_handled();
-                    return;
+                    if ev.key_code == KeyCode::ArrowRight || ev.key_code == KeyCode::ArrowLeft {
+                        return;
+                    }
                 }
 
                 match ev.key_code {
@@ -100,6 +102,9 @@ impl Widget<ScribbleState> for Root {
                             data.action = CurrentAction::Scanning(speed * dir);
                         }
                         ctx.set_handled();
+                    }
+                    KeyCode::KeyM => {
+                        data.mark = Some(data.time_us);
                     }
                     _ => {}
                 }

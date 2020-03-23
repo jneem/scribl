@@ -77,6 +77,7 @@ pub struct ScribbleState {
     pub action: CurrentAction,
 
     pub time_us: i64,
+    pub mark: Option<i64>,
 
     // This is a bit of an odd one out, since it's specifically for input handling in the
     // drawing-pane widget. If there get to be more of these, maybe they should get split out.
@@ -94,6 +95,7 @@ impl Default for ScribbleState {
             selected_snippet: None,
             action: CurrentAction::Idle,
             time_us: 0,
+            mark: None,
             mouse_down: false,
             line_thickness: 5.0,
             line_color: Color::rgb8(0, 255, 0),

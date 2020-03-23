@@ -1,4 +1,4 @@
-use druid::kurbo::Line;
+use druid::kurbo::{BezPath, Line};
 use druid::theme;
 use druid::{
     BoxConstraints, Color, Env, Event, EventCtx, LayoutCtx, Lens, LifeCycle, LifeCycleCtx,
@@ -22,6 +22,8 @@ const SNIPPET_SELECTED_COLOR: Color = Color::rgb8(0x77, 0x77, 0x11);
 const SNIPPET_STROKE_COLOR: Color = Color::rgb8(0x22, 0x22, 0x22);
 const SNIPPET_HOVER_STROKE_COLOR: Color = Color::rgb8(0, 0, 0);
 const SNIPPET_STROKE_THICKNESS: f64 = 1.0;
+
+const MARK_COLOR: Color = Color::rgb8(0x33, 0x33, 0x99);
 
 fn timeline_snippet_same(c: &LerpedCurve, d: &LerpedCurve) -> bool {
     c.lerp == d.lerp
@@ -259,5 +261,16 @@ impl Widget<ScribbleState> for Timeline {
         let cursor_x = PIXELS_PER_USEC * (data.time_us as f64);
         let line = Line::new((cursor_x, 0.0), (cursor_x, size.height));
         ctx.stroke(line, &CURSOR_COLOR, CURSOR_THICKNESS);
+
+        // Draw the mark.
+        if let Some(mark_time) = data.mark {
+            let mark_x = PIXELS_PER_USEC * (mark_time as f64);
+            let mut path = BezPath::new();
+            path.move_to((mark_x - 8.0, 0.0));
+            path.line_to((mark_x + 8.0, 0.0));
+            path.line_to((mark_x, 8.0));
+            path.close_path();
+            ctx.fill(path, &MARK_COLOR);
+        }
     }
 }
