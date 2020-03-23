@@ -153,6 +153,9 @@ pub enum CurrentAction {
     WaitingToRecord,
     Recording,
     Playing,
+
+    /// Fast-forward or reverse. The parameter is the speed factor, negative for reverse.
+    Scanning(f64),
     Idle,
 }
 
@@ -169,8 +172,9 @@ impl CurrentAction {
         match *self {
             WaitingToRecord => ToggledOn,
             Recording => ToggledOn,
-            Playing => Disabled,
             Idle => ToggledOff,
+            Playing => Disabled,
+            Scanning(_) => Disabled,
         }
     }
 
@@ -180,6 +184,7 @@ impl CurrentAction {
         match *self {
             WaitingToRecord => Disabled,
             Recording => Disabled,
+            Scanning(_) => Disabled,
             Playing => ToggledOn,
             Idle => ToggledOff,
         }
@@ -199,5 +204,13 @@ impl CurrentAction {
 
     pub fn is_ticking(&self) -> bool {
         *self == CurrentAction::Recording || *self == CurrentAction::Playing
+    }
+
+    pub fn is_scanning(&self) -> bool {
+        if let CurrentAction::Scanning(_) = *self {
+            true
+        } else {
+            false
+        }
     }
 }

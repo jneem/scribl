@@ -1,11 +1,14 @@
 use druid::widget::{Align, Flex};
 use druid::{
-    BoxConstraints, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, Size,
-    UpdateCtx, Widget,
+    BoxConstraints, Env, Event, EventCtx, KeyCode, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx,
+    Size, TimerToken, UpdateCtx, Widget,
 };
+use std::convert::TryInto;
+use std::time::Instant;
 
-use crate::data::ScribbleState;
+use crate::data::{CurrentAction, ScribbleState};
 use crate::widgets::{DrawingPane, Timeline, ToggleButton};
+use crate::FRAME_TIME;
 
 fn rec_button_on(_ctx: &mut EventCtx, data: &mut ScribbleState, _env: &Env) {
     data.start_recording();
@@ -25,6 +28,7 @@ fn play_button_off(_ctx: &mut EventCtx, data: &mut ScribbleState, _env: &Env) {
 }
 
 pub struct Root {
+    timer_id: TimerToken,
     inner: Box<dyn Widget<ScribbleState>>,
 }
 
@@ -56,13 +60,79 @@ impl Root {
 
         Root {
             inner: Box::new(Align::centered(column)),
+            timer_id: TimerToken::INVALID,
         }
     }
 }
 
 impl Widget<ScribbleState> for Root {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut ScribbleState, env: &Env) {
-        self.inner.event(ctx, event, data, env);
+        match event {
+            Event::WindowConnected => {
+                ctx.request_focus();
+                ctx.request_paint();
+                self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);
+            }
+            Event::KeyDown(ev) => {
+                // If they push another key while holding down the arrow, cancel the scanning.
+                if let CurrentAction::Scanning(speed) = data.action {
+                    let direction = if speed > 0.0 {
+                        KeyCode::ArrowRight
+                    } else {
+                        KeyCode::ArrowLeft
+                    };
+                    if ev.key_code != direction {
+                        data.action = CurrentAction::Idle;
+                    }
+                    ctx.set_handled();
+                    return;
+                }
+
+                match ev.key_code {
+                    KeyCode::ArrowRight | KeyCode::ArrowLeft => {
+                        if data.action.is_idle() {
+                            let speed = if ev.mods.shift { 2.0 } else { 1.0 };
+                            let dir = if ev.key_code == KeyCode::ArrowRight {
+                                1.0
+                            } else {
+                                -1.0
+                            };
+                            data.action = CurrentAction::Scanning(speed * dir);
+                        }
+                        ctx.set_handled();
+                    }
+                    _ => {}
+                }
+            }
+            Event::KeyUp(ev) => match ev.key_code {
+                KeyCode::ArrowRight | KeyCode::ArrowLeft => {
+                    if data.action.is_scanning() {
+                        data.action = CurrentAction::Idle;
+                    }
+                    ctx.set_handled();
+                }
+                _ => {}
+            },
+            Event::Timer(tok) => {
+                if tok == &self.timer_id {
+                    let frame_time_us: i64 = if data.action.is_ticking() {
+                        FRAME_TIME.as_micros().try_into().unwrap()
+                    } else if let CurrentAction::Scanning(speed) = data.action {
+                        let t = FRAME_TIME.as_micros() as f64;
+                        (t * speed) as i64
+                    } else {
+                        0
+                    };
+                    data.time_us = (data.time_us + frame_time_us).max(0);
+                    ctx.request_paint();
+                }
+
+                self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);
+            }
+            _ => {
+                self.inner.event(ctx, event, data, env);
+            }
+        }
     }
 
     fn update(

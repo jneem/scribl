@@ -1,12 +1,9 @@
 use druid::{
     Affine, BoxConstraints, Color, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
-    PaintCtx, Point, Rect, RenderContext, Size, TimerToken, UpdateCtx, Vec2, Widget,
+    PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
 };
-use std::convert::TryInto;
-use std::time::Instant;
 
 use crate::data::{CurrentAction, ScribbleState};
-use crate::FRAME_TIME;
 
 // Width/height of the drawing in image coordinates.
 const DRAWING_WIDTH: u64 = 1600;
@@ -19,7 +16,6 @@ const PAPER_BDY_THICKNESS: f64 = 1.0;
 
 pub struct DrawingPane {
     paper_rect: Rect,
-    timer_id: TimerToken,
 }
 
 impl DrawingPane {
@@ -40,7 +36,6 @@ impl Default for DrawingPane {
     fn default() -> DrawingPane {
         DrawingPane {
             paper_rect: Rect::ZERO,
-            timer_id: TimerToken::INVALID,
         }
     }
 }
@@ -84,17 +79,6 @@ impl Widget<ScribbleState> for DrawingPane {
             }
             Event::WindowConnected => {
                 ctx.request_paint();
-                self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);
-            }
-            Event::Timer(tok) => {
-                // TODO: does it make sense to have all the timer stuff here instead of globally?
-                if tok == &self.timer_id && state.action.is_ticking() {
-                    let frame_time_micros: i64 = FRAME_TIME.as_micros().try_into().unwrap();
-                    state.time_us += frame_time_micros;
-                    ctx.request_paint();
-                }
-
-                self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);
             }
             _ => {}
         }
