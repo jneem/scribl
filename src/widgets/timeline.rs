@@ -70,10 +70,13 @@ impl Widget<ScribbleState> for TimelineSnippet {
                 ctx.set_handled();
             }
             Event::MouseUp(ev) if ev.button.is_left() => {
-                if ctx.is_active() && ctx.is_hot() {
-                    data.selected_snippet = Some(self.id);
-                    ctx.request_paint();
-                    ctx.set_handled();
+                if ctx.is_active() {
+                    ctx.set_active(false);
+                    if ctx.is_hot() {
+                        data.selected_snippet = Some(self.id);
+                        ctx.request_paint();
+                        ctx.set_handled();
+                    }
                 }
             }
             _ => {}
