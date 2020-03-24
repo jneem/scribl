@@ -86,11 +86,14 @@ impl Widget<ScribbleState> for DrawingPane {
 
     fn update(
         &mut self,
-        _ctx: &mut UpdateCtx,
-        _old_state: &ScribbleState,
-        _state: &ScribbleState,
+        ctx: &mut UpdateCtx,
+        old_data: &ScribbleState,
+        data: &ScribbleState,
         _env: &Env,
     ) {
+        if old_data.time_us != data.time_us {
+            ctx.request_paint();
+        }
     }
 
     fn lifecycle(

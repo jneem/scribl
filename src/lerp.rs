@@ -1,12 +1,8 @@
 #![allow(unused_variables)]
 
-use druid::Data;
-
-#[derive(Clone, Data, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Lerp {
-    #[druid(same_fn = "PartialEq::eq")]
     original_values: Vec<i64>,
-    #[druid(same_fn = "PartialEq::eq")]
     lerped_values: Vec<i64>,
 }
 
@@ -27,6 +23,10 @@ impl Lerp {
 
     pub fn last(&self) -> i64 {
         *self.lerped_values.last().unwrap()
+    }
+
+    pub fn times<'a>(&'a self) -> impl Iterator<Item = i64> + 'a {
+        self.lerped_values.iter().cloned()
     }
 
     pub fn lerp(&self, t: i64) -> Option<i64> {
@@ -67,6 +67,35 @@ impl Lerp {
             SingleTime(t) => t,
             Interval(t, _) => t,
         }
+    }
+
+    pub fn add_lerp(&mut self, time_from: i64, time_to: i64) {
+        let local_time_from = self.unlerp_clamped(time_from);
+        let idx = match self.original_values.binary_search(&local_time_from) {
+            Ok(idx) => idx,
+            Err(idx) => {
+                self.original_values.insert(idx, local_time_from);
+                self.lerped_values.insert(idx, time_from);
+                idx
+            }
+        };
+        let shift_right = time_to > self.lerped_values[idx];
+        self.lerped_values[idx] = time_to;
+        if shift_right {
+            for v in &mut self.lerped_values[(idx + 1)..] {
+                *v = (*v).max(time_to);
+            }
+        } else {
+            for v in &mut self.lerped_values[..idx] {
+                *v = (*v).min(time_to);
+            }
+        }
+    }
+
+    pub fn with_new_lerp(&self, time_from: i64, time_to: i64) -> Lerp {
+        let mut ret = self.clone();
+        ret.add_lerp(time_from, time_to);
+        ret
     }
 }
 
@@ -146,5 +175,27 @@ mod tests {
         assert_eq!((1, 3), search_interval(1, &[0, 1, 1, 1]));
         assert_eq!((0, 2), search_interval(1, &[1, 1, 1, 2]));
         assert_eq!((0, 2), search_interval(1, &[1, 1, 1]));
+    }
+
+    #[test]
+    fn add_lerp() {
+        let lerp = Lerp::new(vec![0, 100], vec![0, 100]);
+
+        let out = lerp.with_new_lerp(50, 80);
+        assert_eq!(out.original_values, vec![0, 50, 100]);
+        assert_eq!(out.lerped_values, vec![0, 80, 100]);
+
+        let out = lerp.with_new_lerp(50, 200);
+        assert_eq!(out.original_values, vec![0, 50, 100]);
+        assert_eq!(out.lerped_values, vec![0, 200, 200]);
+
+        let out = lerp.with_new_lerp(100, 150);
+        assert_eq!(out.original_values, vec![0, 100]);
+        assert_eq!(out.lerped_values, vec![0, 150]);
+
+        let lerp = Lerp::new(vec![0, 100], vec![0, 200]);
+        let out = lerp.with_new_lerp(100, 150);
+        assert_eq!(out.original_values, vec![0, 50, 100]);
+        assert_eq!(out.lerped_values, vec![0, 150, 200]);
     }
 }

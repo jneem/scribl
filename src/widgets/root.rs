@@ -106,6 +106,20 @@ impl Widget<ScribbleState> for Root {
                     KeyCode::KeyM => {
                         data.mark = Some(data.time_us);
                     }
+                    KeyCode::KeyT => {
+                        if let Some(snip) = data.selected_snippet {
+                            data.snippets =
+                                data.snippets.with_truncated_snippet(snip, data.time_us);
+                        }
+                    }
+                    KeyCode::KeyW => {
+                        if let Some(mark_time) = data.mark {
+                            if let Some(snip) = data.selected_snippet {
+                                data.snippets =
+                                    data.snippets.with_new_lerp(snip, data.time_us, mark_time);
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -129,7 +143,6 @@ impl Widget<ScribbleState> for Root {
                         0
                     };
                     data.time_us = (data.time_us + frame_time_us).max(0);
-                    ctx.request_paint();
                 }
 
                 self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);

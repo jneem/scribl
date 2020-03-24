@@ -1,8 +1,8 @@
 use druid::kurbo::{BezPath, Line};
 use druid::theme;
 use druid::{
-    BoxConstraints, Color, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx,
-    Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetPod,
+    BoxConstraints, Color, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
+    PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetPod,
 };
 use std::collections::HashMap;
 
@@ -85,11 +85,16 @@ impl Widget<ScribbleState> for TimelineSnippet {
 
     fn update(
         &mut self,
-        _ctx: &mut UpdateCtx,
-        _old_state: &ScribbleState,
-        _state: &ScribbleState,
+        ctx: &mut UpdateCtx,
+        old_data: &ScribbleState,
+        data: &ScribbleState,
         _env: &Env,
     ) {
+        let snip = data.snippets.snippet(self.id);
+        let old_snip = old_data.snippets.snippet(self.id);
+        if !snip.same(old_snip) {
+            ctx.request_paint();
+        }
     }
 
     fn lifecycle(
@@ -137,7 +142,6 @@ impl Widget<ScribbleState> for TimelineSnippet {
             &SNIPPET_COLOR
         };
 
-        dbg!(rect);
         ctx.fill(&rect, fill_color);
         ctx.stroke(&rect, stroke_color, SNIPPET_STROKE_THICKNESS);
 
@@ -154,6 +158,16 @@ impl Widget<ScribbleState> for TimelineSnippet {
             &color,
             1.0,
         );
+
+        // Draw the lerp lines.
+        let first = snippet.lerp.first();
+        let last = snippet.lerp.last();
+        for t in snippet.lerp.times() {
+            if t > first && t < last {
+                let x = (t as f64) * PIXELS_PER_USEC;
+                ctx.stroke(Line::new((x, 0.0), (x, height)), &SNIPPET_STROKE_COLOR, 1.0);
+            }
+        }
     }
 }
 
@@ -191,15 +205,21 @@ impl Widget<ScribbleState> for Timeline {
     fn update(
         &mut self,
         ctx: &mut UpdateCtx,
-        _old_data: &ScribbleState,
+        old_data: &ScribbleState,
         data: &ScribbleState,
-        _env: &Env,
+        env: &Env,
     ) {
         // TODO: do this better
         if data.snippets.snippets().count() != self.children.len() {
             ctx.request_layout();
             self.recalculate_snippet_offsets(&data.snippets);
             ctx.children_changed();
+        }
+        if old_data.time_us != data.time_us {
+            ctx.request_paint();
+        }
+        for child in self.children.values_mut() {
+            child.update(ctx, data, env);
         }
     }
 

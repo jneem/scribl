@@ -42,7 +42,7 @@ impl CurveInProgressData {
     }
 }
 
-#[derive(Data, Clone)]
+#[derive(Data, Debug, Clone)]
 pub struct SnippetData {
     pub curve: Arc<Curve>,
     pub lerp: Arc<Lerp>,
@@ -113,6 +113,27 @@ impl SnippetsData {
         map.insert(id, new_snippet);
         ret.snippets = Arc::new(map);
         ret
+    }
+
+    pub fn with_replacement_snippet(&self, id: SnippetId, new: SnippetData) -> SnippetsData {
+        assert!(id.0 <= self.last_id);
+        let mut ret = self.clone();
+        let mut map = ret.snippets.deref().clone();
+        map.insert(id, new);
+        ret.snippets = Arc::new(map);
+        ret
+    }
+
+    pub fn with_new_lerp(&self, id: SnippetId, lerp_from: i64, lerp_to: i64) -> SnippetsData {
+        let mut snip = self.snippet(id).clone();
+        snip.lerp = Arc::new(snip.lerp.with_new_lerp(lerp_from, lerp_to));
+        self.with_replacement_snippet(id, snip)
+    }
+
+    pub fn with_truncated_snippet(&self, id: SnippetId, time: i64) -> SnippetsData {
+        let mut snip = self.snippet(id).clone();
+        snip.end = Some(time);
+        self.with_replacement_snippet(id, snip)
     }
 
     pub fn snippet(&self, id: SnippetId) -> &SnippetData {
@@ -225,6 +246,7 @@ impl ScribbleState {
         let new_curve = new_snippet.into_curve();
         if !new_curve.path.elements().is_empty() {
             self.snippets = self.snippets.with_new_snippet(new_curve);
+            self.selected_snippet = Some(SnippetId(self.snippets.last_id));
         }
     }
 
