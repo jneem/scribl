@@ -25,8 +25,8 @@ impl Lerp {
         *self.lerped_values.last().unwrap()
     }
 
-    pub fn times<'a>(&'a self) -> impl Iterator<Item = i64> + 'a {
-        self.lerped_values.iter().cloned()
+    pub fn times(&self) -> &[i64] {
+        &self.lerped_values
     }
 
     pub fn lerp(&self, t: i64) -> Option<i64> {

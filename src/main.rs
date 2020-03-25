@@ -5,10 +5,12 @@ use druid::theme;
 use druid::{AppLauncher, Color, Key, LocalizedString, WindowDesc};
 use std::time::Duration;
 
+mod audio;
 mod consts;
 mod data;
 mod lerp;
 mod snippet;
+mod snippet_layout;
 mod widgets;
 
 const BUTTON_DISABLED: Key<Color> = Key::new("button_disabled");

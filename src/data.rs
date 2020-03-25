@@ -1,10 +1,11 @@
 use druid::kurbo::PathEl;
 use druid::{Color, Data, Lens, Point};
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use crate::audio::{AudioSnippetsData, AudioState};
 use crate::lerp::Lerp;
 use crate::snippet::{Curve, SnippetId};
 use crate::widgets::ToggleButtonState;
@@ -143,27 +144,6 @@ impl SnippetsData {
     pub fn snippets(&self) -> impl Iterator<Item = (SnippetId, &SnippetData)> {
         self.snippets.iter().map(|(k, v)| (*k, v))
     }
-
-    pub fn layout_non_overlapping(&self, num_slots: usize) -> Option<HashMap<SnippetId, usize>> {
-        let mut bounds: Vec<_> = self.snippets().map(SnippetBounds::new).collect();
-        bounds.sort_by_key(|b| b.start_us);
-
-        let mut row_ends = vec![Some(0i64); num_slots as usize];
-        let mut ret = HashMap::new();
-        'bounds: for b in &bounds {
-            for (row_idx, end) in row_ends.iter_mut().enumerate() {
-                if let Some(finite_end_time) = *end {
-                    if finite_end_time == 0 || b.start_us > finite_end_time {
-                        *end = b.end_us;
-                        ret.insert(b.id, row_idx);
-                        continue 'bounds;
-                    }
-                }
-            }
-            return None;
-        }
-        Some(ret)
-    }
 }
 
 struct SnippetBounds {
@@ -187,6 +167,7 @@ impl SnippetBounds {
 pub struct ScribbleState {
     pub new_snippet: Option<CurveInProgressData>,
     pub snippets: SnippetsData,
+    pub audio_snippets: AudioSnippetsData,
     pub selected_snippet: Option<SnippetId>,
     pub action: CurrentAction,
 
@@ -199,6 +180,8 @@ pub struct ScribbleState {
 
     pub line_thickness: f64,
     pub line_color: Color,
+
+    pub audio: Arc<RefCell<AudioState>>,
 }
 
 impl Default for ScribbleState {
@@ -206,6 +189,7 @@ impl Default for ScribbleState {
         ScribbleState {
             new_snippet: None,
             snippets: SnippetsData::default(),
+            audio_snippets: AudioSnippetsData::default(),
             selected_snippet: None,
             action: CurrentAction::Idle,
             time_us: 0,
@@ -213,6 +197,7 @@ impl Default for ScribbleState {
             mouse_down: false,
             line_thickness: 5.0,
             line_color: Color::rgb8(0, 255, 0),
+            audio: Arc::new(RefCell::new(AudioState::init())),
         }
     }
 }
@@ -253,11 +238,31 @@ impl ScribbleState {
     pub fn start_playing(&mut self) {
         assert_eq!(self.action, CurrentAction::Idle);
         self.action = CurrentAction::Playing;
-        self.time_us = 0;
+        self.audio
+            .borrow_mut()
+            .start_playing(self.audio_snippets.clone(), self.time_us);
     }
 
     pub fn stop_playing(&mut self) {
         assert_eq!(self.action, CurrentAction::Playing);
+        self.action = CurrentAction::Idle;
+        self.audio.borrow_mut().stop_playing();
+    }
+
+    pub fn start_recording_audio(&mut self) {
+        assert_eq!(self.action, CurrentAction::Idle);
+        self.action = CurrentAction::RecordingAudio(self.time_us);
+        self.audio.borrow_mut().start_recording();
+    }
+
+    pub fn stop_recording_audio(&mut self) {
+        if let CurrentAction::RecordingAudio(rec_start) = self.action {
+            let buf = self.audio.borrow_mut().stop_recording();
+            dbg!(buf.len());
+            self.audio_snippets = self.audio_snippets.with_new_snippet(buf, rec_start);
+        } else {
+            panic!("not recording");
+        }
         self.action = CurrentAction::Idle;
     }
 }
@@ -267,6 +272,9 @@ pub enum CurrentAction {
     WaitingToRecord,
     Recording,
     Playing,
+
+    /// The argument is the time at which audio capture started.
+    RecordingAudio(i64),
 
     /// Fast-forward or reverse. The parameter is the speed factor, negative for reverse.
     Scanning(f64),
@@ -289,6 +297,7 @@ impl CurrentAction {
             Idle => ToggledOff,
             Playing => Disabled,
             Scanning(_) => Disabled,
+            RecordingAudio(_) => Disabled,
         }
     }
 
@@ -301,6 +310,20 @@ impl CurrentAction {
             Scanning(_) => Disabled,
             Playing => ToggledOn,
             Idle => ToggledOff,
+            RecordingAudio(_) => Disabled,
+        }
+    }
+
+    pub fn rec_audio_toggle(&self) -> ToggleButtonState {
+        use CurrentAction::*;
+        use ToggleButtonState::*;
+        match *self {
+            WaitingToRecord => Disabled,
+            Recording => Disabled,
+            Scanning(_) => Disabled,
+            Playing => Disabled,
+            Idle => ToggledOff,
+            RecordingAudio(_) => ToggledOn,
         }
     }
 
@@ -317,7 +340,11 @@ impl CurrentAction {
     }
 
     pub fn is_ticking(&self) -> bool {
-        *self == CurrentAction::Recording || *self == CurrentAction::Playing
+        use CurrentAction::*;
+        match *self {
+            Recording | Playing | RecordingAudio(_) => true,
+            _ => false,
+        }
     }
 
     pub fn is_scanning(&self) -> bool {
@@ -326,43 +353,5 @@ impl CurrentAction {
         } else {
             false
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Creates a snippet that is empty, but has a starting and (possibly) an ending time.
-    fn snip(begin: i64, end: Option<i64>) -> SnippetData {
-        SnippetData {
-            curve: Arc::new(Curve::new(&Color::rgb8(0, 0, 0), 1.0)),
-            lerp: Arc::new(Lerp::new(vec![0], vec![begin])),
-            end,
-        }
-    }
-
-    macro_rules! snips {
-        ( $(($begin:expr, $end:expr)),* ) => {
-            {
-                let mut ret = SnippetsData::default();
-                let mut map = BTreeMap::new();
-                $(
-                    ret.last_id += 1;
-                    map.insert(SnippetId(ret.last_id), snip($begin, $end));
-                )*
-                ret.snippets = Arc::new(map);
-                ret
-            }
-        }
-    }
-
-    #[test]
-    fn layout_infinite() {
-        let snips = snips!((0, None), (1, None));
-        let layout = snips.layout_non_overlapping(3).unwrap();
-        dbg!(&layout);
-        assert_eq!(layout[&SnippetId(1)], 0);
-        assert_eq!(layout[&SnippetId(2)], 1);
     }
 }

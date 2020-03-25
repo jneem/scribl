@@ -10,23 +10,6 @@ use crate::data::{CurrentAction, ScribbleState};
 use crate::widgets::{DrawingPane, Timeline, ToggleButton};
 use crate::FRAME_TIME;
 
-fn rec_button_on(_ctx: &mut EventCtx, data: &mut ScribbleState, _env: &Env) {
-    data.start_recording();
-}
-
-fn rec_button_off(_ctx: &mut EventCtx, data: &mut ScribbleState, _env: &Env) {
-    dbg!("Stopped recording", data.time_us);
-    data.stop_recording();
-}
-
-fn play_button_on(_ctx: &mut EventCtx, data: &mut ScribbleState, _env: &Env) {
-    data.start_playing();
-}
-
-fn play_button_off(_ctx: &mut EventCtx, data: &mut ScribbleState, _env: &Env) {
-    data.stop_playing();
-}
-
 pub struct Root {
     timer_id: TimerToken,
     inner: Box<dyn Widget<ScribbleState>>,
@@ -38,18 +21,25 @@ impl Root {
         let rec_button: ToggleButton<ScribbleState> = ToggleButton::new(
             "Rec",
             |state: &ScribbleState| state.action.rec_toggle(),
-            &rec_button_on,
-            &rec_button_off,
+            |_, data, _| data.start_recording(),
+            |_, data, _| data.stop_recording(),
+        );
+        let rec_audio_button: ToggleButton<ScribbleState> = ToggleButton::new(
+            "Audio",
+            |state: &ScribbleState| state.action.rec_audio_toggle(),
+            |_, data, _| data.start_recording_audio(),
+            |_, data, _| data.stop_recording_audio(),
         );
         let play_button = ToggleButton::new(
             "Play",
             |state: &ScribbleState| state.action.play_toggle(),
-            &play_button_on,
-            &play_button_off,
+            |_, data, _| data.start_playing(),
+            |_, data, _| data.stop_playing(),
         );
 
         let button_row = Flex::row()
             .with_child(rec_button, 0.0)
+            .with_child(rec_audio_button, 0.0)
             .with_child(play_button, 0.0);
         let column = Flex::column()
             .with_child(button_row, 0.0)
