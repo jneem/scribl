@@ -145,8 +145,6 @@ impl Widget<ScribbleState> for DrawingPane {
                     curve.curve.thickness,
                 );
             }
-            Ok(())
-        })
-        .unwrap();
+        });
     }
 }

@@ -146,22 +146,6 @@ impl SnippetsData {
     }
 }
 
-struct SnippetBounds {
-    start_us: i64,
-    end_us: Option<i64>,
-    id: SnippetId,
-}
-
-impl SnippetBounds {
-    fn new(data: (SnippetId, &SnippetData)) -> SnippetBounds {
-        SnippetBounds {
-            start_us: data.1.lerp.first(),
-            end_us: data.1.end,
-            id: data.0,
-        }
-    }
-}
-
 /// This data contains the entire state of the app.
 #[derive(Clone, Data, Lens)]
 pub struct ScribbleState {

@@ -1,5 +1,6 @@
-#![allow(unused_variables)]
+use serde::{Deserialize, Serialize};
 
+#[derive(Deserialize, Serialize)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Lerp {
     original_values: Vec<i64>,

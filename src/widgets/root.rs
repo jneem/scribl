@@ -38,15 +38,15 @@ impl Root {
         );
 
         let button_row = Flex::row()
-            .with_child(rec_button, 0.0)
-            .with_child(rec_audio_button, 0.0)
-            .with_child(play_button, 0.0);
+            .with_child(rec_button)
+            .with_child(rec_audio_button)
+            .with_child(play_button);
         let column = Flex::column()
-            .with_child(button_row, 0.0)
+            .with_child(button_row)
             .with_spacer(10.0)
-            .with_child(drawing, 1.0)
+            .with_flex_child(drawing, 1.0)
             .with_spacer(10.0)
-            .with_child(Timeline::default(), 0.0);
+            .with_child(Timeline::default());
 
         Root {
             inner: Box::new(Align::centered(column)),

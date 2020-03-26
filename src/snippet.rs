@@ -1,16 +1,18 @@
 use druid::kurbo::{BezPath, Point};
 use druid::{Color, Data};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Data, Debug)]
+//#[derive(Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct Curve {
     pub path: BezPath,
-    #[druid(same_fn = "PartialEq::eq")]
     pub time_us: Vec<i64>,
     pub color: Color,
     pub thickness: f64,
 }
 
 /// Snippets are identified by unique ids.
+#[derive(Deserialize, Serialize)]
 #[derive(Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 // TODO: remove the pub
 pub struct SnippetId(pub u64);
