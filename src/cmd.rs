@@ -23,6 +23,9 @@ pub const LERP_SNIPPET: Selector = Selector::new("scribble.lerp-snippet");
 /// Changes the current mark time. The argument is an i64.
 pub const SET_MARK: Selector = Selector::new("scribble.set-mark");
 
+/// Changes the pen color. The argument is a [`Color`].
+pub const CHOOSE_COLOR: Selector = Selector::new("scribble.choose-color");
+
 pub struct TruncateSnippetCmd {
     pub id: SnippetId,
     pub time_us: i64,

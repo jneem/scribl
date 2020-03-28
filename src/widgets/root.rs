@@ -1,7 +1,7 @@
 use druid::widget::{Align, Flex};
 use druid::{
-    BoxConstraints, Command, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx, LifeCycle,
-    LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget,
+    BoxConstraints, Color, Command, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx, LifeCycle,
+    LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt,
 };
 use std::convert::TryInto;
 use std::time::Instant;
@@ -10,7 +10,7 @@ use crate::audio::AudioSnippetData;
 use crate::cmd;
 use crate::data::{AppState, CurrentAction, ScribbleState, SnippetData};
 use crate::undo::UndoStack;
-use crate::widgets::{DrawingPane, Timeline, ToggleButton};
+use crate::widgets::{DrawingPane, Palette, Timeline, ToggleButton};
 use crate::FRAME_TIME;
 
 pub struct Root {
@@ -48,10 +48,14 @@ impl Root {
             |_, data, _| data.stop_playing(),
         );
 
+        let palette = Palette::default();
+
         let button_row = Flex::row()
             .with_child(rec_button)
             .with_child(rec_audio_button)
-            .with_child(play_button);
+            .with_child(play_button)
+            .with_flex_spacer(1.0)
+            .with_child(palette.lens(AppState::palette));
         let column = Flex::column()
             .with_child(button_row)
             .with_spacer(10.0)
@@ -186,6 +190,11 @@ impl Root {
                 data.scribble.audio_snippets =
                     data.scribble.audio_snippets.with_new_snippet(snip.clone());
                 self.undo.push(&data.scribble);
+                true
+            }
+            cmd::CHOOSE_COLOR => {
+                let color = cmd.get_object::<Color>().expect("API violation");
+                data.palette.select(color);
                 true
             }
             cmd::SET_MARK => {

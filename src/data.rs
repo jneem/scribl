@@ -177,9 +177,10 @@ pub struct AppState {
     pub mouse_down: bool,
 
     pub line_thickness: f64,
-    pub line_color: Color,
 
     pub audio: Arc<RefCell<AudioState>>,
+
+    pub palette: crate::widgets::PaletteData,
 
     #[druid(ignore)]
     pub save_path: Option<PathBuf>,
@@ -193,8 +194,8 @@ impl Default for AppState {
             time_us: 0,
             mouse_down: false,
             line_thickness: 5.0,
-            line_color: Color::rgb8(0, 255, 0),
             audio: Arc::new(RefCell::new(AudioState::init())),
+            palette: crate::widgets::PaletteData::default(),
 
             save_path: None,
         }
@@ -226,7 +227,7 @@ impl AppState {
         assert_eq!(self.action, CurrentAction::Idle);
 
         self.scribble.new_snippet = Some(CurveInProgressData::new(
-            &self.line_color,
+            self.palette.selected_color(),
             self.line_thickness,
         ));
         self.action = CurrentAction::WaitingToRecord;
