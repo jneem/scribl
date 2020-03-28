@@ -274,14 +274,14 @@ impl Widget<AppState> for Timeline {
                 ctx.request_paint();
             }
             Event::MouseDown(ev) => {
-                data.scribble.time_us = (ev.pos.x / PIXELS_PER_USEC) as i64;
+                data.time_us = (ev.pos.x / PIXELS_PER_USEC) as i64;
                 ctx.set_active(true);
                 ctx.request_paint();
             }
             Event::MouseMoved(ev) => {
                 // On click-and-drag, we change the time with the drag.
                 if ctx.is_active() {
-                    data.scribble.time_us = (ev.pos.x / PIXELS_PER_USEC) as i64;
+                    data.time_us = (ev.pos.x / PIXELS_PER_USEC) as i64;
                     ctx.request_paint();
                 }
             }
@@ -312,7 +312,7 @@ impl Widget<AppState> for Timeline {
             );
             ctx.children_changed();
         }
-        if old_data.scribble.time_us != data.scribble.time_us {
+        if old_data.time_us != data.time_us || old_data.scribble.mark != data.scribble.mark {
             ctx.request_paint();
         }
         for child in self.children.values_mut() {
@@ -356,7 +356,7 @@ impl Widget<AppState> for Timeline {
         }
 
         // Draw the cursor.
-        let cursor_x = PIXELS_PER_USEC * (data.scribble.time_us as f64);
+        let cursor_x = PIXELS_PER_USEC * (data.time_us as f64);
         let line = Line::new((cursor_x, 0.0), (cursor_x, size.height));
         ctx.stroke(line, &CURSOR_COLOR, CURSOR_THICKNESS);
 

@@ -7,7 +7,7 @@ use std::convert::TryInto;
 use std::time::Instant;
 
 use crate::audio::AudioSnippetData;
-use crate::consts;
+use crate::cmd;
 use crate::data::{AppState, CurrentAction, ScribbleState, SnippetData};
 use crate::undo::UndoStack;
 use crate::widgets::{DrawingPane, Timeline, ToggleButton};
@@ -28,7 +28,7 @@ impl Root {
             |_, data, _| data.start_recording(),
             |ctx, data, _| {
                 if let Some(new_snippet) = data.stop_recording() {
-                    ctx.submit_command(Command::new(consts::ADD_SNIPPET, new_snippet), None);
+                    ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
                 }
             },
         );
@@ -38,7 +38,7 @@ impl Root {
             |_, data, _| data.start_recording_audio(),
             |ctx, data, _| {
                 let snip = data.stop_recording_audio();
-                ctx.submit_command(Command::new(consts::ADD_AUDIO_SNIPPET, snip), None);
+                ctx.submit_command(Command::new(cmd::ADD_AUDIO_SNIPPET, snip), None);
             },
         );
         let play_button = ToggleButton::new(
@@ -106,23 +106,37 @@ impl Root {
                 ctx.set_handled();
             }
             KeyCode::KeyM => {
-                data.scribble.mark = Some(data.scribble.time_us);
+                ctx.submit_command(Command::new(cmd::SET_MARK, data.time_us), None);
+                ctx.set_handled();
             }
             KeyCode::KeyT => {
                 if let Some(snip) = data.scribble.selected_snippet {
-                    data.scribble.snippets = data
-                        .scribble
-                        .snippets
-                        .with_truncated_snippet(snip, data.scribble.time_us);
+                    ctx.submit_command(
+                        Command::new(
+                            cmd::TRUNCATE_SNIPPET,
+                            cmd::TruncateSnippetCmd {
+                                id: snip,
+                                time_us: data.time_us,
+                            },
+                        ),
+                        None,
+                    );
+                    ctx.set_handled();
                 }
             }
             KeyCode::KeyW => {
                 if let Some(mark_time) = data.scribble.mark {
                     if let Some(snip) = data.scribble.selected_snippet {
-                        data.scribble.snippets = data.scribble.snippets.with_new_lerp(
-                            snip,
-                            data.scribble.time_us,
-                            mark_time,
+                        ctx.submit_command(
+                            Command::new(
+                                cmd::LERP_SNIPPET,
+                                cmd::LerpSnippetCmd {
+                                    id: snip,
+                                    from_time: data.time_us,
+                                    to_time: mark_time,
+                                },
+                            ),
+                            None,
                         );
                     }
                 }
@@ -157,18 +171,48 @@ impl Root {
         _env: &Env,
     ) -> bool {
         match cmd.selector {
-            consts::ADD_SNIPPET => {
+            cmd::ADD_SNIPPET => {
                 let snip = cmd.get_object::<SnippetData>().expect("no snippet");
-                data.scribble.snippets = data.scribble.snippets.with_new_snippet(snip.clone());
+                let (new_snippets, new_id) = data.scribble.snippets.with_new_snippet(snip.clone());
+                data.scribble.snippets = new_snippets;
+                data.scribble.selected_snippet = Some(new_id);
                 self.undo.push(&data.scribble);
                 true
             }
-            consts::ADD_AUDIO_SNIPPET => {
+            cmd::ADD_AUDIO_SNIPPET => {
                 let snip = cmd
                     .get_object::<AudioSnippetData>()
                     .expect("no audio snippet");
                 data.scribble.audio_snippets =
                     data.scribble.audio_snippets.with_new_snippet(snip.clone());
+                self.undo.push(&data.scribble);
+                true
+            }
+            cmd::SET_MARK => {
+                let time = cmd.get_object::<i64>().expect("API violation");
+                data.scribble.mark = Some(*time);
+                self.undo.push(&data.scribble);
+                true
+            }
+            cmd::TRUNCATE_SNIPPET => {
+                let cmd = cmd
+                    .get_object::<cmd::TruncateSnippetCmd>()
+                    .expect("API violation");
+                data.scribble.snippets = data
+                    .scribble
+                    .snippets
+                    .with_truncated_snippet(cmd.id, cmd.time_us);
+                self.undo.push(&data.scribble);
+                true
+            }
+            cmd::LERP_SNIPPET => {
+                let cmd = cmd
+                    .get_object::<cmd::LerpSnippetCmd>()
+                    .expect("API violation");
+                data.scribble.snippets =
+                    data.scribble
+                        .snippets
+                        .with_new_lerp(cmd.id, cmd.from_time, cmd.to_time);
                 self.undo.push(&data.scribble);
                 true
             }
@@ -217,7 +261,7 @@ impl Widget<AppState> for Root {
                     } else {
                         0
                     };
-                    data.scribble.time_us = (data.scribble.time_us + frame_time_us).max(0);
+                    data.time_us = (data.time_us + frame_time_us).max(0);
                 }
 
                 self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);

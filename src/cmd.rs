@@ -20,7 +20,9 @@ pub const TRUNCATE_SNIPPET: Selector = Selector::new("scribble.truncate-snippet"
 /// Adds a lerp to a snippet. The argument is a [`LerpSnippetCmd`].
 pub const LERP_SNIPPET: Selector = Selector::new("scribble.lerp-snippet");
 
-// TODO: these don't belong in `consts`
+/// Changes the current mark time. The argument is an i64.
+pub const SET_MARK: Selector = Selector::new("scribble.set-mark");
+
 pub struct TruncateSnippetCmd {
     pub id: SnippetId,
     pub time_us: i64,

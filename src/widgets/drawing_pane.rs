@@ -53,7 +53,7 @@ impl Widget<AppState> for DrawingPane {
                         .new_snippet
                         .as_mut()
                         .unwrap()
-                        .line_to(self.to_image_coords() * ev.pos, state.scribble.time_us);
+                        .line_to(self.to_image_coords() * ev.pos, state.time_us);
                     ctx.request_paint();
                 }
             }
@@ -69,7 +69,7 @@ impl Widget<AppState> for DrawingPane {
                         .expect("Recording, but no snippet!");
                     // TODO: get the time with higher resolution by measuring the time elapsed
                     // since the last tick
-                    snip.move_to(self.to_image_coords() * ev.pos, state.scribble.time_us);
+                    snip.move_to(self.to_image_coords() * ev.pos, state.time_us);
 
                     state.mouse_down = true;
                     ctx.request_paint();
@@ -88,7 +88,7 @@ impl Widget<AppState> for DrawingPane {
     }
 
     fn update(&mut self, ctx: &mut UpdateCtx, old_data: &AppState, data: &AppState, _env: &Env) {
-        if old_data.scribble.time_us != data.scribble.time_us {
+        if old_data.time_us != data.time_us {
             ctx.request_paint();
         }
     }
@@ -128,7 +128,7 @@ impl Widget<AppState> for DrawingPane {
 
             for (_, curve) in data.scribble.snippets.snippets() {
                 ctx.stroke(
-                    curve.path_at(data.scribble.time_us),
+                    curve.path_at(data.time_us),
                     &curve.curve.color,
                     curve.curve.thickness,
                 );

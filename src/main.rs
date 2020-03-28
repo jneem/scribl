@@ -7,7 +7,7 @@ use std::time::Duration;
 
 mod app_delegate;
 mod audio;
-mod consts;
+mod cmd;
 mod data;
 mod lerp;
 mod menus;

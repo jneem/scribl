@@ -107,14 +107,14 @@ impl SnippetData {
 }
 
 impl SnippetsData {
-    pub fn with_new_snippet(&self, snip: SnippetData) -> SnippetsData {
+    pub fn with_new_snippet(&self, snip: SnippetData) -> (SnippetsData, SnippetId) {
         let mut ret = self.clone();
         ret.last_id += 1;
         let id = SnippetId(ret.last_id);
         let mut map = ret.snippets.deref().clone();
         map.insert(id, snip);
         ret.snippets = Arc::new(map);
-        ret
+        (ret, id)
     }
 
     pub fn with_replacement_snippet(&self, id: SnippetId, new: SnippetData) -> SnippetsData {
@@ -154,7 +154,7 @@ pub struct SaveFileData {
     pub audio_snippets: AudioSnippetsData,
 }
 
-/// This data contains the entire state of the app.
+/// This data contains the state of the drawing.
 #[derive(Clone, Data, Lens)]
 pub struct ScribbleState {
     pub new_snippet: Option<CurveInProgressData>,
@@ -162,14 +162,15 @@ pub struct ScribbleState {
     pub audio_snippets: AudioSnippetsData,
     pub selected_snippet: Option<SnippetId>,
 
-    pub time_us: i64,
     pub mark: Option<i64>,
 }
 
+/// This data contains the state of the entire app.
 #[derive(Clone, Data, Lens)]
 pub struct AppState {
     pub scribble: ScribbleState,
     pub action: CurrentAction,
+    pub time_us: i64,
 
     // This is a bit of an odd one out, since it's specifically for input handling in the
     // drawing-pane widget. If there get to be more of these, maybe they should get split out.
@@ -189,6 +190,7 @@ impl Default for AppState {
         AppState {
             scribble: ScribbleState::default(),
             action: CurrentAction::Idle,
+            time_us: 0,
             mouse_down: false,
             line_thickness: 5.0,
             line_color: Color::rgb8(0, 255, 0),
@@ -206,7 +208,6 @@ impl Default for ScribbleState {
             snippets: SnippetsData::default(),
             audio_snippets: AudioSnippetsData::default(),
             selected_snippet: None,
-            time_us: 0,
             mark: None,
         }
     }
@@ -257,7 +258,7 @@ impl AppState {
         self.action = CurrentAction::Playing;
         self.audio
             .borrow_mut()
-            .start_playing(self.scribble.audio_snippets.clone(), self.scribble.time_us);
+            .start_playing(self.scribble.audio_snippets.clone(), self.time_us);
     }
 
     pub fn stop_playing(&mut self) {
@@ -268,7 +269,7 @@ impl AppState {
 
     pub fn start_recording_audio(&mut self) {
         assert_eq!(self.action, CurrentAction::Idle);
-        self.action = CurrentAction::RecordingAudio(self.scribble.time_us);
+        self.action = CurrentAction::RecordingAudio(self.time_us);
         self.audio.borrow_mut().start_recording();
     }
 
