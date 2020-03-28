@@ -1,38 +1,49 @@
 use druid::widget::{Align, Flex};
 use druid::{
-    BoxConstraints, Env, Event, EventCtx, KeyCode, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx,
-    Size, TimerToken, UpdateCtx, Widget,
+    BoxConstraints, Command, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx, LifeCycle,
+    LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget,
 };
 use std::convert::TryInto;
 use std::time::Instant;
 
-use crate::data::{CurrentAction, ScribbleState};
+use crate::audio::AudioSnippetData;
+use crate::consts;
+use crate::data::{AppState, CurrentAction, ScribbleState, SnippetData};
+use crate::undo::UndoStack;
 use crate::widgets::{DrawingPane, Timeline, ToggleButton};
 use crate::FRAME_TIME;
 
 pub struct Root {
     timer_id: TimerToken,
-    inner: Box<dyn Widget<ScribbleState>>,
+    inner: Box<dyn Widget<AppState>>,
+    undo: UndoStack,
 }
 
 impl Root {
-    pub fn new() -> Root {
+    pub fn new(scribble_state: ScribbleState) -> Root {
         let drawing = DrawingPane::default();
-        let rec_button: ToggleButton<ScribbleState> = ToggleButton::new(
+        let rec_button: ToggleButton<AppState> = ToggleButton::new(
             "Rec",
-            |state: &ScribbleState| state.action.rec_toggle(),
+            |state: &AppState| state.action.rec_toggle(),
             |_, data, _| data.start_recording(),
-            |_, data, _| data.stop_recording(),
+            |ctx, data, _| {
+                if let Some(new_snippet) = data.stop_recording() {
+                    ctx.submit_command(Command::new(consts::ADD_SNIPPET, new_snippet), None);
+                }
+            },
         );
-        let rec_audio_button: ToggleButton<ScribbleState> = ToggleButton::new(
+        let rec_audio_button: ToggleButton<AppState> = ToggleButton::new(
             "Audio",
-            |state: &ScribbleState| state.action.rec_audio_toggle(),
+            |state: &AppState| state.action.rec_audio_toggle(),
             |_, data, _| data.start_recording_audio(),
-            |_, data, _| data.stop_recording_audio(),
+            |ctx, data, _| {
+                let snip = data.stop_recording_audio();
+                ctx.submit_command(Command::new(consts::ADD_AUDIO_SNIPPET, snip), None);
+            },
         );
         let play_button = ToggleButton::new(
             "Play",
-            |state: &ScribbleState| state.action.play_toggle(),
+            |state: &AppState| state.action.play_toggle(),
             |_, data, _| data.start_playing(),
             |_, data, _| data.stop_playing(),
         );
@@ -51,77 +62,151 @@ impl Root {
         Root {
             inner: Box::new(Align::centered(column)),
             timer_id: TimerToken::INVALID,
+            undo: UndoStack::new(scribble_state),
         }
     }
 }
 
-impl Widget<ScribbleState> for Root {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut ScribbleState, env: &Env) {
+impl Root {
+    fn handle_key_down(
+        &mut self,
+        ctx: &mut EventCtx,
+        ev: &KeyEvent,
+        data: &mut AppState,
+        _env: &Env,
+    ) {
+        // If they push another key while holding down the arrow, cancel the scanning.
+        if let CurrentAction::Scanning(speed) = data.action {
+            let direction = if speed > 0.0 {
+                KeyCode::ArrowRight
+            } else {
+                KeyCode::ArrowLeft
+            };
+            if ev.key_code != direction {
+                data.action = CurrentAction::Idle;
+            }
+            ctx.set_handled();
+            if ev.key_code == KeyCode::ArrowRight || ev.key_code == KeyCode::ArrowLeft {
+                return;
+            }
+        }
+
+        // TODO: do some of these keys as commands
+        match ev.key_code {
+            KeyCode::ArrowRight | KeyCode::ArrowLeft => {
+                if data.action.is_idle() {
+                    let speed = if ev.mods.shift { 2.0 } else { 1.0 };
+                    let dir = if ev.key_code == KeyCode::ArrowRight {
+                        1.0
+                    } else {
+                        -1.0
+                    };
+                    data.action = CurrentAction::Scanning(speed * dir);
+                }
+                ctx.set_handled();
+            }
+            KeyCode::KeyM => {
+                data.scribble.mark = Some(data.scribble.time_us);
+            }
+            KeyCode::KeyT => {
+                if let Some(snip) = data.scribble.selected_snippet {
+                    data.scribble.snippets = data
+                        .scribble
+                        .snippets
+                        .with_truncated_snippet(snip, data.scribble.time_us);
+                }
+            }
+            KeyCode::KeyW => {
+                if let Some(mark_time) = data.scribble.mark {
+                    if let Some(snip) = data.scribble.selected_snippet {
+                        data.scribble.snippets = data.scribble.snippets.with_new_lerp(
+                            snip,
+                            data.scribble.time_us,
+                            mark_time,
+                        );
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_key_up(
+        &mut self,
+        ctx: &mut EventCtx,
+        ev: &KeyEvent,
+        data: &mut AppState,
+        _env: &Env,
+    ) {
+        match ev.key_code {
+            KeyCode::ArrowRight | KeyCode::ArrowLeft => {
+                if data.action.is_scanning() {
+                    data.action = CurrentAction::Idle;
+                }
+                ctx.set_handled();
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_command(
+        &mut self,
+        ctx: &mut EventCtx,
+        cmd: &Command,
+        data: &mut AppState,
+        _env: &Env,
+    ) -> bool {
+        match cmd.selector {
+            consts::ADD_SNIPPET => {
+                let snip = cmd.get_object::<SnippetData>().expect("no snippet");
+                data.scribble.snippets = data.scribble.snippets.with_new_snippet(snip.clone());
+                self.undo.push(&data.scribble);
+                true
+            }
+            consts::ADD_AUDIO_SNIPPET => {
+                let snip = cmd
+                    .get_object::<AudioSnippetData>()
+                    .expect("no audio snippet");
+                data.scribble.audio_snippets =
+                    data.scribble.audio_snippets.with_new_snippet(snip.clone());
+                self.undo.push(&data.scribble);
+                true
+            }
+            druid::commands::UNDO => {
+                if let Some(undone_state) = self.undo.undo() {
+                    data.scribble = undone_state;
+                    ctx.request_paint();
+                }
+                true
+            }
+            druid::commands::REDO => {
+                if let Some(redone_state) = self.undo.redo() {
+                    data.scribble = redone_state;
+                    ctx.request_paint();
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+impl Widget<AppState> for Root {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut AppState, env: &Env) {
         match event {
             Event::WindowConnected => {
                 ctx.request_focus();
                 ctx.request_paint();
                 self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);
             }
-            Event::KeyDown(ev) => {
-                // If they push another key while holding down the arrow, cancel the scanning.
-                if let CurrentAction::Scanning(speed) = data.action {
-                    let direction = if speed > 0.0 {
-                        KeyCode::ArrowRight
-                    } else {
-                        KeyCode::ArrowLeft
-                    };
-                    if ev.key_code != direction {
-                        data.action = CurrentAction::Idle;
-                    }
+            Event::Command(cmd) => {
+                let handled = self.handle_command(ctx, cmd, data, env);
+                if handled {
                     ctx.set_handled();
-                    if ev.key_code == KeyCode::ArrowRight || ev.key_code == KeyCode::ArrowLeft {
-                        return;
-                    }
-                }
-
-                match ev.key_code {
-                    KeyCode::ArrowRight | KeyCode::ArrowLeft => {
-                        if data.action.is_idle() {
-                            let speed = if ev.mods.shift { 2.0 } else { 1.0 };
-                            let dir = if ev.key_code == KeyCode::ArrowRight {
-                                1.0
-                            } else {
-                                -1.0
-                            };
-                            data.action = CurrentAction::Scanning(speed * dir);
-                        }
-                        ctx.set_handled();
-                    }
-                    KeyCode::KeyM => {
-                        data.mark = Some(data.time_us);
-                    }
-                    KeyCode::KeyT => {
-                        if let Some(snip) = data.selected_snippet {
-                            data.snippets =
-                                data.snippets.with_truncated_snippet(snip, data.time_us);
-                        }
-                    }
-                    KeyCode::KeyW => {
-                        if let Some(mark_time) = data.mark {
-                            if let Some(snip) = data.selected_snippet {
-                                data.snippets =
-                                    data.snippets.with_new_lerp(snip, data.time_us, mark_time);
-                            }
-                        }
-                    }
-                    _ => {}
                 }
             }
-            Event::KeyUp(ev) => match ev.key_code {
-                KeyCode::ArrowRight | KeyCode::ArrowLeft => {
-                    if data.action.is_scanning() {
-                        data.action = CurrentAction::Idle;
-                    }
-                    ctx.set_handled();
-                }
-                _ => {}
-            },
+            Event::KeyDown(ev) => self.handle_key_down(ctx, ev, data, env),
+            Event::KeyUp(ev) => self.handle_key_up(ctx, ev, data, env),
             Event::Timer(tok) => {
                 if tok == &self.timer_id {
                     let frame_time_us: i64 = if data.action.is_ticking() {
@@ -132,7 +217,7 @@ impl Widget<ScribbleState> for Root {
                     } else {
                         0
                     };
-                    data.time_us = (data.time_us + frame_time_us).max(0);
+                    data.scribble.time_us = (data.scribble.time_us + frame_time_us).max(0);
                 }
 
                 self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);
@@ -143,23 +228,11 @@ impl Widget<ScribbleState> for Root {
         }
     }
 
-    fn update(
-        &mut self,
-        ctx: &mut UpdateCtx,
-        old_data: &ScribbleState,
-        data: &ScribbleState,
-        env: &Env,
-    ) {
+    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &AppState, data: &AppState, env: &Env) {
         self.inner.update(ctx, old_data, data, env);
     }
 
-    fn lifecycle(
-        &mut self,
-        ctx: &mut LifeCycleCtx,
-        event: &LifeCycle,
-        data: &ScribbleState,
-        env: &Env,
-    ) {
+    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, data: &AppState, env: &Env) {
         self.inner.lifecycle(ctx, event, data, env);
     }
 
@@ -167,13 +240,13 @@ impl Widget<ScribbleState> for Root {
         &mut self,
         ctx: &mut LayoutCtx,
         bc: &BoxConstraints,
-        data: &ScribbleState,
+        data: &AppState,
         env: &Env,
     ) -> Size {
         self.inner.layout(ctx, bc, data, env)
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx, data: &ScribbleState, env: &Env) {
+    fn paint(&mut self, ctx: &mut PaintCtx, data: &AppState, env: &Env) {
         self.inner.paint(ctx, data, env);
     }
 }

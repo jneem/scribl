@@ -7,7 +7,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::audio::{AudioSnippetsData, AudioState};
+use crate::audio::{AudioSnippetData, AudioSnippetsData, AudioState};
 use crate::lerp::Lerp;
 use crate::snippet::{Curve, SnippetId};
 use crate::widgets::ToggleButtonState;
@@ -45,8 +45,7 @@ impl CurveInProgressData {
     }
 }
 
-#[derive(Deserialize, Serialize)]
-#[derive(Data, Debug, Clone)]
+#[derive(Deserialize, Serialize, Data, Debug, Clone)]
 pub struct SnippetData {
     pub curve: Arc<Curve>,
     pub lerp: Arc<Lerp>,
@@ -56,8 +55,7 @@ pub struct SnippetData {
     pub end: Option<i64>,
 }
 
-#[derive(Deserialize, Serialize)]
-#[derive(Clone, Data, Default)]
+#[derive(Deserialize, Serialize, Clone, Data, Default)]
 pub struct SnippetsData {
     last_id: u64,
     snippets: Arc<BTreeMap<SnippetId, SnippetData>>,
@@ -109,13 +107,12 @@ impl SnippetData {
 }
 
 impl SnippetsData {
-    pub fn with_new_snippet(&self, curve: Curve) -> SnippetsData {
+    pub fn with_new_snippet(&self, snip: SnippetData) -> SnippetsData {
         let mut ret = self.clone();
         ret.last_id += 1;
         let id = SnippetId(ret.last_id);
-        let new_snippet = SnippetData::new(curve);
         let mut map = ret.snippets.deref().clone();
-        map.insert(id, new_snippet);
+        map.insert(id, snip);
         ret.snippets = Arc::new(map);
         ret
     }
@@ -164,10 +161,15 @@ pub struct ScribbleState {
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,
     pub selected_snippet: Option<SnippetId>,
-    pub action: CurrentAction,
 
     pub time_us: i64,
     pub mark: Option<i64>,
+}
+
+#[derive(Clone, Data, Lens)]
+pub struct AppState {
+    pub scribble: ScribbleState,
+    pub action: CurrentAction,
 
     // This is a bit of an odd one out, since it's specifically for input handling in the
     // drawing-pane widget. If there get to be more of these, maybe they should get split out.
@@ -182,6 +184,21 @@ pub struct ScribbleState {
     pub save_path: Option<PathBuf>,
 }
 
+impl Default for AppState {
+    fn default() -> AppState {
+        AppState {
+            scribble: ScribbleState::default(),
+            action: CurrentAction::Idle,
+            mouse_down: false,
+            line_thickness: 5.0,
+            line_color: Color::rgb8(0, 255, 0),
+            audio: Arc::new(RefCell::new(AudioState::init())),
+
+            save_path: None,
+        }
+    }
+}
+
 impl Default for ScribbleState {
     fn default() -> ScribbleState {
         ScribbleState {
@@ -189,15 +206,82 @@ impl Default for ScribbleState {
             snippets: SnippetsData::default(),
             audio_snippets: AudioSnippetsData::default(),
             selected_snippet: None,
-            action: CurrentAction::Idle,
             time_us: 0,
             mark: None,
-            mouse_down: false,
-            line_thickness: 5.0,
-            line_color: Color::rgb8(0, 255, 0),
-            audio: Arc::new(RefCell::new(AudioState::init())),
+        }
+    }
+}
 
-            save_path: None,
+impl AppState {
+    pub fn from_save_file(data: SaveFileData) -> AppState {
+        AppState {
+            scribble: ScribbleState::from_save_file(data),
+            ..Default::default()
+        }
+    }
+
+    pub fn start_recording(&mut self) {
+        assert!(self.scribble.new_snippet.is_none());
+        assert_eq!(self.action, CurrentAction::Idle);
+
+        self.scribble.new_snippet = Some(CurveInProgressData::new(
+            &self.line_color,
+            self.line_thickness,
+        ));
+        self.action = CurrentAction::WaitingToRecord;
+    }
+
+    /// Stops recording drawing, returning the snippet that we just finished recording (if it was
+    /// non-empty).
+    pub fn stop_recording(&mut self) -> Option<SnippetData> {
+        assert!(
+            self.action == CurrentAction::Recording
+                || self.action == CurrentAction::WaitingToRecord
+        );
+        let new_snippet = self
+            .scribble
+            .new_snippet
+            .take()
+            .expect("Tried to stop recording, but we hadn't started!");
+        self.action = CurrentAction::Idle;
+        let new_curve = new_snippet.into_curve();
+        if !new_curve.path.elements().is_empty() {
+            Some(SnippetData::new(new_curve))
+        } else {
+            None
+        }
+    }
+
+    pub fn start_playing(&mut self) {
+        assert_eq!(self.action, CurrentAction::Idle);
+        self.action = CurrentAction::Playing;
+        self.audio
+            .borrow_mut()
+            .start_playing(self.scribble.audio_snippets.clone(), self.scribble.time_us);
+    }
+
+    pub fn stop_playing(&mut self) {
+        assert_eq!(self.action, CurrentAction::Playing);
+        self.action = CurrentAction::Idle;
+        self.audio.borrow_mut().stop_playing();
+    }
+
+    pub fn start_recording_audio(&mut self) {
+        assert_eq!(self.action, CurrentAction::Idle);
+        self.action = CurrentAction::RecordingAudio(self.scribble.time_us);
+        self.audio.borrow_mut().start_recording();
+    }
+
+    /// Stops recording audio, returning the audio snippet that we just recorded.
+    pub fn stop_recording_audio(&mut self) -> AudioSnippetData {
+        self.action = CurrentAction::Idle;
+        if let CurrentAction::RecordingAudio(rec_start) = self.action {
+            let buf = self.audio.borrow_mut().stop_recording();
+            dbg!(buf.len());
+            AudioSnippetData::new(buf, rec_start)
+        //self.audio_snippets = self.audio_snippets.with_new_snippet(buf, rec_start);
+        } else {
+            panic!("not recording");
         }
     }
 }
@@ -221,65 +305,6 @@ impl ScribbleState {
 
     pub fn curve_in_progress<'a>(&'a self) -> Option<impl std::ops::Deref<Target = Curve> + 'a> {
         self.new_snippet.as_ref().map(|s| s.inner.borrow())
-    }
-
-    pub fn start_recording(&mut self) {
-        assert!(self.new_snippet.is_none());
-        assert_eq!(self.action, CurrentAction::Idle);
-        dbg!(self.time_us);
-        self.new_snippet = Some(CurveInProgressData::new(
-            &self.line_color,
-            self.line_thickness,
-        ));
-        self.action = CurrentAction::WaitingToRecord;
-    }
-
-    pub fn stop_recording(&mut self) {
-        assert!(
-            self.action == CurrentAction::Recording
-                || self.action == CurrentAction::WaitingToRecord
-        );
-        let new_snippet = self
-            .new_snippet
-            .take()
-            .expect("Tried to stop recording, but we hadn't started!");
-        self.action = CurrentAction::Idle;
-        let new_curve = new_snippet.into_curve();
-        if !new_curve.path.elements().is_empty() {
-            self.snippets = self.snippets.with_new_snippet(new_curve);
-            self.selected_snippet = Some(SnippetId(self.snippets.last_id));
-        }
-    }
-
-    pub fn start_playing(&mut self) {
-        assert_eq!(self.action, CurrentAction::Idle);
-        self.action = CurrentAction::Playing;
-        self.audio
-            .borrow_mut()
-            .start_playing(self.audio_snippets.clone(), self.time_us);
-    }
-
-    pub fn stop_playing(&mut self) {
-        assert_eq!(self.action, CurrentAction::Playing);
-        self.action = CurrentAction::Idle;
-        self.audio.borrow_mut().stop_playing();
-    }
-
-    pub fn start_recording_audio(&mut self) {
-        assert_eq!(self.action, CurrentAction::Idle);
-        self.action = CurrentAction::RecordingAudio(self.time_us);
-        self.audio.borrow_mut().start_recording();
-    }
-
-    pub fn stop_recording_audio(&mut self) {
-        if let CurrentAction::RecordingAudio(rec_start) = self.action {
-            let buf = self.audio.borrow_mut().stop_recording();
-            dbg!(buf.len());
-            self.audio_snippets = self.audio_snippets.with_new_snippet(buf, rec_start);
-        } else {
-            panic!("not recording");
-        }
-        self.action = CurrentAction::Idle;
     }
 }
 

@@ -13,18 +13,20 @@ mod lerp;
 mod menus;
 mod snippet;
 mod snippet_layout;
+mod undo;
 mod widgets;
 
 const BUTTON_DISABLED: Key<Color> = Key::new("button_disabled");
 pub const FRAME_TIME: Duration = Duration::from_millis(16);
 
-use data::ScribbleState;
+use data::AppState;
 use widgets::Root;
 
 fn main() {
-    let initial_state = ScribbleState::default();
+    let initial_state = AppState::default();
+    let scribble_state = initial_state.scribble.clone();
 
-    let main_window = WindowDesc::new(Root::new)
+    let main_window = WindowDesc::new(|| Root::new(scribble_state))
         .title(LocalizedString::new("Scribble"))
         .menu(menus::make_menu(&initial_state))
         .window_size((400.0, 400.0));

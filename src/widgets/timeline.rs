@@ -7,10 +7,9 @@ use druid::{
 use std::collections::HashMap;
 
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData};
-use crate::data::{SnippetData, SnippetsData};
+use crate::data::{AppState, SnippetData, SnippetsData};
 use crate::snippet::SnippetId;
 use crate::snippet_layout;
-use crate::ScribbleState;
 
 const SNIPPET_HEIGHT: f64 = 20.0;
 const MIN_NUM_ROWS: usize = 5;
@@ -98,7 +97,7 @@ impl Snip {
 pub struct Timeline {
     snippet_offsets: HashMap<Id, usize>,
     num_rows: usize,
-    children: HashMap<Id, WidgetPod<ScribbleState, TimelineSnippet>>,
+    children: HashMap<Id, WidgetPod<AppState, TimelineSnippet>>,
 }
 
 impl Default for Timeline {
@@ -139,14 +138,14 @@ struct TimelineSnippet {
 }
 
 impl TimelineSnippet {
-    fn snip(&self, data: &ScribbleState) -> Snip {
+    fn snip(&self, data: &AppState) -> Snip {
         match self.id {
-            Id::Drawing(id) => Snip::Drawing(data.snippets.snippet(id).clone()),
-            Id::Audio(id) => Snip::Audio(data.audio_snippets.snippet(id).clone()),
+            Id::Drawing(id) => Snip::Drawing(data.scribble.snippets.snippet(id).clone()),
+            Id::Audio(id) => Snip::Audio(data.scribble.audio_snippets.snippet(id).clone()),
         }
     }
 
-    fn width(&self, data: &ScribbleState) -> f64 {
+    fn width(&self, data: &AppState) -> f64 {
         let snip = self.snip(data);
         if let Some(end_time) = snip.end_time() {
             (end_time - snip.start_time()) as f64 * PIXELS_PER_USEC
@@ -155,10 +154,10 @@ impl TimelineSnippet {
         }
     }
 
-    fn fill_color(&self, data: &ScribbleState) -> Color {
+    fn fill_color(&self, data: &AppState) -> Color {
         match self.id {
             Id::Drawing(id) => {
-                if data.selected_snippet == Some(id) {
+                if data.scribble.selected_snippet == Some(id) {
                     DRAW_SNIPPET_SELECTED_COLOR
                 } else {
                     DRAW_SNIPPET_COLOR
@@ -170,8 +169,8 @@ impl TimelineSnippet {
 }
 
 #[allow(unused_variables)]
-impl Widget<ScribbleState> for TimelineSnippet {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut ScribbleState, _env: &Env) {
+impl Widget<AppState> for TimelineSnippet {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut AppState, _env: &Env) {
         match event {
             Event::MouseDown(ev) if ev.button.is_left() => {
                 ctx.set_active(true);
@@ -182,7 +181,7 @@ impl Widget<ScribbleState> for TimelineSnippet {
                     ctx.set_active(false);
                     if ctx.is_hot() {
                         if let Id::Drawing(id) = self.id {
-                            data.selected_snippet = Some(id);
+                            data.scribble.selected_snippet = Some(id);
                             ctx.request_paint();
                             ctx.set_handled();
                         }
@@ -193,13 +192,7 @@ impl Widget<ScribbleState> for TimelineSnippet {
         }
     }
 
-    fn update(
-        &mut self,
-        ctx: &mut UpdateCtx,
-        old_data: &ScribbleState,
-        data: &ScribbleState,
-        _env: &Env,
-    ) {
+    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &AppState, data: &AppState, _env: &Env) {
         let snip = self.snip(data);
         let old_snip = self.snip(old_data);
         if !snip.same(&old_snip) {
@@ -211,7 +204,7 @@ impl Widget<ScribbleState> for TimelineSnippet {
         &mut self,
         ctx: &mut LifeCycleCtx,
         event: &LifeCycle,
-        _data: &ScribbleState,
+        _data: &AppState,
         _env: &Env,
     ) {
         match event {
@@ -226,7 +219,7 @@ impl Widget<ScribbleState> for TimelineSnippet {
         &mut self,
         _ctx: &mut LayoutCtx,
         bc: &BoxConstraints,
-        data: &ScribbleState,
+        data: &AppState,
         _env: &Env,
     ) -> Size {
         let width = self.width(data);
@@ -234,7 +227,7 @@ impl Widget<ScribbleState> for TimelineSnippet {
         bc.constrain((width, height))
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx, data: &ScribbleState, env: &Env) {
+    fn paint(&mut self, ctx: &mut PaintCtx, data: &AppState, env: &Env) {
         let snippet = self.snip(data);
         let width = self.width(data).min(10000.0); // FIXME: there are bugs drawing infinite rects.
         let height = SNIPPET_HEIGHT;
@@ -274,21 +267,21 @@ impl Widget<ScribbleState> for TimelineSnippet {
     }
 }
 
-impl Widget<ScribbleState> for Timeline {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut ScribbleState, env: &Env) {
+impl Widget<AppState> for Timeline {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut AppState, env: &Env) {
         match event {
             Event::WindowConnected => {
                 ctx.request_paint();
             }
             Event::MouseDown(ev) => {
-                data.time_us = (ev.pos.x / PIXELS_PER_USEC) as i64;
+                data.scribble.time_us = (ev.pos.x / PIXELS_PER_USEC) as i64;
                 ctx.set_active(true);
                 ctx.request_paint();
             }
             Event::MouseMoved(ev) => {
                 // On click-and-drag, we change the time with the drag.
                 if ctx.is_active() {
-                    data.time_us = (ev.pos.x / PIXELS_PER_USEC) as i64;
+                    data.scribble.time_us = (ev.pos.x / PIXELS_PER_USEC) as i64;
                     ctx.request_paint();
                 }
             }
@@ -305,21 +298,21 @@ impl Widget<ScribbleState> for Timeline {
         }
     }
 
-    fn update(
-        &mut self,
-        ctx: &mut UpdateCtx,
-        old_data: &ScribbleState,
-        data: &ScribbleState,
-        env: &Env,
-    ) {
-        if !data.snippets.same(&old_data.snippets)
-            || !data.audio_snippets.same(&old_data.audio_snippets)
+    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &AppState, data: &AppState, env: &Env) {
+        if !data.scribble.snippets.same(&old_data.scribble.snippets)
+            || !data
+                .scribble
+                .audio_snippets
+                .same(&old_data.scribble.audio_snippets)
         {
             ctx.request_layout();
-            self.recalculate_snippet_offsets(&data.snippets, &data.audio_snippets);
+            self.recalculate_snippet_offsets(
+                &data.scribble.snippets,
+                &data.scribble.audio_snippets,
+            );
             ctx.children_changed();
         }
-        if old_data.time_us != data.time_us {
+        if old_data.scribble.time_us != data.scribble.time_us {
             ctx.request_paint();
         }
         for child in self.children.values_mut() {
@@ -327,13 +320,7 @@ impl Widget<ScribbleState> for Timeline {
         }
     }
 
-    fn lifecycle(
-        &mut self,
-        ctx: &mut LifeCycleCtx,
-        event: &LifeCycle,
-        data: &ScribbleState,
-        env: &Env,
-    ) {
+    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, data: &AppState, env: &Env) {
         for child in self.children.values_mut() {
             child.lifecycle(ctx, event, data, env);
         }
@@ -343,7 +330,7 @@ impl Widget<ScribbleState> for Timeline {
         &mut self,
         ctx: &mut LayoutCtx,
         bc: &BoxConstraints,
-        data: &ScribbleState,
+        data: &AppState,
         env: &Env,
     ) -> Size {
         for (&id, &offset) in &self.snippet_offsets {
@@ -351,16 +338,15 @@ impl Widget<ScribbleState> for Timeline {
             let x = (child.widget().snip(data).start_time() as f64) * PIXELS_PER_USEC;
             let y = offset as f64 * SNIPPET_HEIGHT;
 
-            // FIXME: shouldn't we modify bc before recursing?
             let size = child.layout(ctx, bc, data, env);
-            child.set_layout_rect(dbg!(Rect::from_origin_size((x, y), size)));
+            child.set_layout_rect(Rect::from_origin_size((x, y), size));
         }
 
         let height = SNIPPET_HEIGHT * self.num_rows as f64;
         bc.constrain((std::f64::INFINITY, height))
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx, data: &ScribbleState, env: &Env) {
+    fn paint(&mut self, ctx: &mut PaintCtx, data: &AppState, env: &Env) {
         let size = ctx.size();
         let rect = Rect::from_origin_size(Point::ZERO, size);
         ctx.fill(rect, &TIMELINE_BG_COLOR);
@@ -370,12 +356,12 @@ impl Widget<ScribbleState> for Timeline {
         }
 
         // Draw the cursor.
-        let cursor_x = PIXELS_PER_USEC * (data.time_us as f64);
+        let cursor_x = PIXELS_PER_USEC * (data.scribble.time_us as f64);
         let line = Line::new((cursor_x, 0.0), (cursor_x, size.height));
         ctx.stroke(line, &CURSOR_COLOR, CURSOR_THICKNESS);
 
         // Draw the mark.
-        if let Some(mark_time) = data.mark {
+        if let Some(mark_time) = data.scribble.mark {
             let mark_x = PIXELS_PER_USEC * (mark_time as f64);
             let mut path = BezPath::new();
             path.move_to((mark_x - 8.0, 0.0));

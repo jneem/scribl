@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Lerp {
     original_values: Vec<i64>,
     lerped_values: Vec<i64>,

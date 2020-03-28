@@ -20,19 +20,16 @@ pub struct AudioState {
     output_data: Arc<Mutex<AudioOutput>>,
 }
 
-#[derive(Deserialize, Serialize)]
-#[derive(Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AudioSnippetId(u64);
 
-#[derive(Deserialize, Serialize)]
-#[derive(Clone, Data)]
+#[derive(Deserialize, Serialize, Clone, Data)]
 pub struct AudioSnippetData {
     buf: Arc<Vec<i16>>,
     start_time: i64,
 }
 
-#[derive(Deserialize, Serialize)]
-#[derive(Clone, Data, Default)]
+#[derive(Deserialize, Serialize, Clone, Data, Default)]
 pub struct AudioSnippetsData {
     last_id: u64,
     snippets: Arc<BTreeMap<AudioSnippetId, AudioSnippetData>>,
@@ -243,11 +240,7 @@ impl AudioSnippetData {
 }
 
 impl AudioSnippetsData {
-    pub fn with_new_snippet(&self, buf: Vec<i16>, start_time: i64) -> AudioSnippetsData {
-        let snip = AudioSnippetData {
-            buf: Arc::new(buf),
-            start_time,
-        };
+    pub fn with_new_snippet(&self, snip: AudioSnippetData) -> AudioSnippetsData {
         let mut ret = self.clone();
         ret.last_id += 1;
         let id = AudioSnippetId(ret.last_id);

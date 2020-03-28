@@ -1,6 +1,6 @@
 use druid::kurbo::{BezPath, Point};
 use druid::{Color, Data};
-use serde::{Deserialize, Serialize, Serializer, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 mod serde_path {
     use super::*;
@@ -28,8 +28,7 @@ mod serde_color {
     }
 }
 
-#[derive(Deserialize, Serialize)]
-#[derive(Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Curve {
     #[serde(with = "serde_path")]
     pub path: BezPath,
@@ -40,8 +39,7 @@ pub struct Curve {
 }
 
 /// Snippets are identified by unique ids.
-#[derive(Deserialize, Serialize)]
-#[derive(Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 // TODO: remove the pub
 pub struct SnippetId(pub u64);
 
