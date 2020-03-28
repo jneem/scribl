@@ -1,8 +1,10 @@
 use druid::kurbo::PathEl;
 use druid::{Color, Data, Lens, Point};
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::ops::Deref;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::audio::{AudioSnippetsData, AudioState};
@@ -43,6 +45,7 @@ impl CurveInProgressData {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 #[derive(Data, Debug, Clone)]
 pub struct SnippetData {
     pub curve: Arc<Curve>,
@@ -53,6 +56,7 @@ pub struct SnippetData {
     pub end: Option<i64>,
 }
 
+#[derive(Deserialize, Serialize)]
 #[derive(Clone, Data, Default)]
 pub struct SnippetsData {
     last_id: u64,
@@ -146,6 +150,13 @@ impl SnippetsData {
     }
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct SaveFileData {
+    pub version: u64,
+    pub snippets: SnippetsData,
+    pub audio_snippets: AudioSnippetsData,
+}
+
 /// This data contains the entire state of the app.
 #[derive(Clone, Data, Lens)]
 pub struct ScribbleState {
@@ -166,6 +177,9 @@ pub struct ScribbleState {
     pub line_color: Color,
 
     pub audio: Arc<RefCell<AudioState>>,
+
+    #[druid(ignore)]
+    pub save_path: Option<PathBuf>,
 }
 
 impl Default for ScribbleState {
@@ -182,11 +196,29 @@ impl Default for ScribbleState {
             line_thickness: 5.0,
             line_color: Color::rgb8(0, 255, 0),
             audio: Arc::new(RefCell::new(AudioState::init())),
+
+            save_path: None,
         }
     }
 }
 
 impl ScribbleState {
+    pub fn from_save_file(data: SaveFileData) -> ScribbleState {
+        ScribbleState {
+            snippets: data.snippets,
+            audio_snippets: data.audio_snippets,
+            ..Default::default()
+        }
+    }
+
+    pub fn to_save_file(&self) -> SaveFileData {
+        SaveFileData {
+            version: 0,
+            snippets: self.snippets.clone(),
+            audio_snippets: self.audio_snippets.clone(),
+        }
+    }
+
     pub fn curve_in_progress<'a>(&'a self) -> Option<impl std::ops::Deref<Target = Curve> + 'a> {
         self.new_snippet.as_ref().map(|s| s.inner.borrow())
     }

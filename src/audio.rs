@@ -5,6 +5,7 @@
 use cpal::traits::{EventLoopTrait, HostTrait};
 use cpal::{EventLoop, OutputBuffer, StreamData, UnknownTypeInputBuffer, UnknownTypeOutputBuffer};
 use druid::Data;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex};
@@ -19,15 +20,18 @@ pub struct AudioState {
     output_data: Arc<Mutex<AudioOutput>>,
 }
 
+#[derive(Deserialize, Serialize)]
 #[derive(Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AudioSnippetId(u64);
 
+#[derive(Deserialize, Serialize)]
 #[derive(Clone, Data)]
 pub struct AudioSnippetData {
     buf: Arc<Vec<i16>>,
     start_time: i64,
 }
 
+#[derive(Deserialize, Serialize)]
 #[derive(Clone, Data, Default)]
 pub struct AudioSnippetsData {
     last_id: u64,

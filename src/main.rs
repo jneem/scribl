@@ -5,10 +5,12 @@ use druid::theme;
 use druid::{AppLauncher, Color, Key, LocalizedString, WindowDesc};
 use std::time::Duration;
 
+mod app_delegate;
 mod audio;
 mod consts;
 mod data;
 mod lerp;
+mod menus;
 mod snippet;
 mod snippet_layout;
 mod widgets;
@@ -20,12 +22,15 @@ use data::ScribbleState;
 use widgets::Root;
 
 fn main() {
+    let initial_state = ScribbleState::default();
+
     let main_window = WindowDesc::new(Root::new)
-        .title(LocalizedString::new("Hello!"))
+        .title(LocalizedString::new("Scribble"))
+        .menu(menus::make_menu(&initial_state))
         .window_size((400.0, 400.0));
 
-    let initial_state = ScribbleState::default();
     AppLauncher::with_window(main_window)
+        .delegate(app_delegate::Delegate::default())
         .configure_env(|e, _| {
             e.set(theme::BUTTON_LIGHT, Color::rgb8(0x70, 0x70, 0x70));
             e.set(BUTTON_DISABLED, Color::rgb8(0x55, 0x55, 0x55));
