@@ -9,6 +9,7 @@ mod app_delegate;
 mod audio;
 mod cmd;
 mod data;
+mod encode;
 mod lerp;
 mod menus;
 mod snippet;
@@ -23,6 +24,11 @@ use data::AppState;
 use widgets::Root;
 
 fn main() {
+    if let Err(e) = gstreamer::init() {
+        println!("failed to init gstreamer: {}", e);
+        return;
+    }
+
     let initial_state = AppState::default();
     let scribble_state = initial_state.scribble.clone();
 

@@ -1,5 +1,8 @@
 use druid::Selector;
+use std::path::PathBuf;
 
+use crate::audio::AudioSnippetsData;
+use crate::data::SnippetsData;
 use crate::snippet::SnippetId;
 
 /// Adds a new snippet. The argument is a [`SnippetData`].
@@ -26,6 +29,9 @@ pub const SET_MARK: Selector = Selector::new("scribble.set-mark");
 /// Changes the pen color. The argument is a [`Color`].
 pub const CHOOSE_COLOR: Selector = Selector::new("scribble.choose-color");
 
+/// Exports the current animation as a video. The argument is an [`ExportCmd`].
+pub const EXPORT: Selector = Selector::new("scribble.export");
+
 pub struct TruncateSnippetCmd {
     pub id: SnippetId,
     pub time_us: i64,
@@ -35,4 +41,10 @@ pub struct LerpSnippetCmd {
     pub id: SnippetId,
     pub from_time: i64,
     pub to_time: i64,
+}
+
+pub struct ExportCmd {
+    pub snippets: SnippetsData,
+    pub audio_snippets: AudioSnippetsData,
+    pub filename: PathBuf,
 }

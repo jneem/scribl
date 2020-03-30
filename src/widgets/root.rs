@@ -109,6 +109,17 @@ impl Root {
                 }
                 ctx.set_handled();
             }
+            KeyCode::KeyE => ctx.submit_command(
+                Command::new(
+                    cmd::EXPORT,
+                    cmd::ExportCmd {
+                        snippets: data.scribble.snippets.clone(),
+                        audio_snippets: data.scribble.audio_snippets.clone(),
+                        filename: "test.mp4".into(),
+                    },
+                ),
+                None,
+            ),
             KeyCode::KeyM => {
                 ctx.submit_command(Command::new(cmd::SET_MARK, data.time_us), None);
                 ctx.set_handled();
@@ -195,6 +206,16 @@ impl Root {
             cmd::CHOOSE_COLOR => {
                 let color = cmd.get_object::<Color>().expect("API violation");
                 data.palette.select(color);
+                true
+            }
+            cmd::EXPORT => {
+                let export = cmd.get_object::<cmd::ExportCmd>().expect("API violation");
+                // TODO: audio, etc.
+                // TODO: get some thread handle or something, for notifications etc.
+                let snippets = export.snippets.clone();
+                let filename = export.filename.clone();
+                std::thread::spawn(move || crate::encode::encode_blocking(snippets, &filename));
+
                 true
             }
             cmd::SET_MARK => {

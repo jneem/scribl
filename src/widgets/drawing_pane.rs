@@ -6,8 +6,8 @@ use druid::{
 use crate::data::{AppState, CurrentAction};
 
 // Width/height of the drawing in image coordinates.
-const DRAWING_WIDTH: u64 = 1600;
-const DRAWING_HEIGHT: u64 = 1200;
+pub const DRAWING_WIDTH: u64 = 1600;
+pub const DRAWING_HEIGHT: u64 = 1200;
 
 const ASPECT_RATIO: f64 = (DRAWING_WIDTH as f64) / (DRAWING_HEIGHT as f64);
 const PAPER_COLOR: Color = Color::rgb8(0xff, 0xff, 0xff);
