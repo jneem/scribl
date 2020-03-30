@@ -322,7 +322,7 @@ checksum = "212d0f5754cb6769937f4501cc0e67f4f4483c8d2c3e1e922ee9edbe4ab4c7c0"
 [[package]]
 name = "druid"
 version = "0.5.0"
-source = "git+https://github.com/xi-editor/druid.git#ace395926ec641fbc6da75a250c837f3f55f7fbd"
+source = "git+https://github.com/xi-editor/druid.git#47be1da580bd074892f62406865cec609baa3c31"
 dependencies = [
  "druid-derive",
  "druid-shell",
@@ -339,8 +339,8 @@ dependencies = [
 
 [[package]]
 name = "druid-derive"
-version = "0.2.0"
-source = "git+https://github.com/xi-editor/druid.git#ace395926ec641fbc6da75a250c837f3f55f7fbd"
+version = "0.3.0"
+source = "git+https://github.com/xi-editor/druid.git#47be1da580bd074892f62406865cec609baa3c31"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -350,7 +350,7 @@ dependencies = [
 [[package]]
 name = "druid-shell"
 version = "0.5.0"
-source = "git+https://github.com/xi-editor/druid.git#ace395926ec641fbc6da75a250c837f3f55f7fbd"
+source = "git+https://github.com/xi-editor/druid.git#47be1da580bd074892f62406865cec609baa3c31"
 dependencies = [
  "cairo-rs",
  "cfg-if",

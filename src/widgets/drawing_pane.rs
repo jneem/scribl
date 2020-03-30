@@ -117,7 +117,7 @@ impl Widget<AppState> for DrawingPane {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &AppState, _env: &Env) {
-        use druid::piet::{StrokeStyle, LineCap, LineJoin};
+        use druid::piet::{LineCap, LineJoin, StrokeStyle};
 
         ctx.stroke(&self.paper_rect, &PAPER_BDY_COLOR, PAPER_BDY_THICKNESS);
         ctx.fill(&self.paper_rect, &PAPER_COLOR);

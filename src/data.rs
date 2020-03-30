@@ -14,7 +14,7 @@ use crate::widgets::ToggleButtonState;
 
 #[derive(Clone, Data)]
 pub struct CurveInProgressData {
-    #[druid(ignore)]
+    #[data(ignore)]
     inner: Arc<RefCell<Curve>>,
 
     // Data comparison is done using only the curve's length, since the length grows with
@@ -182,7 +182,7 @@ pub struct AppState {
 
     pub palette: crate::widgets::PaletteData,
 
-    #[druid(ignore)]
+    #[data(ignore)]
     pub save_path: Option<PathBuf>,
 }
 
