@@ -117,20 +117,28 @@ impl Widget<AppState> for DrawingPane {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &AppState, _env: &Env) {
+        use druid::piet::{StrokeStyle, LineCap, LineJoin};
+
         ctx.stroke(&self.paper_rect, &PAPER_BDY_COLOR, PAPER_BDY_THICKNESS);
         ctx.fill(&self.paper_rect, &PAPER_COLOR);
+        let style = StrokeStyle {
+            line_join: Some(LineJoin::Round),
+            line_cap: Some(LineCap::Round),
+            ..StrokeStyle::new()
+        };
 
         ctx.with_save(|ctx| {
             ctx.transform(self.from_image_coords());
             if let Some(curve) = data.scribble.curve_in_progress() {
-                ctx.stroke(&curve.path, &curve.color, curve.thickness);
+                ctx.stroke_styled(&curve.path, &curve.color, curve.thickness, &style);
             }
 
             for (_, curve) in data.scribble.snippets.snippets() {
-                ctx.stroke(
+                ctx.stroke_styled(
                     curve.path_at(data.time_us),
                     &curve.curve.color,
                     curve.curve.thickness,
+                    &style,
                 );
             }
         });
