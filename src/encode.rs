@@ -47,21 +47,22 @@ fn create_pipeline(
     let pipeline = gst::Pipeline::new(None);
     let v_src = gst::ElementFactory::make("appsrc", Some("source"))?;
     let v_convert = gst::ElementFactory::make("videoconvert", Some("convert"))?;
-    let v_encode = gst::ElementFactory::make("x264enc", Some("encode"))?;
+    let v_encode = gst::ElementFactory::make("vp9enc", Some("encode"))?;
     let v_queue1 = gst::ElementFactory::make("queue", Some("queue1"))?;
     let v_queue2 = gst::ElementFactory::make("queue", Some("queue2"))?;
     let a_src = gst::ElementFactory::make("appsrc", Some("audio-source"))?;
-    let a_encode = gst::ElementFactory::make("opusenc", Some("audio-encode"))?;
+    let a_convert = gst::ElementFactory::make("audioconvert", Some("audio-convert"))?;
+    let a_encode = gst::ElementFactory::make("vorbisenc", Some("audio-encode"))?;
     let a_queue1 = gst::ElementFactory::make("queue", Some("audio-queue1"))?;
     let a_queue2 = gst::ElementFactory::make("queue", Some("audio-queue2"))?;
-    let mux = gst::ElementFactory::make("mp4mux", Some("mux"))?;
+    let mux = gst::ElementFactory::make("webmmux", Some("mux"))?;
     let sink = gst::ElementFactory::make("filesink", Some("sink"))?;
 
     pipeline.add_many(&[&v_src, &v_convert, &v_encode, &v_queue1, &v_queue2])?;
-    pipeline.add_many(&[&a_src, &a_encode, &a_queue1, &a_queue2])?;
+    pipeline.add_many(&[&a_src, &a_convert, &a_encode, &a_queue1, &a_queue2])?;
     pipeline.add_many(&[&mux, &sink])?;
     gst::Element::link_many(&[&v_src, &v_queue1, &v_convert, &v_encode, &v_queue2, &mux])?;
-    gst::Element::link_many(&[&a_src, &a_queue1, &a_encode, &a_queue2, &mux])?;
+    gst::Element::link_many(&[&a_src, &a_queue1, &a_convert, &a_encode, &a_queue2, &mux])?;
     gst::Element::link(&mux, &sink)?;
 
     // FIXME: allow weirder filenames
