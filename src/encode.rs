@@ -1,32 +1,67 @@
 use cairo::{Context, Format, ImageSurface};
-use druid::RenderContext;
+use druid::{Affine, RenderContext};
 use gst::prelude::*;
 use gstreamer as gst;
 use gstreamer_app as gst_app;
+use gstreamer_audio as gst_audio;
 use gstreamer_video as gst_video;
 use piet_cairo::CairoRenderContext;
 use std::path::Path;
 
+use crate::audio::{AudioSnippetsData, Cursor};
 use crate::data::SnippetsData;
 
 const FPS: u32 = 30;
-const WIDTH: i32 = 1600;
-const HEIGHT: i32 = 1200;
+const WIDTH: i32 = 800;
+const HEIGHT: i32 = 600;
+
+// We make a custom error here because the default display for gst::message::Error isn't very
+// helpful in narrowing down the problem.
+#[derive(Debug, thiserror::Error)]
+#[error("error from {src}: {error} ({debug})")]
+struct PipelineError {
+    src: String,
+    error: String,
+    debug: String,
+}
+
+impl<'a> From<gst::message::Error<'a>> for PipelineError {
+    fn from(e: gst::message::Error<'a>) -> PipelineError {
+        PipelineError {
+            src: e
+                .get_src()
+                .map(|s| String::from(s.get_path_string()))
+                .unwrap_or_else(|| "None".to_owned()),
+            error: e.get_error().to_string(),
+            debug: e.get_debug().unwrap_or_else(|| "No debug info".to_owned()),
+        }
+    }
+}
 
 fn create_pipeline(
     anim: SnippetsData,
+    audio: AudioSnippetsData,
     frame_count: u32,
     path: &Path,
 ) -> Result<gst::Pipeline, anyhow::Error> {
     let pipeline = gst::Pipeline::new(None);
-    let src = gst::ElementFactory::make("appsrc", Some("source"))?;
-    let convert = gst::ElementFactory::make("videoconvert", Some("convert"))?;
-    let encode = gst::ElementFactory::make("av1enc", Some("encode"))?;
+    let v_src = gst::ElementFactory::make("appsrc", Some("source"))?;
+    let v_convert = gst::ElementFactory::make("videoconvert", Some("convert"))?;
+    let v_encode = gst::ElementFactory::make("av1enc", Some("encode"))?;
+    let v_queue = gst::ElementFactory::make("queue", Some("queue"))?;
+    let a_src = gst::ElementFactory::make("appsrc", Some("audio-source"))?;
+    let a_resample = gst::ElementFactory::make("audioresample", Some("audio-resample"))?;
+    let a_encode = gst::ElementFactory::make("opusenc", Some("audio-encode"))?;
+    let a_queue = gst::ElementFactory::make("queue", Some("audio-queue"))?;
     let mux = gst::ElementFactory::make("mp4mux", Some("mux"))?;
     let sink = gst::ElementFactory::make("filesink", Some("sink"))?;
 
-    pipeline.add_many(&[&src, &convert, &encode, &mux, &sink])?;
-    gst::Element::link_many(&[&src, &convert, &encode, &mux, &sink])?;
+    pipeline.add_many(&[&v_src, &v_convert, &v_encode, &v_queue])?;
+    pipeline.add_many(&[&a_src, &a_resample, &a_encode, &a_queue])?;
+    pipeline.add_many(&[&mux, &sink])?;
+    gst::Element::link_many(&[&v_src, &v_queue, &v_convert, &v_encode, &mux])?;
+    gst::Element::link_many(&[&a_src, &a_queue, &a_resample, &a_encode, &mux])?;
+    gst::Element::link(&mux, &sink)?;
 
     // FIXME: allow weirder filenames
     sink.set_property(
@@ -40,16 +75,25 @@ fn create_pipeline(
             .build()
             .expect("failed to create video info");
 
-    let src = src
+    let v_src = v_src
         .dynamic_cast::<gst_app::AppSrc>()
-        .expect("failed to get src");
-    src.set_caps(Some(&video_info.to_caps().unwrap()));
-    src.set_property_format(gst::Format::Time); // FIXME: what does this mean?
+        .expect("failed to get video src");
+    v_src.set_caps(Some(&video_info.to_caps().unwrap()));
+    v_src.set_property_format(gst::Format::Time); // FIXME: what does this mean?
 
-    // This will be called every time the source requests data.
+    let a_src = a_src
+        .dynamic_cast::<gst_app::AppSrc>()
+        .expect("failed to get audio src");
+    let audio_info = gst_audio::AudioInfo::new(gst_audio::AudioFormat::S16le, 44100, 1)
+        .build()
+        .expect("failed to create audio info");
+    a_src.set_caps(Some(&audio_info.to_caps().unwrap()));
+    a_src.set_property_format(gst::Format::Time); // FIXME: needed?
+
+    // This will be called every time the video source requests data.
     let mut frame_counter: u32 = 0;
     let need_data = move |src: &gst_app::AppSrc, _: u32| {
-        println!("rendering frame {}", frame_counter);
+        println!("rendering frame {} of {}", frame_counter, frame_count);
         if frame_counter == frame_count {
             let _ = src.end_of_stream();
             return;
@@ -65,13 +109,18 @@ fn create_pipeline(
             let mut ctx = CairoRenderContext::new(&mut cr);
             ctx.clear(druid::Color::WHITE);
             // This is copy-paste from DrawingPane. TODO: factor rendering out somewhere
-            for (_, curve) in anim.snippets() {
-                ctx.stroke(
-                    curve.path_at(time_us),
-                    &curve.curve.color,
-                    curve.curve.thickness,
-                );
-            }
+            ctx.with_save(|ctx| {
+                ctx.transform(Affine::scale(WIDTH as f64 / 1600.0)); // FIXME
+                for (_, curve) in anim.snippets() {
+                    ctx.stroke(
+                        curve.path_at(time_us),
+                        &curve.curve.color,
+                        curve.curve.thickness,
+                    );
+                }
+                Ok(())
+            })
+            .unwrap();
             ctx.finish().unwrap();
             surface.flush();
         }
@@ -98,7 +147,43 @@ fn create_pipeline(
         frame_counter += 1;
     };
 
-    src.set_callbacks(gst_app::AppSrcCallbacks::new().need_data(need_data).build());
+    let mut cursor = Cursor::new(&audio, 0);
+    let mut time_us = 0i64;
+    let need_audio_data = move |src: &gst_app::AppSrc, size_hint: u32| {
+        if cursor.is_finished() {
+            let _ = src.end_of_stream();
+            return;
+        }
+
+        // I'm not sure if this is necessary, but there isn't much documentation on `size_hint` in
+        // gstreamer, so just to be sure let's make sure it isn't too small.
+        let size = size_hint.max(1024);
+
+        // gstreamer buffers seem to only ever hand out [u8], but we prefer to work with
+        // [i16]s. Here, we're doing an extra copy to handle endian-ness and avoid unsafe.
+        let mut buf = vec![0i16; size as usize / 2];
+        cursor.mix_to_buffer(&audio, &mut buf[..]);
+
+        let mut gst_buffer = gst::Buffer::with_size(size as usize).expect("audio buffer");
+        {
+            let gst_buffer_ref = gst_buffer.get_mut().unwrap();
+            dbg!(time_us);
+            gst_buffer_ref.set_pts(time_us as u64 * gst::USECOND);
+            time_us += (size as i64 / 2 * 1000000) / 44100;
+            let mut data = gst_buffer_ref.map_writable().expect("audio buffer data");
+            for (idx, bytes) in data.as_mut_slice().chunks_mut(2).enumerate() {
+                bytes.copy_from_slice(&buf[idx].to_le_bytes());
+            }
+        }
+        let _ = src.push_buffer(gst_buffer);
+    };
+
+    v_src.set_callbacks(gst_app::AppSrcCallbacks::new().need_data(need_data).build());
+    a_src.set_callbacks(
+        gst_app::AppSrcCallbacks::new()
+            .need_data(need_audio_data)
+            .build(),
+    );
 
     Ok(pipeline)
 }
@@ -115,16 +200,47 @@ fn main_loop(pipeline: gst::Pipeline) -> Result<(), anyhow::Error> {
             Eos(..) => break,
             Error(err) => {
                 pipeline.set_state(gst::State::Null)?;
-                return Err(err.get_error().into());
+
+                return Err(PipelineError::from(err).into());
             }
+            /*
+            StateChanged(s) => {
+                let name = s.get_src().unwrap().get_property("name").unwrap().get::<String>().unwrap();
+                println!("{:?} state changed from {:?} to {:?}", name, s.get_old(), s.get_current());
+            }
+            StreamStatus(s) => {
+                let (ty, elt) = s.get();
+                println!("status {:?} for {:?}", ty, elt.get_name().as_str());
+            }
+            other => { dbg!(other); }
+            */
             _ => {}
         }
     }
 
     pipeline.set_state(gst::State::Null)?;
+    dbg!("finished encoding loop");
     Ok(())
 }
 
-pub fn encode_blocking(anim: SnippetsData, filename: &Path) -> Result<(), anyhow::Error> {
-    main_loop(create_pipeline(anim, 50, filename)?)
+pub fn do_encode_blocking(cmd: crate::cmd::ExportCmd) -> Result<(), anyhow::Error> {
+    let end_time = cmd
+        .snippets
+        .last_draw_time()
+        .max(cmd.audio_snippets.end_time())
+        + 200000;
+    let num_frames = (end_time * FPS as i64) / 1000000;
+    main_loop(create_pipeline(
+        cmd.snippets,
+        cmd.audio_snippets,
+        num_frames as u32,
+        &cmd.filename,
+    )?)
+}
+
+pub fn encode_blocking(cmd: crate::cmd::ExportCmd) {
+    if let Err(e) = do_encode_blocking(cmd) {
+        println!("error {}", e);
+        dbg!(e);
+    }
 }

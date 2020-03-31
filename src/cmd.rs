@@ -43,6 +43,7 @@ pub struct LerpSnippetCmd {
     pub to_time: i64,
 }
 
+#[derive(Clone)]
 pub struct ExportCmd {
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,

@@ -3,7 +3,7 @@
 // and it has a channel for receiving requests.
 
 use cpal::traits::{EventLoopTrait, HostTrait};
-use cpal::{EventLoop, OutputBuffer, StreamData, UnknownTypeInputBuffer, UnknownTypeOutputBuffer};
+use cpal::{EventLoop, StreamData, UnknownTypeInputBuffer, UnknownTypeOutputBuffer};
 use druid::Data;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -43,7 +43,7 @@ struct BufCursor {
 }
 
 #[derive(Default, Debug)]
-struct Cursor {
+pub struct Cursor {
     all_cursors: Vec<BufCursor>,
     next_cursor: usize,
     active_cursors: Vec<BufCursor>,
@@ -84,7 +84,7 @@ impl BufCursor {
 }
 
 impl Cursor {
-    fn new(snippets: &AudioSnippetsData, time_us: i64) -> Cursor {
+    pub fn new(snippets: &AudioSnippetsData, time_us: i64) -> Cursor {
         let mut cursors = Vec::new();
 
         for (&id, snip) in snippets.snippets.iter() {
@@ -113,7 +113,11 @@ impl Cursor {
         }
     }
 
-    fn mix_to_buffer(&mut self, data: &AudioSnippetsData, mut buf: OutputBuffer<i16>) {
+    pub fn mix_to_buffer<B: DerefMut<Target = [i16]>>(
+        &mut self,
+        data: &AudioSnippetsData,
+        mut buf: B,
+    ) {
         while self.next_cursor < self.all_cursors.len() {
             if self.all_cursors[self.next_cursor].will_be_active(buf.len()) {
                 self.active_cursors.push(self.all_cursors[self.next_cursor]);
@@ -131,6 +135,10 @@ impl Cursor {
             }
         }
         self.active_cursors.retain(|c| !c.is_finished());
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.active_cursors.is_empty() && self.next_cursor == self.all_cursors.len()
     }
 }
 
@@ -256,6 +264,14 @@ impl AudioSnippetsData {
 
     pub fn snippets(&self) -> impl Iterator<Item = (AudioSnippetId, &AudioSnippetData)> {
         self.snippets.iter().map(|(k, v)| (*k, v))
+    }
+
+    pub fn end_time(&self) -> i64 {
+        self.snippets
+            .values()
+            .map(|snip| snip.end_time())
+            .max()
+            .unwrap_or(0)
     }
 }
 

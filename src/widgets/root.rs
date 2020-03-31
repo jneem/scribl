@@ -210,11 +210,9 @@ impl Root {
             }
             cmd::EXPORT => {
                 let export = cmd.get_object::<cmd::ExportCmd>().expect("API violation");
-                // TODO: audio, etc.
                 // TODO: get some thread handle or something, for notifications etc.
-                let snippets = export.snippets.clone();
-                let filename = export.filename.clone();
-                std::thread::spawn(move || crate::encode::encode_blocking(snippets, &filename));
+                let export = export.clone();
+                std::thread::spawn(move || crate::encode::encode_blocking(export));
 
                 true
             }

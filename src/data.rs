@@ -145,6 +145,14 @@ impl SnippetsData {
     pub fn snippets(&self) -> impl Iterator<Item = (SnippetId, &SnippetData)> {
         self.snippets.iter().map(|(k, v)| (*k, v))
     }
+
+    pub fn last_draw_time(&self) -> i64 {
+        self.snippets
+            .values()
+            .map(|snip| snip.last_draw_time())
+            .max()
+            .unwrap_or(0)
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -276,8 +284,8 @@ impl AppState {
 
     /// Stops recording audio, returning the audio snippet that we just recorded.
     pub fn stop_recording_audio(&mut self) -> AudioSnippetData {
-        self.action = CurrentAction::Idle;
         if let CurrentAction::RecordingAudio(rec_start) = self.action {
+            self.action = CurrentAction::Idle;
             let buf = self.audio.borrow_mut().stop_recording();
             dbg!(buf.len());
             AudioSnippetData::new(buf, rec_start)
