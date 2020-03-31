@@ -20,6 +20,8 @@ pub struct AudioState {
     output_data: Arc<Mutex<AudioOutput>>,
 }
 
+pub const SAMPLE_RATE: u64 = 48000;
+
 #[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AudioSnippetId(u64);
 
@@ -53,7 +55,7 @@ impl BufCursor {
     fn new(id: AudioSnippetId, snip: &AudioSnippetData, time_us: i64) -> BufCursor {
         BufCursor {
             id,
-            idx: ((time_us - snip.start_time) as f64 * (44100.0 / 1000000.0)) as i64,
+            idx: ((time_us - snip.start_time) as f64 * (SAMPLE_RATE as f64 / 1000000.0)) as i64,
             len: snip.buf.len() as i64,
         }
     }
@@ -150,7 +152,7 @@ impl AudioState {
         let output_device = host.default_output_device().expect("no input device");
         let format = cpal::Format {
             channels: 1,
-            sample_rate: cpal::SampleRate(44100),
+            sample_rate: cpal::SampleRate(SAMPLE_RATE as u32),
             data_type: cpal::SampleFormat::I16,
         };
 
@@ -193,9 +195,21 @@ impl AudioState {
         self.event_loop
             .destroy_stream(input_data.id.take().unwrap());
 
-        let mut new_buf = Vec::new();
-        std::mem::swap(&mut input_data.buf, &mut new_buf);
-        new_buf
+        let mut buf = Vec::new();
+        std::mem::swap(&mut input_data.buf, &mut buf);
+
+        // Denoise the recorded audio. (TODO: we could do this in real-time as it records)
+        // RNNoise like the input to be a multiple of FRAME_SIZE;
+        let fs = rnnoise_c::FRAME_SIZE;
+        let new_size = ((buf.len() + (fs - 1)) / fs) * fs;
+        buf.resize(new_size, 0);
+        let float_buf: Vec<f32> = buf.iter().map(|x| *x as f32).collect();
+        let mut out_buf = vec![0.0f32; float_buf.len()];
+        let mut state = rnnoise_c::DenoiseState::new();
+        for (in_chunk, out_chunk) in float_buf.chunks_exact(fs).zip(out_buf.chunks_exact_mut(fs)) {
+            state.process_frame_mut(in_chunk, out_chunk);
+        }
+        out_buf.into_iter().map(|x| x as i16).collect()
     }
 
     pub fn start_playing(&mut self, data: AudioSnippetsData, time_us: i64) {
@@ -242,7 +256,7 @@ impl AudioSnippetData {
     }
 
     pub fn end_time(&self) -> i64 {
-        let len_us = (self.buf().len() as f64) * 1e6 / 44100.0;
+        let len_us = (self.buf().len() as f64) * 1e6 / SAMPLE_RATE as f64;
         self.start_time() + len_us as i64
     }
 }

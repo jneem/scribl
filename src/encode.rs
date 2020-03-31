@@ -8,7 +8,7 @@ use gstreamer_video as gst_video;
 use piet_cairo::CairoRenderContext;
 use std::path::Path;
 
-use crate::audio::{AudioSnippetsData, Cursor};
+use crate::audio::{AudioSnippetsData, Cursor, SAMPLE_RATE};
 use crate::data::SnippetsData;
 
 const FPS: u32 = 30;
@@ -47,20 +47,21 @@ fn create_pipeline(
     let pipeline = gst::Pipeline::new(None);
     let v_src = gst::ElementFactory::make("appsrc", Some("source"))?;
     let v_convert = gst::ElementFactory::make("videoconvert", Some("convert"))?;
-    let v_encode = gst::ElementFactory::make("av1enc", Some("encode"))?;
-    let v_queue = gst::ElementFactory::make("queue", Some("queue"))?;
+    let v_encode = gst::ElementFactory::make("x264enc", Some("encode"))?;
+    let v_queue1 = gst::ElementFactory::make("queue", Some("queue1"))?;
+    let v_queue2 = gst::ElementFactory::make("queue", Some("queue2"))?;
     let a_src = gst::ElementFactory::make("appsrc", Some("audio-source"))?;
-    let a_resample = gst::ElementFactory::make("audioresample", Some("audio-resample"))?;
     let a_encode = gst::ElementFactory::make("opusenc", Some("audio-encode"))?;
-    let a_queue = gst::ElementFactory::make("queue", Some("audio-queue"))?;
+    let a_queue1 = gst::ElementFactory::make("queue", Some("audio-queue1"))?;
+    let a_queue2 = gst::ElementFactory::make("queue", Some("audio-queue2"))?;
     let mux = gst::ElementFactory::make("mp4mux", Some("mux"))?;
     let sink = gst::ElementFactory::make("filesink", Some("sink"))?;
 
-    pipeline.add_many(&[&v_src, &v_convert, &v_encode, &v_queue])?;
-    pipeline.add_many(&[&a_src, &a_resample, &a_encode, &a_queue])?;
+    pipeline.add_many(&[&v_src, &v_convert, &v_encode, &v_queue1, &v_queue2])?;
+    pipeline.add_many(&[&a_src, &a_encode, &a_queue1, &a_queue2])?;
     pipeline.add_many(&[&mux, &sink])?;
-    gst::Element::link_many(&[&v_src, &v_queue, &v_convert, &v_encode, &mux])?;
-    gst::Element::link_many(&[&a_src, &a_queue, &a_resample, &a_encode, &mux])?;
+    gst::Element::link_many(&[&v_src, &v_queue1, &v_convert, &v_encode, &v_queue2, &mux])?;
+    gst::Element::link_many(&[&a_src, &a_queue1, &a_encode, &a_queue2, &mux])?;
     gst::Element::link(&mux, &sink)?;
 
     // FIXME: allow weirder filenames
@@ -84,7 +85,7 @@ fn create_pipeline(
     let a_src = a_src
         .dynamic_cast::<gst_app::AppSrc>()
         .expect("failed to get audio src");
-    let audio_info = gst_audio::AudioInfo::new(gst_audio::AudioFormat::S16le, 44100, 1)
+    let audio_info = gst_audio::AudioInfo::new(gst_audio::AudioFormat::S16le, SAMPLE_RATE as u32, 1)
         .build()
         .expect("failed to create audio info");
     a_src.set_caps(Some(&audio_info.to_caps().unwrap()));
@@ -169,7 +170,7 @@ fn create_pipeline(
             let gst_buffer_ref = gst_buffer.get_mut().unwrap();
             dbg!(time_us);
             gst_buffer_ref.set_pts(time_us as u64 * gst::USECOND);
-            time_us += (size as i64 / 2 * 1000000) / 44100;
+            time_us += (size as i64 / 2 * 1000000) / SAMPLE_RATE as i64;
             let mut data = gst_buffer_ref.map_writable().expect("audio buffer data");
             for (idx, bytes) in data.as_mut_slice().chunks_mut(2).enumerate() {
                 bytes.copy_from_slice(&buf[idx].to_le_bytes());
