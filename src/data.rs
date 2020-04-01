@@ -10,6 +10,7 @@ use std::sync::Arc;
 use crate::audio::{AudioSnippetData, AudioSnippetsData, AudioState};
 use crate::lerp::Lerp;
 use crate::snippet::{Curve, SnippetId};
+use crate::time::Time;
 use crate::widgets::ToggleButtonState;
 
 #[derive(Clone, Data)]
@@ -30,12 +31,12 @@ impl CurveInProgressData {
         }
     }
 
-    pub fn move_to(&mut self, p: Point, time: i64) {
+    pub fn move_to(&mut self, p: Point, time: Time) {
         self.inner.borrow_mut().move_to(p, time);
         self.len += 1;
     }
 
-    pub fn line_to(&mut self, p: Point, time: i64) {
+    pub fn line_to(&mut self, p: Point, time: Time) {
         self.inner.borrow_mut().line_to(p, time);
         self.len += 1;
     }
@@ -52,7 +53,7 @@ pub struct SnippetData {
 
     /// Controls whether the snippet ever ends. If `None`, it means that the snippet will remain
     /// forever; if `Some(t)` it means that the snippet will disappear at time `t`.
-    pub end: Option<i64>,
+    pub end: Option<Time>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Data, Default)]
@@ -64,11 +65,9 @@ pub struct SnippetsData {
 impl SnippetData {
     // TODO: this panics if the curve is empty
     pub fn new(curve: Curve) -> SnippetData {
-        let start_end = vec![
-            *curve.time_us.first().unwrap(),
-            *curve.time_us.last().unwrap(),
-        ];
-        let lerp = Lerp::new(start_end.clone(), start_end);
+        let start = *curve.times.first().unwrap();
+        let end =   *curve.times.last().unwrap();
+        let lerp = Lerp::identity(start, end);
         SnippetData {
             curve: Arc::new(curve),
             lerp: Arc::new(lerp),
@@ -76,32 +75,32 @@ impl SnippetData {
         }
     }
 
-    pub fn path_at(&self, time_us: i64) -> &[PathEl] {
+    pub fn path_at(&self, time: Time) -> &[PathEl] {
         if let Some(end) = self.end {
-            if time_us > end {
+            if time > end {
                 return &[];
             }
         }
 
-        let local_time = self.lerp.unlerp_clamped(time_us);
-        let idx = match self.curve.time_us.binary_search(&local_time) {
+        let local_time = self.lerp.unlerp_clamped(time);
+        let idx = match self.curve.times.binary_search(&local_time) {
             Ok(i) => i + 1,
             Err(i) => i,
         };
         &self.curve.path.elements()[..idx]
     }
 
-    pub fn start_time(&self) -> i64 {
+    pub fn start_time(&self) -> Time {
         self.lerp.first()
     }
 
     /// The last time at which the snippet changed.
-    pub fn last_draw_time(&self) -> i64 {
+    pub fn last_draw_time(&self) -> Time {
         self.lerp.last()
     }
 
     /// The time at which this snippet should disappear.
-    pub fn end_time(&self) -> Option<i64> {
+    pub fn end_time(&self) -> Option<Time> {
         self.end
     }
 }
@@ -126,13 +125,13 @@ impl SnippetsData {
         ret
     }
 
-    pub fn with_new_lerp(&self, id: SnippetId, lerp_from: i64, lerp_to: i64) -> SnippetsData {
+    pub fn with_new_lerp(&self, id: SnippetId, lerp_from: Time, lerp_to: Time) -> SnippetsData {
         let mut snip = self.snippet(id).clone();
         snip.lerp = Arc::new(snip.lerp.with_new_lerp(lerp_from, lerp_to));
         self.with_replacement_snippet(id, snip)
     }
 
-    pub fn with_truncated_snippet(&self, id: SnippetId, time: i64) -> SnippetsData {
+    pub fn with_truncated_snippet(&self, id: SnippetId, time: Time) -> SnippetsData {
         let mut snip = self.snippet(id).clone();
         snip.end = Some(time);
         self.with_replacement_snippet(id, snip)
@@ -146,12 +145,12 @@ impl SnippetsData {
         self.snippets.iter().map(|(k, v)| (*k, v))
     }
 
-    pub fn last_draw_time(&self) -> i64 {
+    pub fn last_draw_time(&self) -> Time {
         self.snippets
             .values()
             .map(|snip| snip.last_draw_time())
             .max()
-            .unwrap_or(0)
+            .unwrap_or(crate::time::ZERO)
     }
 }
 
@@ -170,7 +169,7 @@ pub struct ScribbleState {
     pub audio_snippets: AudioSnippetsData,
     pub selected_snippet: Option<SnippetId>,
 
-    pub mark: Option<i64>,
+    pub mark: Option<Time>,
 }
 
 /// This data contains the state of the entire app.
@@ -178,7 +177,7 @@ pub struct ScribbleState {
 pub struct AppState {
     pub scribble: ScribbleState,
     pub action: CurrentAction,
-    pub time_us: i64,
+    pub time: Time,
 
     // This is a bit of an odd one out, since it's specifically for input handling in the
     // drawing-pane widget. If there get to be more of these, maybe they should get split out.
@@ -199,7 +198,7 @@ impl Default for AppState {
         AppState {
             scribble: ScribbleState::default(),
             action: CurrentAction::Idle,
-            time_us: 0,
+            time: crate::time::ZERO,
             mouse_down: false,
             line_thickness: 5.0,
             audio: Arc::new(RefCell::new(AudioState::init())),
@@ -267,7 +266,7 @@ impl AppState {
         self.action = CurrentAction::Playing;
         self.audio
             .borrow_mut()
-            .start_playing(self.scribble.audio_snippets.clone(), self.time_us);
+            .start_playing(self.scribble.audio_snippets.clone(), self.time);
     }
 
     pub fn stop_playing(&mut self) {
@@ -278,7 +277,7 @@ impl AppState {
 
     pub fn start_recording_audio(&mut self) {
         assert_eq!(self.action, CurrentAction::Idle);
-        self.action = CurrentAction::RecordingAudio(self.time_us);
+        self.action = CurrentAction::RecordingAudio(self.time);
         self.audio.borrow_mut().start_recording();
     }
 
@@ -325,7 +324,7 @@ pub enum CurrentAction {
     Playing,
 
     /// The argument is the time at which audio capture started.
-    RecordingAudio(i64),
+    RecordingAudio(Time),
 
     /// Fast-forward or reverse. The parameter is the speed factor, negative for reverse.
     Scanning(f64),

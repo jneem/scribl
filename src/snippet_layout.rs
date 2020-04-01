@@ -4,10 +4,11 @@ use std::hash::Hash;
 use crate::audio::{AudioSnippetData, AudioSnippetId};
 use crate::data::SnippetData;
 use crate::snippet::SnippetId;
+use crate::time::{self, Time};
 
 pub struct SnippetBounds<T> {
-    start_us: i64,
-    end_us: Option<i64>,
+    start: Time,
+    end: Option<Time>,
     id: T,
 }
 
@@ -19,8 +20,8 @@ pub struct SnippetLayout<T> {
 impl From<(SnippetId, &SnippetData)> for SnippetBounds<SnippetId> {
     fn from(data: (SnippetId, &SnippetData)) -> SnippetBounds<SnippetId> {
         SnippetBounds {
-            start_us: data.1.lerp.first(),
-            end_us: data.1.end,
+            start: data.1.lerp.first(),
+            end: data.1.end,
             id: data.0,
         }
     }
@@ -29,8 +30,8 @@ impl From<(SnippetId, &SnippetData)> for SnippetBounds<SnippetId> {
 impl From<(AudioSnippetId, &AudioSnippetData)> for SnippetBounds<AudioSnippetId> {
     fn from(data: (AudioSnippetId, &AudioSnippetData)) -> SnippetBounds<AudioSnippetId> {
         SnippetBounds {
-            start_us: data.1.start_time(),
-            end_us: Some(data.1.end_time()),
+            start: data.1.start_time(),
+            end: Some(data.1.end_time()),
             id: data.0,
         }
     }
@@ -40,9 +41,9 @@ pub fn layout<Id: Copy + Hash + Eq, T: Into<SnippetBounds<Id>>, I: Iterator<Item
     iter: I,
 ) -> SnippetLayout<Id> {
     let mut bounds: Vec<SnippetBounds<Id>> = iter.map(|t| t.into()).collect();
-    bounds.sort_by_key(|b| b.start_us);
+    bounds.sort_by_key(|b| b.start);
 
-    let mut row_ends = Vec::<Option<i64>>::new();
+    let mut row_ends = Vec::<Option<Time>>::new();
     let mut ret = SnippetLayout {
         positions: HashMap::new(),
         num_rows: 0,
@@ -50,8 +51,8 @@ pub fn layout<Id: Copy + Hash + Eq, T: Into<SnippetBounds<Id>>, I: Iterator<Item
     'bounds: for b in &bounds {
         for (row_idx, end) in row_ends.iter_mut().enumerate() {
             if let Some(finite_end_time) = *end {
-                if finite_end_time == 0 || b.start_us > finite_end_time {
-                    *end = b.end_us;
+                if finite_end_time == time::ZERO || b.start > finite_end_time {
+                    *end = b.end;
                     ret.positions.insert(b.id, row_idx);
                     continue 'bounds;
                 }
@@ -60,7 +61,7 @@ pub fn layout<Id: Copy + Hash + Eq, T: Into<SnippetBounds<Id>>, I: Iterator<Item
         // We couldn't fit the snippet, so add a new row.
         ret.positions.insert(b.id, row_ends.len());
         ret.num_rows += 1;
-        row_ends.push(b.end_us);
+        row_ends.push(b.end);
     }
     ret
 }
@@ -70,10 +71,10 @@ mod tests {
     use super::*;
 
     // Creates a snippet that is empty, but has a starting and (possibly) an ending time.
-    fn snip(id: usize, start_us: i64, end_us: Option<i64>) -> SnippetBounds<usize> {
+    fn snip(id: usize, start: Time, end: Option<Time>) -> SnippetBounds<usize> {
         SnippetBounds {
-            start_us,
-            end_us,
+            start,
+            end,
             id,
         }
     }
@@ -85,7 +86,7 @@ mod tests {
                 let mut id = 0;
                 $(
                     id += 1;
-                    ret.push(snip(id, $begin, $end));
+                    ret.push(snip(id, Time::from_micros($begin), $end.map(Time::from_micros)));
                 )*
                 ret.into_iter()
             }

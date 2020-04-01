@@ -10,6 +10,7 @@ use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData};
 use crate::data::{AppState, SnippetData, SnippetsData};
 use crate::snippet::SnippetId;
 use crate::snippet_layout;
+use crate::time::{Diff, Time};
 
 const SNIPPET_HEIGHT: f64 = 20.0;
 const MIN_NUM_ROWS: usize = 5;
@@ -28,6 +29,14 @@ const SNIPPET_STROKE_THICKNESS: f64 = 1.0;
 
 const MARK_COLOR: Color = Color::rgb8(0x33, 0x33, 0x99);
 
+fn pix_width(d: Diff) -> f64 {
+    d.as_micros() as f64 * PIXELS_PER_USEC
+}
+
+fn pix_x(t: Time) -> f64 {
+    t.as_micros() as f64 * PIXELS_PER_USEC
+}
+
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 enum Id {
     Drawing(SnippetId),
@@ -41,21 +50,21 @@ enum Snip {
 }
 
 impl Snip {
-    fn start_time(&self) -> i64 {
+    fn start_time(&self) -> Time {
         match self {
             Snip::Audio(s) => s.start_time(),
             Snip::Drawing(d) => d.start_time(),
         }
     }
 
-    fn end_time(&self) -> Option<i64> {
+    fn end_time(&self) -> Option<Time> {
         match self {
             Snip::Audio(s) => Some(s.end_time()),
             Snip::Drawing(d) => d.end_time(),
         }
     }
 
-    fn last_draw_time(&self) -> Option<i64> {
+    fn last_draw_time(&self) -> Option<Time> {
         match self {
             Snip::Audio(_) => None,
             Snip::Drawing(d) => {
@@ -68,7 +77,7 @@ impl Snip {
         }
     }
 
-    fn inner_lerp_times(&self) -> Vec<i64> {
+    fn inner_lerp_times(&self) -> Vec<Diff> {
         match self {
             Snip::Audio(_) => Vec::new(),
             Snip::Drawing(d) => {
@@ -148,7 +157,7 @@ impl TimelineSnippet {
     fn width(&self, data: &AppState) -> f64 {
         let snip = self.snip(data);
         if let Some(end_time) = snip.end_time() {
-            (end_time - snip.start_time()) as f64 * PIXELS_PER_USEC
+            pix_width(end_time - snip.start_time())
         } else {
             std::f64::INFINITY
         }
@@ -245,7 +254,7 @@ impl Widget<AppState> for TimelineSnippet {
 
         // Draw the span of the edited region.
         if let Some(last_draw_time) = snippet.last_draw_time() {
-            let draw_width = (last_draw_time - snippet.start_time()) as f64 * PIXELS_PER_USEC;
+            let draw_width = pix_width(last_draw_time - snippet.start_time());
             let color = Color::rgb8(0, 0, 0);
             ctx.stroke(
                 Line::new((0.0, height / 2.0), (draw_width, height / 2.0)),
@@ -261,7 +270,7 @@ impl Widget<AppState> for TimelineSnippet {
 
         // Draw the lerp lines.
         for t in snippet.inner_lerp_times() {
-            let x = (t as f64) * PIXELS_PER_USEC;
+            let x = pix_width(t);
             ctx.stroke(Line::new((x, 0.0), (x, height)), &SNIPPET_STROKE_COLOR, 1.0);
         }
     }
@@ -274,14 +283,14 @@ impl Widget<AppState> for Timeline {
                 ctx.request_paint();
             }
             Event::MouseDown(ev) => {
-                data.time_us = (ev.pos.x / PIXELS_PER_USEC) as i64;
+                data.time = Time::from_micros((ev.pos.x / PIXELS_PER_USEC) as i64);
                 ctx.set_active(true);
                 ctx.request_paint();
             }
             Event::MouseMoved(ev) => {
                 // On click-and-drag, we change the time with the drag.
                 if ctx.is_active() {
-                    data.time_us = (ev.pos.x / PIXELS_PER_USEC) as i64;
+                    data.time = Time::from_micros((ev.pos.x / PIXELS_PER_USEC) as i64);
                     ctx.request_paint();
                 }
             }
@@ -312,7 +321,7 @@ impl Widget<AppState> for Timeline {
             );
             ctx.children_changed();
         }
-        if old_data.time_us != data.time_us || old_data.scribble.mark != data.scribble.mark {
+        if old_data.time != data.time || old_data.scribble.mark != data.scribble.mark {
             ctx.request_paint();
         }
         for child in self.children.values_mut() {
@@ -335,7 +344,7 @@ impl Widget<AppState> for Timeline {
     ) -> Size {
         for (&id, &offset) in &self.snippet_offsets {
             let child = self.children.get_mut(&id).unwrap();
-            let x = (child.widget().snip(data).start_time() as f64) * PIXELS_PER_USEC;
+            let x = pix_x(child.widget().snip(data).start_time());
             let y = offset as f64 * SNIPPET_HEIGHT;
 
             let size = child.layout(ctx, bc, data, env);
@@ -356,13 +365,13 @@ impl Widget<AppState> for Timeline {
         }
 
         // Draw the cursor.
-        let cursor_x = PIXELS_PER_USEC * (data.time_us as f64);
+        let cursor_x = pix_x(data.time);
         let line = Line::new((cursor_x, 0.0), (cursor_x, size.height));
         ctx.stroke(line, &CURSOR_COLOR, CURSOR_THICKNESS);
 
         // Draw the mark.
         if let Some(mark_time) = data.scribble.mark {
-            let mark_x = PIXELS_PER_USEC * (mark_time as f64);
+            let mark_x = pix_x(mark_time);
             let mut path = BezPath::new();
             path.move_to((mark_x - 8.0, 0.0));
             path.line_to((mark_x + 8.0, 0.0));

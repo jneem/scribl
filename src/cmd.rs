@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use crate::audio::AudioSnippetsData;
 use crate::data::SnippetsData;
 use crate::snippet::SnippetId;
+use crate::time::Time;
 
 /// Adds a new snippet. The argument is a [`SnippetData`].
 pub const ADD_SNIPPET: Selector = Selector::new("scribble.add-snippet");
@@ -34,13 +35,13 @@ pub const EXPORT: Selector = Selector::new("scribble.export");
 
 pub struct TruncateSnippetCmd {
     pub id: SnippetId,
-    pub time_us: i64,
+    pub time: Time,
 }
 
 pub struct LerpSnippetCmd {
     pub id: SnippetId,
-    pub from_time: i64,
-    pub to_time: i64,
+    pub from_time: Time,
+    pub to_time: Time,
 }
 
 #[derive(Clone)]

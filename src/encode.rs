@@ -10,8 +10,9 @@ use std::path::Path;
 
 use crate::audio::{AudioSnippetsData, Cursor, SAMPLE_RATE};
 use crate::data::SnippetsData;
+use crate::time::{self, Time};
 
-const FPS: u32 = 30;
+const FPS: f64 = 30.0;
 const WIDTH: i32 = 800;
 const HEIGHT: i32 = 600;
 
@@ -93,15 +94,14 @@ fn create_pipeline(
     a_src.set_property_format(gst::Format::Time); // FIXME: needed?
 
     // This will be called every time the video source requests data.
-    let mut frame_counter: u32 = 0;
+    let mut frame_counter = 0;
     let need_data = move |src: &gst_app::AppSrc, _: u32| {
-        println!("rendering frame {} of {}", frame_counter, frame_count);
         if frame_counter == frame_count {
             let _ = src.end_of_stream();
             return;
         }
 
-        let time_us = (frame_counter as i64 * 1000000) / (FPS as i64);
+        let time = Time::from_video_frame(frame_counter, FPS);
 
         // Create a cairo surface and render to it.
         let mut surface = ImageSurface::create(Format::ARgb32, WIDTH as i32, HEIGHT as i32)
@@ -115,7 +115,7 @@ fn create_pipeline(
                 ctx.transform(Affine::scale(WIDTH as f64 / 1600.0)); // FIXME
                 for (_, curve) in anim.snippets() {
                     ctx.stroke(
-                        curve.path_at(time_us),
+                        curve.path_at(time),
                         &curve.curve.color,
                         curve.curve.thickness,
                     );
@@ -135,7 +135,7 @@ fn create_pipeline(
         {
             let gst_buffer_ref = gst_buffer.get_mut().unwrap();
             // Presentation time stamp (i.e. when should this frame be displayed).
-            gst_buffer_ref.set_pts(time_us as u64 * gst::USECOND);
+            gst_buffer_ref.set_pts(time.as_gst_clock_time());
 
             let mut data = gst_buffer_ref
                 .map_writable()
@@ -149,7 +149,7 @@ fn create_pipeline(
         frame_counter += 1;
     };
 
-    let mut cursor = Cursor::new(&audio, 0);
+    let mut cursor = Cursor::new(&audio, time::ZERO);
     let mut time_us = 0i64;
     let need_audio_data = move |src: &gst_app::AppSrc, size_hint: u32| {
         if cursor.is_finished() {
@@ -169,7 +169,6 @@ fn create_pipeline(
         let mut gst_buffer = gst::Buffer::with_size(size as usize).expect("audio buffer");
         {
             let gst_buffer_ref = gst_buffer.get_mut().unwrap();
-            dbg!(time_us);
             gst_buffer_ref.set_pts(time_us as u64 * gst::USECOND);
             time_us += (size as i64 / 2 * 1000000) / SAMPLE_RATE as i64;
             let mut data = gst_buffer_ref.map_writable().expect("audio buffer data");
@@ -205,17 +204,6 @@ fn main_loop(pipeline: gst::Pipeline) -> Result<(), anyhow::Error> {
 
                 return Err(PipelineError::from(err).into());
             }
-            /*
-            StateChanged(s) => {
-                let name = s.get_src().unwrap().get_property("name").unwrap().get::<String>().unwrap();
-                println!("{:?} state changed from {:?} to {:?}", name, s.get_old(), s.get_current());
-            }
-            StreamStatus(s) => {
-                let (ty, elt) = s.get();
-                println!("status {:?} for {:?}", ty, elt.get_name().as_str());
-            }
-            other => { dbg!(other); }
-            */
             _ => {}
         }
     }
@@ -230,8 +218,8 @@ pub fn do_encode_blocking(cmd: crate::cmd::ExportCmd) -> Result<(), anyhow::Erro
         .snippets
         .last_draw_time()
         .max(cmd.audio_snippets.end_time())
-        + 200000;
-    let num_frames = (end_time * FPS as i64) / 1000000;
+        + time::Diff::from_micros(200000);
+    let num_frames = end_time.as_video_frame(FPS);
     main_loop(create_pipeline(
         cmd.snippets,
         cmd.audio_snippets,
@@ -242,7 +230,6 @@ pub fn do_encode_blocking(cmd: crate::cmd::ExportCmd) -> Result<(), anyhow::Erro
 
 pub fn encode_blocking(cmd: crate::cmd::ExportCmd) {
     if let Err(e) = do_encode_blocking(cmd) {
-        println!("error {}", e);
-        dbg!(e);
+        log::error!("error {}", e);
     }
 }

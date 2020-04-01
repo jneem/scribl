@@ -11,6 +11,8 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use crate::time::{self, Time};
+
 pub struct AudioState {
     event_loop: Arc<cpal::EventLoop>,
     input_device: cpal::Device,
@@ -20,7 +22,7 @@ pub struct AudioState {
     output_data: Arc<Mutex<AudioOutput>>,
 }
 
-pub const SAMPLE_RATE: u64 = 48000;
+pub const SAMPLE_RATE: u32 = 48000;
 
 #[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AudioSnippetId(u64);
@@ -28,7 +30,7 @@ pub struct AudioSnippetId(u64);
 #[derive(Deserialize, Serialize, Clone, Data)]
 pub struct AudioSnippetData {
     buf: Arc<Vec<i16>>,
-    start_time: i64,
+    start_time: Time,
 }
 
 #[derive(Deserialize, Serialize, Clone, Data, Default)]
@@ -52,10 +54,10 @@ pub struct Cursor {
 }
 
 impl BufCursor {
-    fn new(id: AudioSnippetId, snip: &AudioSnippetData, time_us: i64) -> BufCursor {
+    fn new(id: AudioSnippetId, snip: &AudioSnippetData, time: Time) -> BufCursor {
         BufCursor {
             id,
-            idx: ((time_us - snip.start_time) as f64 * (SAMPLE_RATE as f64 / 1000000.0)) as i64,
+            idx: (time - snip.start_time).as_audio_idx(SAMPLE_RATE),
             len: snip.buf.len() as i64,
         }
     }
@@ -86,11 +88,11 @@ impl BufCursor {
 }
 
 impl Cursor {
-    pub fn new(snippets: &AudioSnippetsData, time_us: i64) -> Cursor {
+    pub fn new(snippets: &AudioSnippetsData, time: Time) -> Cursor {
         let mut cursors = Vec::new();
 
         for (&id, snip) in snippets.snippets.iter() {
-            cursors.push(BufCursor::new(id, snip, time_us));
+            cursors.push(BufCursor::new(id, snip, time));
         }
         cursors.sort_by_key(|c| -c.idx);
 
@@ -212,8 +214,8 @@ impl AudioState {
         out_buf.into_iter().map(|x| x as i16).collect()
     }
 
-    pub fn start_playing(&mut self, data: AudioSnippetsData, time_us: i64) {
-        let cursor = Cursor::new(&data, time_us);
+    pub fn start_playing(&mut self, data: AudioSnippetsData, time: Time) {
+        let cursor = Cursor::new(&data, time);
         dbg!(&cursor);
         let output_stream = self
             .event_loop
@@ -240,7 +242,7 @@ impl AudioState {
 }
 
 impl AudioSnippetData {
-    pub fn new(buf: Vec<i16>, start_time: i64) -> AudioSnippetData {
+    pub fn new(buf: Vec<i16>, start_time: Time) -> AudioSnippetData {
         AudioSnippetData {
             buf: Arc::new(buf),
             start_time,
@@ -251,13 +253,13 @@ impl AudioSnippetData {
         &self.buf
     }
 
-    pub fn start_time(&self) -> i64 {
+    pub fn start_time(&self) -> Time {
         self.start_time
     }
 
-    pub fn end_time(&self) -> i64 {
-        let len_us = (self.buf().len() as f64) * 1e6 / SAMPLE_RATE as f64;
-        self.start_time() + len_us as i64
+    pub fn end_time(&self) -> Time {
+        let length = time::Diff::from_audio_idx(self.buf().len() as i64, SAMPLE_RATE);
+        self.start_time() + length
     }
 }
 
@@ -280,12 +282,12 @@ impl AudioSnippetsData {
         self.snippets.iter().map(|(k, v)| (*k, v))
     }
 
-    pub fn end_time(&self) -> i64 {
+    pub fn end_time(&self) -> Time {
         self.snippets
             .values()
             .map(|snip| snip.end_time())
             .max()
-            .unwrap_or(0)
+            .unwrap_or(time::ZERO)
     }
 }
 

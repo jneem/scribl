@@ -12,6 +12,7 @@ use crate::data::{AppState, CurrentAction, ScribbleState, SnippetData};
 use crate::undo::UndoStack;
 use crate::widgets::{DrawingPane, Palette, Timeline, ToggleButton};
 use crate::FRAME_TIME;
+use crate::time::{Diff, Time};
 
 pub struct Root {
     timer_id: TimerToken,
@@ -121,7 +122,7 @@ impl Root {
                 None,
             ),
             KeyCode::KeyM => {
-                ctx.submit_command(Command::new(cmd::SET_MARK, data.time_us), None);
+                ctx.submit_command(Command::new(cmd::SET_MARK, data.time), None);
                 ctx.set_handled();
             }
             KeyCode::KeyT => {
@@ -131,7 +132,7 @@ impl Root {
                             cmd::TRUNCATE_SNIPPET,
                             cmd::TruncateSnippetCmd {
                                 id: snip,
-                                time_us: data.time_us,
+                                time: data.time,
                             },
                         ),
                         None,
@@ -147,7 +148,7 @@ impl Root {
                                 cmd::LERP_SNIPPET,
                                 cmd::LerpSnippetCmd {
                                     id: snip,
-                                    from_time: data.time_us,
+                                    from_time: data.time,
                                     to_time: mark_time,
                                 },
                             ),
@@ -217,7 +218,7 @@ impl Root {
                 true
             }
             cmd::SET_MARK => {
-                let time = cmd.get_object::<i64>().expect("API violation");
+                let time = cmd.get_object::<Time>().expect("API violation");
                 data.scribble.mark = Some(*time);
                 self.undo.push(&data.scribble);
                 true
@@ -229,7 +230,7 @@ impl Root {
                 data.scribble.snippets = data
                     .scribble
                     .snippets
-                    .with_truncated_snippet(cmd.id, cmd.time_us);
+                    .with_truncated_snippet(cmd.id, cmd.time);
                 self.undo.push(&data.scribble);
                 true
             }
@@ -289,7 +290,7 @@ impl Widget<AppState> for Root {
                     } else {
                         0
                     };
-                    data.time_us = (data.time_us + frame_time_us).max(0);
+                    data.time += Diff::from_micros(frame_time_us);
                 }
 
                 self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);
