@@ -121,7 +121,10 @@ impl Cursor {
         &mut self,
         data: &AudioSnippetsData,
         mut buf: B,
+        speed_factor: f64,
     ) {
+        assert!(speed_factor > 0.0);
+
         while self.next_cursor < self.all_cursors.len() {
             if self.all_cursors[self.next_cursor].will_be_active(buf.len()) {
                 self.active_cursors.push(self.all_cursors[self.next_cursor]);
@@ -131,11 +134,27 @@ impl Cursor {
             }
         }
 
+        // How many bytes do we need from the input buffers?
+        let input_len = (buf.len() as f64 * speed_factor).ceil() as usize;
+        // TODO: we do a lot of rounding here. Maybe we should work with floats internally?
         for c in &mut self.active_cursors {
-            let (in_buf, offset) = c.get_buf_and_advance(data, buf.len());
+            let (in_buf, offset) = c.get_buf_and_advance(data, input_len);
             let out_buf = &mut buf[offset..];
-            for (in_sample, out_sample) in in_buf.iter().zip(out_buf.iter_mut()) {
-                *out_sample = out_sample.saturating_add(*in_sample);
+
+            for (out_idx, out_sample) in out_buf.iter_mut().enumerate() {
+                let in_idx = out_idx as f64 * speed_factor;
+                let in_idx0 = in_idx.floor() as usize;
+                let in_idx1 = in_idx.ceil() as usize;
+                if in_idx1 >= in_buf.len() {
+                    // If this cursor is ending, its buffer will finish before
+                    // the output buffer does.
+                    break;
+                }
+
+                let weight = in_idx.fract();
+                let in_sample =
+                    in_buf[in_idx0] as f64 * (1.0 - weight) + in_buf[in_idx1] as f64 * weight;
+                *out_sample = out_sample.saturating_add(in_sample as i16);
             }
         }
         self.active_cursors.retain(|c| !c.is_finished());
@@ -172,6 +191,10 @@ impl AudioState {
         let output_data = Arc::clone(&ret.output_data);
         thread::spawn(move || audio_thread(event_loop, input_data, output_data));
         ret
+    }
+
+    pub fn set_velocity(&mut self, vel: f64) {
+        self.output_data.lock().unwrap().speed_factor = vel;
     }
 
     pub fn start_recording(&mut self) {
@@ -214,9 +237,8 @@ impl AudioState {
         out_buf.into_iter().map(|x| x as i16).collect()
     }
 
-    pub fn start_playing(&mut self, data: AudioSnippetsData, time: Time) {
+    pub fn start_playing(&mut self, data: AudioSnippetsData, time: Time, velocity: f64) {
         let cursor = Cursor::new(&data, time);
-        dbg!(&cursor);
         let output_stream = self
             .event_loop
             .build_output_stream(&self.output_device, &self.format)
@@ -227,6 +249,7 @@ impl AudioState {
             assert!(output.id.is_none());
             output.id = Some(output_stream.clone());
             output.bufs = data;
+            output.speed_factor = velocity;
             output.cursor = cursor;
         }
 
@@ -237,7 +260,9 @@ impl AudioState {
 
     pub fn stop_playing(&mut self) {
         let mut output = self.output_data.lock().unwrap();
-        self.event_loop.destroy_stream(output.id.take().unwrap());
+        if output.id.is_some() {
+            self.event_loop.destroy_stream(output.id.take().unwrap());
+        }
     }
 }
 
@@ -300,6 +325,7 @@ struct AudioInput {
 #[derive(Default)]
 struct AudioOutput {
     id: Option<cpal::StreamId>,
+    speed_factor: f64,
     cursor: Cursor,
     bufs: AudioSnippetsData,
 }
@@ -318,22 +344,20 @@ fn audio_thread(
                 let mut output_data = output.lock().unwrap();
                 let output_data = output_data.deref_mut();
                 if output_data.id.as_ref() != Some(&stream_id) {
-                    dbg!(&output_data.id);
-                    dbg!(&stream_id);
-                    eprintln!("unexpected output stream");
                     return;
                 }
                 for elem in buf.iter_mut() {
                     *elem = 0;
                 }
-                output_data.cursor.mix_to_buffer(&output_data.bufs, buf);
+                output_data
+                    .cursor
+                    .mix_to_buffer(&output_data.bufs, buf, output_data.speed_factor);
             }
             StreamData::Input {
                 buffer: UnknownTypeInputBuffer::I16(buf),
             } => {
                 let mut input_data = input.lock().unwrap();
                 if input_data.id != Some(stream_id) {
-                    eprintln!("unexpected input stream");
                     return;
                 }
                 input_data.buf.extend_from_slice(&buf);

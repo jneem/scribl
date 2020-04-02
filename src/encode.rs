@@ -87,9 +87,10 @@ fn create_pipeline(
     let a_src = a_src
         .dynamic_cast::<gst_app::AppSrc>()
         .expect("failed to get audio src");
-    let audio_info = gst_audio::AudioInfo::new(gst_audio::AudioFormat::S16le, SAMPLE_RATE as u32, 1)
-        .build()
-        .expect("failed to create audio info");
+    let audio_info =
+        gst_audio::AudioInfo::new(gst_audio::AudioFormat::S16le, SAMPLE_RATE as u32, 1)
+            .build()
+            .expect("failed to create audio info");
     a_src.set_caps(Some(&audio_info.to_caps().unwrap()));
     a_src.set_property_format(gst::Format::Time); // FIXME: needed?
 
@@ -164,7 +165,7 @@ fn create_pipeline(
         // gstreamer buffers seem to only ever hand out [u8], but we prefer to work with
         // [i16]s. Here, we're doing an extra copy to handle endian-ness and avoid unsafe.
         let mut buf = vec![0i16; size as usize / 2];
-        cursor.mix_to_buffer(&audio, &mut buf[..]);
+        cursor.mix_to_buffer(&audio, &mut buf[..], 1.0);
 
         let mut gst_buffer = gst::Buffer::with_size(size as usize).expect("audio buffer");
         {

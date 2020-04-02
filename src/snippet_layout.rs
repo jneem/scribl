@@ -72,11 +72,7 @@ mod tests {
 
     // Creates a snippet that is empty, but has a starting and (possibly) an ending time.
     fn snip(id: usize, start: Time, end: Option<Time>) -> SnippetBounds<usize> {
-        SnippetBounds {
-            start,
-            end,
-            id,
-        }
+        SnippetBounds { start, end, id }
     }
 
     macro_rules! snips {

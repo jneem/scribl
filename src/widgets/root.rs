@@ -9,10 +9,10 @@ use std::time::Instant;
 use crate::audio::AudioSnippetData;
 use crate::cmd;
 use crate::data::{AppState, CurrentAction, ScribbleState, SnippetData};
+use crate::time::{Diff, Time};
 use crate::undo::UndoStack;
 use crate::widgets::{DrawingPane, Palette, Timeline, ToggleButton};
 use crate::FRAME_TIME;
-use crate::time::{Diff, Time};
 
 pub struct Root {
     timer_id: TimerToken,
@@ -88,7 +88,7 @@ impl Root {
                 KeyCode::ArrowLeft
             };
             if ev.key_code != direction {
-                data.action = CurrentAction::Idle;
+                data.stop_scanning();
             }
             ctx.set_handled();
             if ev.key_code == KeyCode::ArrowRight || ev.key_code == KeyCode::ArrowLeft {
@@ -96,17 +96,17 @@ impl Root {
             }
         }
 
-        // TODO: do some of these keys as commands
         match ev.key_code {
             KeyCode::ArrowRight | KeyCode::ArrowLeft => {
-                if data.action.is_idle() {
-                    let speed = if ev.mods.shift { 2.0 } else { 1.0 };
-                    let dir = if ev.key_code == KeyCode::ArrowRight {
-                        1.0
-                    } else {
-                        -1.0
-                    };
-                    data.action = CurrentAction::Scanning(speed * dir);
+                let speed = if ev.mods.shift { 2.0 } else { 1.0 };
+                let dir = if ev.key_code == KeyCode::ArrowRight {
+                    1.0
+                } else {
+                    -1.0
+                };
+                let velocity = speed * dir;
+                if data.action.is_idle() || data.action.is_scanning() {
+                    data.scan(velocity);
                 }
                 ctx.set_handled();
             }
@@ -171,7 +171,7 @@ impl Root {
         match ev.key_code {
             KeyCode::ArrowRight | KeyCode::ArrowLeft => {
                 if data.action.is_scanning() {
-                    data.action = CurrentAction::Idle;
+                    data.stop_scanning();
                 }
                 ctx.set_handled();
             }

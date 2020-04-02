@@ -66,7 +66,7 @@ impl SnippetData {
     // TODO: this panics if the curve is empty
     pub fn new(curve: Curve) -> SnippetData {
         let start = *curve.times.first().unwrap();
-        let end =   *curve.times.last().unwrap();
+        let end = *curve.times.last().unwrap();
         let lerp = Lerp::identity(start, end);
         SnippetData {
             curve: Arc::new(curve),
@@ -266,7 +266,7 @@ impl AppState {
         self.action = CurrentAction::Playing;
         self.audio
             .borrow_mut()
-            .start_playing(self.scribble.audio_snippets.clone(), self.time);
+            .start_playing(self.scribble.audio_snippets.clone(), self.time, 1.0);
     }
 
     pub fn stop_playing(&mut self) {
@@ -291,6 +291,46 @@ impl AppState {
         //self.audio_snippets = self.audio_snippets.with_new_snippet(buf, rec_start);
         } else {
             panic!("not recording");
+        }
+    }
+
+    pub fn scan(&mut self, velocity: f64) {
+        match self.action {
+            CurrentAction::Scanning(cur_vel) if cur_vel != velocity => {
+                self.action = CurrentAction::Scanning(velocity);
+                if velocity > 0.0 {
+                    // TODO: support negative
+                    self.audio.borrow_mut().set_velocity(velocity);
+                } else {
+                    self.audio.borrow_mut().stop_playing();
+                }
+            }
+            CurrentAction::Idle => {
+                self.action = CurrentAction::Scanning(velocity);
+                if velocity > 0.0 {
+                    // TODO: support negative
+                    self.audio.borrow_mut().start_playing(
+                        self.scribble.audio_snippets.clone(),
+                        self.time,
+                        velocity,
+                    );
+                } else {
+                    self.audio.borrow_mut().stop_playing();
+                }
+            }
+            _ => {
+                log::warn!("not scanning, because I'm busy doing {:?}", self.action);
+            }
+        }
+    }
+
+    pub fn stop_scanning(&mut self) {
+        match self.action {
+            CurrentAction::Scanning(_) => {
+                self.audio.borrow_mut().stop_playing();
+                self.action = CurrentAction::Idle;
+            }
+            _ => panic!("not scanning"),
         }
     }
 }
