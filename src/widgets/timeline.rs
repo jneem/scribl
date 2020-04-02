@@ -68,11 +68,8 @@ impl Snip {
         match self {
             Snip::Audio(_) => None,
             Snip::Drawing(d) => {
-                if d.end_time() != Some(d.last_draw_time()) {
-                    Some(d.last_draw_time())
-                } else {
-                    None
-                }
+                let end = d.end_time().unwrap_or(Time::from_micros(std::i64::MAX));
+                Some(d.last_draw_time().min(end))
             }
         }
     }

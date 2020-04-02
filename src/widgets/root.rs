@@ -242,6 +242,7 @@ impl Root {
                     data.scribble
                         .snippets
                         .with_new_lerp(cmd.id, cmd.from_time, cmd.to_time);
+                data.time = cmd.to_time;
                 self.undo.push(&data.scribble);
                 true
             }
