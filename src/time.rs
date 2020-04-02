@@ -60,8 +60,8 @@ impl Diff {
     /// assert_eq!((Time::from_micros(1000000) - ZERO).as_audio_idx(44100), 44100);
     /// assert_eq!((ZERO - Time::from_micros(1000000)).as_audio_idx(44100), -44100);
     /// ```
-    pub fn as_audio_idx(&self, sample_rate: u32) -> i64 {
-        (self.0 as f64 / 1e6 * sample_rate as f64) as i64
+    pub fn as_audio_idx(&self, sample_rate: u32) -> isize {
+        (self.0 as f64 / 1e6 * sample_rate as f64) as isize
     }
 
     pub fn from_audio_idx(idx: i64, sample_rate: u32) -> Diff {

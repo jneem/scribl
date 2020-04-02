@@ -298,25 +298,19 @@ impl AppState {
         match self.action {
             CurrentAction::Scanning(cur_vel) if cur_vel != velocity => {
                 self.action = CurrentAction::Scanning(velocity);
-                if velocity > 0.0 {
-                    // TODO: support negative
-                    self.audio.borrow_mut().set_velocity(velocity);
-                } else {
-                    self.audio.borrow_mut().stop_playing();
-                }
+                // The audio player doesn't support changing direction midstream, and our UI should
+                // never put us in that situation, because they have to lift one arrow key before
+                // pressing the other.
+                assert_eq!(velocity.signum(), cur_vel.signum());
+                self.audio.borrow_mut().set_velocity(velocity);
             }
             CurrentAction::Idle => {
                 self.action = CurrentAction::Scanning(velocity);
-                if velocity > 0.0 {
-                    // TODO: support negative
-                    self.audio.borrow_mut().start_playing(
-                        self.scribble.audio_snippets.clone(),
-                        self.time,
-                        velocity,
-                    );
-                } else {
-                    self.audio.borrow_mut().stop_playing();
-                }
+                self.audio.borrow_mut().start_playing(
+                    self.scribble.audio_snippets.clone(),
+                    self.time,
+                    velocity,
+                );
             }
             _ => {
                 log::warn!("not scanning, because I'm busy doing {:?}", self.action);

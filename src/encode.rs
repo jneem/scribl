@@ -150,7 +150,7 @@ fn create_pipeline(
         frame_counter += 1;
     };
 
-    let mut cursor = Cursor::new(&audio, time::ZERO);
+    let mut cursor = Cursor::new(&audio, time::ZERO, crate::audio::SAMPLE_RATE, 1.0);
     let mut time_us = 0i64;
     let need_audio_data = move |src: &gst_app::AppSrc, size_hint: u32| {
         if cursor.is_finished() {
