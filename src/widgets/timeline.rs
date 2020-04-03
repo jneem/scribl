@@ -337,7 +337,7 @@ impl Widget<AppState> for Timeline {
             Event::MouseMoved(ev) => {
                 // On click-and-drag, we change the time with the drag.
                 if ctx.is_active() {
-                    data.time = Time::from_micros((ev.pos.x / PIXELS_PER_USEC) as i64);
+                    data.time = Time::from_micros((ev.pos.x.max(0.0) / PIXELS_PER_USEC) as i64);
                     ctx.request_paint();
                 }
             }

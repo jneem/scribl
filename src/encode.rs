@@ -1,5 +1,5 @@
 use cairo::{Context, Format, ImageSurface};
-use druid::{Affine, RenderContext};
+use druid::{Affine, Data, RenderContext};
 use gst::prelude::*;
 use gstreamer as gst;
 use gstreamer_app as gst_app;
@@ -7,6 +7,7 @@ use gstreamer_audio as gst_audio;
 use gstreamer_video as gst_video;
 use piet_cairo::CairoRenderContext;
 use std::path::Path;
+use std::sync::mpsc::Sender;
 
 use crate::audio::{AudioSnippetsData, Cursor, SAMPLE_RATE};
 use crate::data::SnippetsData;
@@ -44,6 +45,7 @@ fn create_pipeline(
     audio: AudioSnippetsData,
     frame_count: u32,
     path: &Path,
+    progress: Sender<EncodingStatus>,
 ) -> Result<gst::Pipeline, anyhow::Error> {
     let pipeline = gst::Pipeline::new(None);
     let v_src = gst::ElementFactory::make("appsrc", Some("source"))?;
@@ -97,6 +99,11 @@ fn create_pipeline(
     // This will be called every time the video source requests data.
     let mut frame_counter = 0;
     let need_data = move |src: &gst_app::AppSrc, _: u32| {
+        // We track encoding progress by the fraction of video frames that we've rendered.  This
+        // isn't perfect (what with gstreamer's buffering, etc.), but it's probably good enough.
+        let _ = progress.send(EncodingStatus::Encoding(
+            frame_counter as f64 / frame_count as f64,
+        ));
         if frame_counter == frame_count {
             let _ = src.end_of_stream();
             return;
@@ -214,7 +221,23 @@ fn main_loop(pipeline: gst::Pipeline) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-pub fn do_encode_blocking(cmd: crate::cmd::ExportCmd) -> Result<(), anyhow::Error> {
+#[derive(Clone, Data, Debug)]
+pub enum EncodingStatus {
+    /// We are still encoding, and the parameter is the progress (0.0 at the beginning, 1.0 at the
+    /// end).
+    Encoding(f64),
+
+    /// We finished encoding successfully.
+    Finished,
+
+    /// Encoding aborted with an error.
+    Error(String),
+}
+
+pub fn do_encode_blocking(
+    cmd: crate::cmd::ExportCmd,
+    progress: Sender<EncodingStatus>,
+) -> Result<(), anyhow::Error> {
     let end_time = cmd
         .snippets
         .last_draw_time()
@@ -226,11 +249,15 @@ pub fn do_encode_blocking(cmd: crate::cmd::ExportCmd) -> Result<(), anyhow::Erro
         cmd.audio_snippets,
         num_frames as u32,
         &cmd.filename,
+        progress,
     )?)
 }
 
-pub fn encode_blocking(cmd: crate::cmd::ExportCmd) {
-    if let Err(e) = do_encode_blocking(cmd) {
+pub fn encode_blocking(cmd: crate::cmd::ExportCmd, progress: Sender<EncodingStatus>) {
+    if let Err(e) = do_encode_blocking(cmd, progress.clone()) {
         log::error!("error {}", e);
+        let _ = progress.send(EncodingStatus::Error(e.to_string()));
+    } else {
+        let _ = progress.send(EncodingStatus::Finished);
     }
 }

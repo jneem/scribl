@@ -4,18 +4,25 @@ use druid::{
     LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt,
 };
 use std::convert::TryInto;
+use std::sync::mpsc::{channel, Receiver};
 use std::time::Instant;
 
 use crate::audio::AudioSnippetData;
 use crate::cmd;
 use crate::data::{AppState, CurrentAction, ScribbleState, SnippetData};
+use crate::encode::EncodingStatus;
 use crate::time::{Diff, Time};
 use crate::undo::UndoStack;
-use crate::widgets::{DrawingPane, Palette, Timeline, ToggleButton};
+use crate::widgets::{make_status_bar, DrawingPane, Palette, Timeline, ToggleButton};
 use crate::FRAME_TIME;
 
 pub struct Root {
     timer_id: TimerToken,
+
+    // While we're encoding a file, this receives status updates from the encoder. Each update
+    // is a number between 0.0 and 1.0 (where 1.0 means finished).
+    encoder_progress: Option<Receiver<EncodingStatus>>,
+
     inner: Box<dyn Widget<AppState>>,
     undo: UndoStack,
 }
@@ -62,10 +69,12 @@ impl Root {
             .with_spacer(10.0)
             .with_flex_child(drawing, 1.0)
             .with_spacer(10.0)
-            .with_child(Timeline::default());
+            .with_child(Timeline::default())
+            .with_child(make_status_bar());
 
         Root {
             inner: Box::new(Align::centered(column)),
+            encoder_progress: None,
             timer_id: TimerToken::INVALID,
             undo: UndoStack::new(scribble_state),
         }
@@ -211,9 +220,18 @@ impl Root {
             }
             cmd::EXPORT => {
                 let export = cmd.get_object::<cmd::ExportCmd>().expect("API violation");
-                // TODO: get some thread handle or something, for notifications etc.
-                let export = export.clone();
-                std::thread::spawn(move || crate::encode::encode_blocking(export));
+
+                if self.encoder_progress.is_some() {
+                    log::warn!("already encoding, not doing another one");
+                } else {
+                    let (tx, rx) = channel();
+                    let export = export.clone();
+                    // Encoder progress will be read whenever the timer ticks, and when encoding
+                    // is done this will be set back to `None`.
+                    self.encoder_progress = Some(rx);
+                    data.encoding_status = None;
+                    std::thread::spawn(move || crate::encode::encode_blocking(export, tx));
+                }
 
                 true
             }
@@ -283,6 +301,20 @@ impl Widget<AppState> for Root {
             Event::KeyUp(ev) => self.handle_key_up(ctx, ev, data, env),
             Event::Timer(tok) => {
                 if tok == &self.timer_id {
+                    // Handle any status reports from the encoder.
+                    if let Some(ref rx) = self.encoder_progress {
+                        if let Some(status) = rx.try_iter().last() {
+                            data.encoding_status = Some(status);
+                        }
+                        match data.encoding_status {
+                            Some(EncodingStatus::Finished) | Some(EncodingStatus::Error(_)) => {
+                                self.encoder_progress = None;
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    // Update the current time, if necessary.
                     let frame_time_us: i64 = if data.action.is_ticking() {
                         FRAME_TIME.as_micros().try_into().unwrap()
                     } else if let CurrentAction::Scanning(speed) = data.action {

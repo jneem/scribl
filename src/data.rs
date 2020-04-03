@@ -189,6 +189,8 @@ pub struct AppState {
 
     pub palette: crate::widgets::PaletteData,
 
+    pub encoding_status: Option<crate::encode::EncodingStatus>,
+
     #[data(ignore)]
     pub save_path: Option<PathBuf>,
 }
@@ -203,6 +205,7 @@ impl Default for AppState {
             line_thickness: 5.0,
             audio: Arc::new(RefCell::new(AudioState::init())),
             palette: crate::widgets::PaletteData::default(),
+            encoding_status: None,
 
             save_path: None,
         }
