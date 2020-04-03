@@ -10,12 +10,12 @@ use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData};
 use crate::data::{AppState, SnippetData, SnippetsData};
 use crate::snippet::SnippetId;
 use crate::snippet_layout;
-use crate::time::{Diff, Time};
+use crate::time::{self, Diff, Time};
 
 const SNIPPET_HEIGHT: f64 = 20.0;
 const MIN_NUM_ROWS: usize = 5;
 const MIN_WIDTH: f64 = 100.0;
-const PIXELS_PER_USEC: f64 = 40.0 / 1000000.0;
+const PIXELS_PER_USEC: f64 = 100.0 / 1000000.0;
 const TIMELINE_BG_COLOR: Color = Color::rgb8(0x66, 0x66, 0x66);
 const CURSOR_COLOR: Color = Color::rgb8(0x10, 0x10, 0xaa);
 const CURSOR_THICKNESS: f64 = 3.0;
@@ -26,6 +26,7 @@ const AUDIO_SNIPPET_COLOR: Color = Color::rgb8(0x55, 0x55, 0xBB);
 const SNIPPET_STROKE_COLOR: Color = Color::rgb8(0x22, 0x22, 0x22);
 const SNIPPET_HOVER_STROKE_COLOR: Color = Color::rgb8(0, 0, 0);
 const SNIPPET_STROKE_THICKNESS: f64 = 1.0;
+const SNIPPET_WAVEFORM_COLOR: Color = Color::rgb8(0x33, 0x33, 0x99);
 
 const MARK_COLOR: Color = Color::rgb8(0x33, 0x33, 0x99);
 
@@ -35,6 +36,10 @@ fn pix_width(d: Diff) -> f64 {
 
 fn pix_x(t: Time) -> f64 {
     t.as_micros() as f64 * PIXELS_PER_USEC
+}
+
+fn x_pix(p: f64) -> Time {
+    Time::from_micros((p / PIXELS_PER_USEC) as i64)
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
@@ -94,6 +99,72 @@ impl Snip {
                         .collect()
                 } else {
                     Vec::new()
+                }
+            }
+        }
+    }
+
+    fn render_interior(&self, ctx: &mut PaintCtx, width: f64, height: f64) {
+        match self {
+            Snip::Audio(data) => {
+                // Converts a PCM sample to a y coordinate.
+                let audio_height = |x: i16| -> f64 {
+                    let sign = x.signum();
+                    let x = x.abs() as f64 + 1.0;
+
+                    // This gives a height between -1 and 1.
+                    let y = sign as f64 * x.log(std::i16::MAX as f64);
+                    // Now convert it to graphical y coord.
+                    height / 2.0 + height * y / 2.0
+                };
+
+                let pix_per_sample = 5;
+                let buf = data.buf();
+                // TODO: shouldn't be recalculating this every paint.
+                let mut mins = Vec::with_capacity((width as usize) / pix_per_sample);
+                let mut path = BezPath::new();
+                path.move_to((0.0, 0.0));
+                for p in (0..(width as usize)).step_by(pix_per_sample) {
+                    let start_time = x_pix(p as f64) - time::ZERO;
+                    let end_time = x_pix((p + pix_per_sample) as f64) - time::ZERO;
+                    let start_idx = (start_time.as_audio_idx(crate::audio::SAMPLE_RATE) as usize)
+                        .min(buf.len());
+                    let end_idx =
+                        (end_time.as_audio_idx(crate::audio::SAMPLE_RATE) as usize).min(buf.len());
+                    let sub_buf = &buf[start_idx..end_idx];
+
+                    let max = sub_buf.iter().cloned().max().unwrap_or(0);
+                    path.line_to((p as f64, audio_height(max)));
+                    mins.push((p, sub_buf.iter().cloned().min().unwrap_or(0)));
+                }
+
+                for (p, min) in mins.into_iter().rev() {
+                    path.line_to((p as f64, audio_height(min)));
+                }
+                path.close_path();
+                ctx.fill(path, &SNIPPET_WAVEFORM_COLOR);
+            }
+            Snip::Drawing(data) => {
+                // Draw the span of the edited region.
+                let end = data.end_time().unwrap_or(Time::from_micros(std::i64::MAX));
+                let last_draw_time = data.last_draw_time().min(end);
+                let draw_width = pix_width(last_draw_time - data.start_time());
+                let color = Color::rgb8(0, 0, 0);
+                ctx.stroke(
+                    Line::new((0.0, height / 2.0), (draw_width, height / 2.0)),
+                    &color,
+                    1.0,
+                );
+                ctx.stroke(
+                    Line::new((draw_width, height * 0.25), (draw_width, height * 0.75)),
+                    &color,
+                    1.0,
+                );
+
+                // Draw the lerp lines.
+                for t in self.inner_lerp_times() {
+                    let x = pix_width(t);
+                    ctx.stroke(Line::new((x, 0.0), (x, height)), &SNIPPET_STROKE_COLOR, 1.0);
                 }
             }
         }
@@ -174,7 +245,6 @@ impl TimelineSnippet {
     }
 }
 
-#[allow(unused_variables)]
 impl Widget<AppState> for TimelineSnippet {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut AppState, _env: &Env) {
         match event {
@@ -249,27 +319,7 @@ impl Widget<AppState> for TimelineSnippet {
         ctx.fill(&rect, &fill_color);
         ctx.stroke(&rect, stroke_color, SNIPPET_STROKE_THICKNESS);
 
-        // Draw the span of the edited region.
-        if let Some(last_draw_time) = snippet.last_draw_time() {
-            let draw_width = pix_width(last_draw_time - snippet.start_time());
-            let color = Color::rgb8(0, 0, 0);
-            ctx.stroke(
-                Line::new((0.0, height / 2.0), (draw_width, height / 2.0)),
-                &color,
-                1.0,
-            );
-            ctx.stroke(
-                Line::new((draw_width, height * 0.25), (draw_width, height * 0.75)),
-                &color,
-                1.0,
-            );
-        }
-
-        // Draw the lerp lines.
-        for t in snippet.inner_lerp_times() {
-            let x = pix_width(t);
-            ctx.stroke(Line::new((x, 0.0), (x, height)), &SNIPPET_STROKE_COLOR, 1.0);
-        }
+        snippet.render_interior(ctx, width, height);
     }
 }
 
