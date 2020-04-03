@@ -1,4 +1,4 @@
-use druid::widget::{Align, Flex};
+use druid::widget::{Align, Flex, Scroll, Split};
 use druid::{
     BoxConstraints, Color, Command, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx, LifeCycle,
     LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt,
@@ -64,12 +64,18 @@ impl Root {
             .with_child(play_button)
             .with_flex_spacer(1.0)
             .with_child(palette.lens(AppState::palette));
+        let timeline = Scroll::new(Timeline::default()).expand_width();
+        /*
+        TODO: Issues with split:
+         - can't get timeline to use up the vertical space it has available
+         - can't set a reasonable default initial size
+        let drawing_and_timeline = Split::horizontal(drawing.padding(10.0), timeline)
+            .draggable(true).debug_paint_layout();
+        */
         let column = Flex::column()
             .with_child(button_row)
-            .with_spacer(10.0)
-            .with_flex_child(drawing, 1.0)
-            .with_spacer(10.0)
-            .with_child(Timeline::default())
+            .with_flex_child(drawing.padding(10.0), 1.0)
+            .with_child(timeline)
             .with_child(make_status_bar());
 
         Root {

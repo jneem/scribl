@@ -399,7 +399,16 @@ impl Widget<AppState> for Timeline {
         }
 
         let height = SNIPPET_HEIGHT * self.num_rows as f64;
-        bc.constrain((std::f64::INFINITY, height))
+        let last_draw_time = data.scribble.snippets.last_draw_time();
+        let last_audio_time = data.scribble.audio_snippets.end_time();
+        let time_width = last_draw_time
+            .max(last_audio_time)
+            .max(data.time)
+            // TODO: this is to work around some issues with filling the scrollable area.
+            .max(Time::from_micros(59_000_000))
+            + Diff::from_micros(1_000_000);
+        let width = pix_x(time_width);
+        bc.constrain((width, height))
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &AppState, env: &Env) {
