@@ -33,6 +33,9 @@ pub const CHOOSE_COLOR: Selector = Selector::new("scribble.choose-color");
 /// Exports the current animation as a video. The argument is an [`ExportCmd`].
 pub const EXPORT: Selector = Selector::new("scribble.export");
 
+/// Scrolls the timeline so that a particular time is visible. The argument is a [`Time`].
+pub const SCROLL_TO_TIME: Selector = Selector::new("scribble.scroll-to-time");
+
 pub struct TruncateSnippetCmd {
     pub id: SnippetId,
     pub time: Time,

@@ -90,6 +90,20 @@ impl std::ops::Add<Diff> for Time {
     }
 }
 
+impl std::ops::Add<Diff> for Diff {
+    type Output = Diff;
+    fn add(self, rhs: Diff) -> Diff {
+        Diff(self.0.saturating_add(rhs.0))
+    }
+}
+
+impl std::ops::Sub<Diff> for Diff {
+    type Output = Diff;
+    fn sub(self, rhs: Diff) -> Diff {
+        Diff(self.0.saturating_sub(rhs.0))
+    }
+}
+
 impl std::ops::SubAssign<Diff> for Time {
     fn sub_assign(&mut self, rhs: Diff) {
         *self = *self - rhs;

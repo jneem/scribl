@@ -1,7 +1,7 @@
-use druid::widget::{Align, Flex, Scroll, Split};
+use druid::widget::{Align, Flex};
 use druid::{
     BoxConstraints, Color, Command, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx, LifeCycle,
-    LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt,
+    LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt, WidgetId,
 };
 use std::convert::TryInto;
 use std::sync::mpsc::{channel, Receiver};
@@ -13,11 +13,12 @@ use crate::data::{AppState, CurrentAction, ScribbleState, SnippetData};
 use crate::encode::EncodingStatus;
 use crate::time::{Diff, Time};
 use crate::undo::UndoStack;
-use crate::widgets::{make_status_bar, DrawingPane, Palette, Timeline, ToggleButton};
+use crate::widgets::{make_status_bar, make_timeline, DrawingPane, Palette, ToggleButton};
 use crate::FRAME_TIME;
 
 pub struct Root {
     timer_id: TimerToken,
+    timeline_id: WidgetId,
 
     // While we're encoding a file, this receives status updates from the encoder. Each update
     // is a number between 0.0 and 1.0 (where 1.0 means finished).
@@ -64,7 +65,8 @@ impl Root {
             .with_child(play_button)
             .with_flex_spacer(1.0)
             .with_child(palette.lens(AppState::palette));
-        let timeline = Scroll::new(Timeline::default()).expand_width();
+        let timeline_id = WidgetId::next();
+        let timeline = make_timeline().with_id(timeline_id);
         /*
         TODO: Issues with split:
          - can't get timeline to use up the vertical space it has available
@@ -82,6 +84,7 @@ impl Root {
             inner: Box::new(Align::centered(column)),
             encoder_progress: None,
             timer_id: TimerToken::INVALID,
+            timeline_id,
             undo: UndoStack::new(scribble_state),
         }
     }
@@ -329,6 +332,12 @@ impl Widget<AppState> for Root {
                     } else {
                         0
                     };
+                    if frame_time_us != 0 {
+                        ctx.submit_command(
+                            Command::new(cmd::SCROLL_TO_TIME, data.time),
+                            self.timeline_id,
+                        );
+                    }
                     data.time += Diff::from_micros(frame_time_us);
                 }
 

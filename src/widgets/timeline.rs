@@ -1,8 +1,9 @@
-use druid::kurbo::{BezPath, Line};
+use druid::kurbo::{BezPath, Line, Vec2};
 use druid::theme;
+use druid::widget::{Controller, Scroll};
 use druid::{
     BoxConstraints, Color, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
-    PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetPod,
+    PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetExt, WidgetPod,
 };
 use std::collections::HashMap;
 
@@ -32,6 +33,10 @@ const MARK_COLOR: Color = Color::rgb8(0x33, 0x33, 0x99);
 
 fn pix_width(d: Diff) -> f64 {
     d.as_micros() as f64 * PIXELS_PER_USEC
+}
+
+fn width_pix(p: f64) -> Diff {
+    Diff::from_micros((p / PIXELS_PER_USEC) as i64)
 }
 
 fn pix_x(t: Time) -> f64 {
@@ -171,15 +176,64 @@ impl Snip {
     }
 }
 
-pub struct Timeline {
+struct TimelineInner {
     snippet_offsets: HashMap<Id, usize>,
     num_rows: usize,
     children: HashMap<Id, WidgetPod<AppState, TimelineSnippet>>,
 }
 
-impl Default for Timeline {
-    fn default() -> Timeline {
-        Timeline {
+pub fn make_timeline() -> impl Widget<AppState> {
+    let inner = TimelineInner::default();
+    Scroll::new(inner).controller(TimelineScrollController)
+}
+
+struct TimelineScrollController;
+
+impl<W: Widget<AppState>> Controller<AppState, Scroll<AppState, W>> for TimelineScrollController {
+    fn event(
+        &mut self,
+        child: &mut Scroll<AppState, W>,
+        ctx: &mut EventCtx,
+        ev: &Event,
+        data: &mut AppState,
+        env: &Env,
+    ) {
+        match ev {
+            Event::Command(c) => {
+                match c.selector {
+                    crate::cmd::SCROLL_TO_TIME => {
+                        let size = ctx.size();
+                        let time = *c.get_object::<Time>().expect("API violation");
+                        let min_vis_time = x_pix(child.offset().x);
+                        let max_vis_time = x_pix(child.offset().x + size.width);
+
+                        // Scroll this much past the cursor, so it isn't right at the edge.
+                        let padding = Diff::from_micros(1_000_000).min(width_pix(size.width / 4.0));
+
+                        let delta_x = if time + padding > max_vis_time {
+                            pix_width(time - max_vis_time + padding)
+                        } else if time - padding < min_vis_time {
+                            dbg!(time - min_vis_time - padding);
+                            pix_width(time - min_vis_time - padding)
+                        } else {
+                            0.0
+                        };
+
+                        child.scroll(Vec2 { x: delta_x, y: 0.0 }, size);
+                        ctx.set_handled();
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        child.event(ctx, ev, data, env);
+    }
+}
+
+impl Default for TimelineInner {
+    fn default() -> TimelineInner {
+        TimelineInner {
             snippet_offsets: HashMap::new(),
             num_rows: MIN_NUM_ROWS,
             children: HashMap::new(),
@@ -187,7 +241,7 @@ impl Default for Timeline {
     }
 }
 
-impl Timeline {
+impl TimelineInner {
     fn recalculate_snippet_offsets(&mut self, snippets: &SnippetsData, audio: &AudioSnippetsData) {
         let draw_offsets = snippet_layout::layout(snippets.snippets());
         let audio_offsets = snippet_layout::layout(audio.snippets());
@@ -323,7 +377,7 @@ impl Widget<AppState> for TimelineSnippet {
     }
 }
 
-impl Widget<AppState> for Timeline {
+impl Widget<AppState> for TimelineInner {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut AppState, env: &Env) {
         match event {
             Event::WindowConnected => {
