@@ -339,9 +339,10 @@ impl Widget<AppState> for Root {
                         );
                     }
                     data.time += Diff::from_micros(frame_time_us);
-                }
 
-                self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);
+                    self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);
+                    ctx.set_handled();
+                }
             }
             _ => {
                 self.inner.event(ctx, event, data, env);
