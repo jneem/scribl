@@ -1,14 +1,15 @@
 use druid::{AppDelegate, Command, DelegateCtx, Env, FileInfo, Target, WindowId};
 use std::fs;
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use crate::cmd;
 use crate::data::{AppState, SaveFileData};
 
 #[derive(Debug, Default)]
 pub struct Delegate;
 
-fn save_file(path: &Path, data: &AppState) -> std::io::Result<()> {
+fn save_file<S: serde::Serialize>(path: &Path, data: &S) -> std::io::Result<()> {
     let tmp_file_name = format!(
         "{}.savefile",
         path.file_name()
@@ -22,7 +23,7 @@ fn save_file(path: &Path, data: &AppState) -> std::io::Result<()> {
     }
 
     let tmp_file = File::create(&tmp_path)?;
-    serde_json::to_writer(tmp_file, &data.scribble.to_save_file()).unwrap(); // FIXME: unwrap
+    serde_json::to_writer(tmp_file, data).unwrap(); // FIXME: unwrap
     fs::rename(tmp_path, path)?;
 
     Ok(())
@@ -45,12 +46,22 @@ impl AppDelegate<AppState> for Delegate {
     ) -> bool {
         match cmd.selector {
             druid::commands::SAVE_FILE => {
-                dbg!(target);
                 if let Ok(info) = cmd.get_object::<FileInfo>() {
                     data.save_path = Some(info.path().to_owned());
                 }
                 let path = data.save_path.as_ref().expect("no save path");
-                if let Err(e) = save_file(path, data) {
+                if let Err(e) = save_file(path, &data.scribble.to_save_file()) {
+                    log::error!("error saving: '{}'", e);
+                }
+                ctx.submit_command(
+                    Command::new(druid::commands::SET_MENU, crate::menus::make_menu(data)),
+                    *target,
+                );
+                false
+            }
+            cmd::SAVE_ANIM_ONLY => {
+                let path = cmd.get_object::<PathBuf>().expect("API violation");
+                if let Err(e) = save_file(&path, &data.scribble.snippets) {
                     log::error!("error saving: '{}'", e);
                 }
                 ctx.submit_command(

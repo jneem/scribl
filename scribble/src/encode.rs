@@ -9,9 +9,9 @@ use piet_cairo::CairoRenderContext;
 use std::path::Path;
 use std::sync::mpsc::Sender;
 
+use scribble_curves::{time, SnippetsData, Time};
+
 use crate::audio::{AudioSnippetsData, Cursor, SAMPLE_RATE};
-use crate::data::SnippetsData;
-use crate::time::{self, Time};
 
 const FPS: f64 = 30.0;
 const WIDTH: i32 = 800;

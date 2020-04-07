@@ -10,11 +10,8 @@ mod audio;
 mod cmd;
 mod data;
 mod encode;
-mod lerp;
 mod menus;
-mod snippet;
 mod snippet_layout;
-mod time;
 mod undo;
 mod widgets;
 

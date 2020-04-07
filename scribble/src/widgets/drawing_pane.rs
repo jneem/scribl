@@ -1,7 +1,9 @@
 use druid::{
-    Affine, BoxConstraints, Color, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
+    Affine, BoxConstraints, Color, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
     PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
 };
+
+use scribble_curves::{SnippetsCursor, SnippetsData};
 
 use crate::data::{AppState, CurrentAction};
 
@@ -16,6 +18,7 @@ const PAPER_BDY_THICKNESS: f64 = 1.0;
 
 pub struct DrawingPane {
     paper_rect: Rect,
+    cursor: Option<SnippetsCursor>,
 }
 
 impl DrawingPane {
@@ -36,6 +39,7 @@ impl Default for DrawingPane {
     fn default() -> DrawingPane {
         DrawingPane {
             paper_rect: Rect::ZERO,
+            cursor: None,
         }
     }
 }
@@ -89,6 +93,11 @@ impl Widget<AppState> for DrawingPane {
 
     fn update(&mut self, ctx: &mut UpdateCtx, old_data: &AppState, data: &AppState, _env: &Env) {
         if old_data.time != data.time {
+            ctx.request_paint();
+        }
+
+        if !old_data.scribble.snippets.same(&data.scribble.snippets) {
+            self.cursor = Some(data.scribble.snippets.create_cursor(data.time));
             ctx.request_paint();
         }
     }

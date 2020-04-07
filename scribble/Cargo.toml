@@ -1,0 +1,24 @@
+[package]
+name = "scribble"
+version = "0.1.0"
+authors = ["Joe Neeman <joeneeman@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+scribble_curves = { path = "../curves/" }
+druid = { git = "https://github.com/xi-editor/druid.git" }
+log = "0.4.8"
+cpal = "0.11.0"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0.48"
+cairo-rs = "0.8.1"
+piet-cairo = "0.0.11"
+gstreamer = "0.15.4"
+gstreamer-video = "0.15.3"
+gstreamer-app = "0.15.4"
+anyhow = "1.0.27"
+gstreamer-audio = "0.15.3"
+thiserror = "1.0.14"
+rnnoise-c = "0.1.0"

@@ -4,14 +4,16 @@ use druid::{
     LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt, WidgetId,
 };
 use std::convert::TryInto;
+use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 use std::time::Instant;
 
+use scribble_curves::{Diff, Time, SnippetData};
+
 use crate::audio::AudioSnippetData;
 use crate::cmd;
-use crate::data::{AppState, CurrentAction, ScribbleState, SnippetData};
+use crate::data::{AppState, CurrentAction, ScribbleState};
 use crate::encode::EncodingStatus;
-use crate::time::{Diff, Time};
 use crate::undo::UndoStack;
 use crate::widgets::{make_status_bar, make_timeline, DrawingPane, Palette, ToggleButton};
 use crate::FRAME_TIME;
@@ -128,6 +130,13 @@ impl Root {
                 }
                 ctx.set_handled();
             }
+            KeyCode::KeyA => ctx.submit_command(
+                Command::new(
+                    cmd::SAVE_ANIM_ONLY,
+                    PathBuf::from("anim_only.json"),
+                ),
+                None,
+            ),
             KeyCode::KeyE => ctx.submit_command(
                 Command::new(
                     cmd::EXPORT,

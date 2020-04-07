@@ -1,16 +1,12 @@
-use druid::kurbo::PathEl;
 use druid::{Color, Data, Lens, Point};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::BTreeMap;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use scribble_curves::{time, Curve, SnippetId, SnippetData, SnippetsData, Time};
+
 use crate::audio::{AudioSnippetData, AudioSnippetsData, AudioState};
-use crate::lerp::Lerp;
-use crate::snippet::{Curve, SnippetId};
-use crate::time::Time;
 use crate::widgets::ToggleButtonState;
 
 #[derive(Clone, Data)]
@@ -43,114 +39,6 @@ impl CurveInProgressData {
 
     pub fn into_curve(self) -> Curve {
         self.inner.replace(Curve::new(&Color::rgb8(0, 0, 0), 1.0))
-    }
-}
-
-#[derive(Deserialize, Serialize, Data, Debug, Clone)]
-pub struct SnippetData {
-    pub curve: Arc<Curve>,
-    pub lerp: Arc<Lerp>,
-
-    /// Controls whether the snippet ever ends. If `None`, it means that the snippet will remain
-    /// forever; if `Some(t)` it means that the snippet will disappear at time `t`.
-    pub end: Option<Time>,
-}
-
-#[derive(Deserialize, Serialize, Clone, Data, Default)]
-pub struct SnippetsData {
-    last_id: u64,
-    snippets: Arc<BTreeMap<SnippetId, SnippetData>>,
-}
-
-impl SnippetData {
-    // TODO: this panics if the curve is empty
-    pub fn new(curve: Curve) -> SnippetData {
-        let start = *curve.times.first().unwrap();
-        let end = *curve.times.last().unwrap();
-        let lerp = Lerp::identity(start, end);
-        SnippetData {
-            curve: Arc::new(curve),
-            lerp: Arc::new(lerp),
-            end: None,
-        }
-    }
-
-    pub fn path_at(&self, time: Time) -> &[PathEl] {
-        if let Some(end) = self.end {
-            if time > end {
-                return &[];
-            }
-        }
-
-        let local_time = self.lerp.unlerp_clamped(time);
-        let idx = match self.curve.times.binary_search(&local_time) {
-            Ok(i) => i + 1,
-            Err(i) => i,
-        };
-        &self.curve.path.elements()[..idx]
-    }
-
-    pub fn start_time(&self) -> Time {
-        self.lerp.first()
-    }
-
-    /// The last time at which the snippet changed.
-    pub fn last_draw_time(&self) -> Time {
-        self.lerp.last()
-    }
-
-    /// The time at which this snippet should disappear.
-    pub fn end_time(&self) -> Option<Time> {
-        self.end
-    }
-}
-
-impl SnippetsData {
-    pub fn with_new_snippet(&self, snip: SnippetData) -> (SnippetsData, SnippetId) {
-        let mut ret = self.clone();
-        ret.last_id += 1;
-        let id = SnippetId(ret.last_id);
-        let mut map = ret.snippets.deref().clone();
-        map.insert(id, snip);
-        ret.snippets = Arc::new(map);
-        (ret, id)
-    }
-
-    pub fn with_replacement_snippet(&self, id: SnippetId, new: SnippetData) -> SnippetsData {
-        assert!(id.0 <= self.last_id);
-        let mut ret = self.clone();
-        let mut map = ret.snippets.deref().clone();
-        map.insert(id, new);
-        ret.snippets = Arc::new(map);
-        ret
-    }
-
-    pub fn with_new_lerp(&self, id: SnippetId, lerp_from: Time, lerp_to: Time) -> SnippetsData {
-        let mut snip = self.snippet(id).clone();
-        snip.lerp = Arc::new(snip.lerp.with_new_lerp(lerp_from, lerp_to));
-        self.with_replacement_snippet(id, snip)
-    }
-
-    pub fn with_truncated_snippet(&self, id: SnippetId, time: Time) -> SnippetsData {
-        let mut snip = self.snippet(id).clone();
-        snip.end = Some(time);
-        self.with_replacement_snippet(id, snip)
-    }
-
-    pub fn snippet(&self, id: SnippetId) -> &SnippetData {
-        self.snippets.get(&id).unwrap()
-    }
-
-    pub fn snippets(&self) -> impl Iterator<Item = (SnippetId, &SnippetData)> {
-        self.snippets.iter().map(|(k, v)| (*k, v))
-    }
-
-    pub fn last_draw_time(&self) -> Time {
-        self.snippets
-            .values()
-            .map(|snip| snip.last_draw_time())
-            .max()
-            .unwrap_or(crate::time::ZERO)
     }
 }
 
@@ -200,7 +88,7 @@ impl Default for AppState {
         AppState {
             scribble: ScribbleState::default(),
             action: CurrentAction::Idle,
-            time: crate::time::ZERO,
+            time: time::ZERO,
             mouse_down: false,
             line_thickness: 5.0,
             audio: Arc::new(RefCell::new(AudioState::init())),

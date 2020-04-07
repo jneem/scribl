@@ -11,7 +11,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use crate::time::{self, Time};
+use scribble_curves::{time, Time};
 
 pub struct AudioState {
     event_loop: Arc<cpal::EventLoop>,

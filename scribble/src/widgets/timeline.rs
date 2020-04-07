@@ -7,11 +7,11 @@ use druid::{
 };
 use std::collections::HashMap;
 
+use scribble_curves::{time, Diff, Time, SnippetData, SnippetId, SnippetsData};
+
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData};
-use crate::data::{AppState, SnippetData, SnippetsData};
-use crate::snippet::SnippetId;
+use crate::data::AppState;
 use crate::snippet_layout;
-use crate::time::{self, Diff, Time};
 
 const SNIPPET_HEIGHT: f64 = 20.0;
 const MIN_NUM_ROWS: usize = 5;
@@ -213,7 +213,6 @@ impl<W: Widget<AppState>> Controller<AppState, Scroll<AppState, W>> for Timeline
                         let delta_x = if time + padding > max_vis_time {
                             pix_width(time - max_vis_time + padding)
                         } else if time - padding < min_vis_time {
-                            dbg!(time - min_vis_time - padding);
                             pix_width(time - min_vis_time - padding)
                         } else {
                             0.0

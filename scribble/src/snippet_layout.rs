@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
+use scribble_curves::{time, SnippetData, SnippetId, Time};
+
 use crate::audio::{AudioSnippetData, AudioSnippetId};
-use crate::data::SnippetData;
-use crate::snippet::SnippetId;
-use crate::time::{self, Time};
 
 pub struct SnippetBounds<T> {
     start: Time,

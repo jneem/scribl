@@ -1409,9 +1409,24 @@ dependencies = [
  "log",
  "piet-cairo",
  "rnnoise-c",
+ "scribble_curves",
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "scribble_curves"
+version = "0.1.0"
+dependencies = [
+ "cairo-rs",
+ "druid",
+ "druid-shell",
+ "gstreamer",
+ "piet-cairo",
+ "piet-common",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

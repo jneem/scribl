@@ -55,7 +55,7 @@ impl Diff {
     /// # Examples
     ///
     /// ```
-    /// use scribble::time::{ZERO, Time};
+    /// use scribble_curves::time::{ZERO, Time};
     /// assert_eq!((ZERO - ZERO).as_audio_idx(44100), 0);
     /// assert_eq!((Time::from_micros(1000000) - ZERO).as_audio_idx(44100), 44100);
     /// assert_eq!((ZERO - Time::from_micros(1000000)).as_audio_idx(44100), -44100);

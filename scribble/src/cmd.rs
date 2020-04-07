@@ -1,10 +1,9 @@
 use druid::Selector;
 use std::path::PathBuf;
 
+use scribble_curves::{SnippetId, SnippetsData, Time};
+
 use crate::audio::AudioSnippetsData;
-use crate::data::SnippetsData;
-use crate::snippet::SnippetId;
-use crate::time::Time;
 
 /// Adds a new snippet. The argument is a [`SnippetData`].
 pub const ADD_SNIPPET: Selector = Selector::new("scribble.add-snippet");
@@ -35,6 +34,10 @@ pub const EXPORT: Selector = Selector::new("scribble.export");
 
 /// Scrolls the timeline so that a particular time is visible. The argument is a [`Time`].
 pub const SCROLL_TO_TIME: Selector = Selector::new("scribble.scroll-to-time");
+
+/// For testing only: serialize only the animation, and not the sounds. The argument is a
+/// [`PathBuf`].
+pub const SAVE_ANIM_ONLY: Selector = Selector::new("scribble.save-anim-only");
 
 pub struct TruncateSnippetCmd {
     pub id: SnippetId,
