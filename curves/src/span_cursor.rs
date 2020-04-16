@@ -35,7 +35,8 @@ enum MaybeInfinite<T> {
 
 impl<T> From<Option<T>> for MaybeInfinite<T> {
     fn from(x: Option<T>) -> MaybeInfinite<T> {
-        x.map(|y| MaybeInfinite::Finite(y)).unwrap_or(MaybeInfinite::Infinite)
+        x.map(|y| MaybeInfinite::Finite(y))
+            .unwrap_or(MaybeInfinite::Infinite)
     }
 }
 
@@ -66,7 +67,7 @@ impl<T: Ord + Copy, Id: Copy + Eq + Hash> Span<T, Id> {
 }
 
 impl<T: Ord + Copy, Id: Copy + Eq + Hash> Cursor<T, Id> {
-    pub fn new<I: IntoIterator<Item=Span<T, Id>>>(spans: I, time: T) -> Cursor<T, Id> {
+    pub fn new<I: IntoIterator<Item = Span<T, Id>>>(spans: I, time: T) -> Cursor<T, Id> {
         let mut spans_start: Vec<_> = spans.into_iter().collect();
         let mut spans_end = spans_start.clone();
         spans_start.sort_by_key(|sp| sp.start);
@@ -83,8 +84,14 @@ impl<T: Ord + Copy, Id: Copy + Eq + Hash> Cursor<T, Id> {
             }
         }
 
-        let next_start_idx = spans_start.iter().position(|sp| sp.start > time).unwrap_or(spans_start.len());
-        let next_end_idx = spans_end.iter().position(|sp| MaybeInfinite::from(sp.end) < time).unwrap_or(spans_end.len());
+        let next_start_idx = spans_start
+            .iter()
+            .position(|sp| sp.start > time)
+            .unwrap_or(spans_start.len());
+        let next_end_idx = spans_end
+            .iter()
+            .position(|sp| MaybeInfinite::from(sp.end) < time)
+            .unwrap_or(spans_end.len());
 
         Cursor {
             spans_start,
@@ -104,7 +111,8 @@ impl<T: Ord + Copy, Id: Copy + Eq + Hash> Cursor<T, Id> {
         if time > self.current {
             while self.next_start_idx < self.spans_start.len() {
                 if self.spans_start[self.next_start_idx].start <= time {
-                    self.active.push(self.spans_start[self.next_start_idx].clone());
+                    self.active
+                        .push(self.spans_start[self.next_start_idx].clone());
                     self.next_start_idx += 1;
                 } else {
                     break;
@@ -150,7 +158,8 @@ mod tests {
     use super::*;
 
     fn cursor(intervals: &[(i32, Option<i32>)], init_time: i32) -> Cursor<i32, usize> {
-        let spans = intervals.iter()
+        let spans = intervals
+            .iter()
             .enumerate()
             .map(|(id, &(start, end))| Span { start, end, id });
 
@@ -159,9 +168,7 @@ mod tests {
 
     #[test]
     fn forward() {
-        let ids = |spans: &[Span<_,_>]| {
-            spans.iter().map(|sp| sp.id).collect::<Vec<_>>()
-        };
+        let ids = |spans: &[Span<_, _>]| spans.iter().map(|sp| sp.id).collect::<Vec<_>>();
 
         let mut c = cursor(&[(0, None), (3, Some(5)), (4, Some(10)), (5, Some(7))], 0);
         assert_eq!(ids(&c.active), vec![0]);

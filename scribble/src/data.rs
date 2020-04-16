@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use scribble_curves::{time, Curve, SnippetId, SnippetData, SnippetsData, Time};
+use scribble_curves::{time, Curve, LineStyle, SnippetData, SnippetId, SnippetsData, Time};
 
 use crate::audio::{AudioSnippetData, AudioSnippetsData, AudioState};
 use crate::widgets::ToggleButtonState;
@@ -14,22 +14,35 @@ pub struct CurveInProgressData {
     #[data(ignore)]
     inner: Arc<RefCell<Curve>>,
 
+    #[data(ignore)]
+    cur_style: LineStyle,
+
     // Data comparison is done using only the curve's length, since the length grows with
     // every modification.
     len: usize,
 }
 
 impl CurveInProgressData {
-    pub fn new(color: &Color, thickness: f64) -> CurveInProgressData {
+    pub fn new(color: Color, thickness: f64) -> CurveInProgressData {
         CurveInProgressData {
-            inner: Arc::new(RefCell::new(Curve::new(color, thickness))),
+            inner: Arc::new(RefCell::new(Curve::new())),
+            cur_style: LineStyle {
+                color: color,
+                thickness,
+            },
             len: 0,
         }
     }
 
     pub fn move_to(&mut self, p: Point, time: Time) {
-        self.inner.borrow_mut().move_to(p, time);
+        self.inner
+            .borrow_mut()
+            .move_to(p, time, self.cur_style.clone());
         self.len += 1;
+    }
+
+    pub fn set_color(&mut self, c: Color) {
+        self.cur_style.color = c;
     }
 
     pub fn line_to(&mut self, p: Point, time: Time) {
@@ -38,7 +51,7 @@ impl CurveInProgressData {
     }
 
     pub fn into_curve(self) -> Curve {
-        self.inner.replace(Curve::new(&Color::rgb8(0, 0, 0), 1.0))
+        self.inner.replace(Curve::new())
     }
 }
 
@@ -125,7 +138,7 @@ impl AppState {
         assert_eq!(self.action, CurrentAction::Idle);
 
         self.scribble.new_snippet = Some(CurveInProgressData::new(
-            self.palette.selected_color(),
+            self.palette.selected_color().clone(),
             self.line_thickness,
         ));
         self.action = CurrentAction::WaitingToRecord;

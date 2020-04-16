@@ -1,3 +1,4 @@
+use druid::kurbo::Circle;
 use druid::widget::prelude::*;
 use druid::{Color, Command, Data, Lens, Point, Rect, RenderContext, WidgetPod};
 use std::sync::Arc;
@@ -103,6 +104,12 @@ impl Widget<Color> for PaletteElement {
         ctx.fill(&rect, &self.color);
         if is_selected {
             ctx.stroke(&rect, &Color::BLACK, 1.0);
+
+            // Draw a dot in the middle of the element, with the inverted color.
+            let inv_color = !self.color.as_rgba_u32() | 0xFF;
+            let inv_color = Color::from_rgba32_u32(inv_color);
+            let dot = Circle::new(rect.center(), rect.width() / 6.0);
+            ctx.fill(dot, &inv_color);
         } else if ctx.is_hot() {
             ctx.stroke(&rect, &Color::WHITE, 1.0);
         }

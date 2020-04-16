@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 use std::time::Instant;
 
-use scribble_curves::{Diff, Time, SnippetData};
+use scribble_curves::{Diff, SnippetData, Time};
 
 use crate::audio::AudioSnippetData;
 use crate::cmd;
@@ -131,10 +131,7 @@ impl Root {
                 ctx.set_handled();
             }
             KeyCode::KeyA => ctx.submit_command(
-                Command::new(
-                    cmd::SAVE_ANIM_ONLY,
-                    PathBuf::from("anim_only.json"),
-                ),
+                Command::new(cmd::SAVE_ANIM_ONLY, PathBuf::from("anim_only.json")),
                 None,
             ),
             KeyCode::KeyE => ctx.submit_command(
@@ -234,6 +231,9 @@ impl Root {
             cmd::CHOOSE_COLOR => {
                 let color = cmd.get_object::<Color>().expect("API violation");
                 data.palette.select(color);
+                if let Some(ref mut curve) = data.scribble.new_snippet {
+                    curve.set_color(color.clone());
+                }
                 true
             }
             cmd::EXPORT => {

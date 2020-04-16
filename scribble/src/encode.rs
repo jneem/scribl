@@ -118,15 +118,10 @@ fn create_pipeline(
             let mut cr = Context::new(&surface);
             let mut ctx = CairoRenderContext::new(&mut cr);
             ctx.clear(druid::Color::WHITE);
-            // This is copy-paste from DrawingPane. TODO: factor rendering out somewhere
             ctx.with_save(|ctx| {
                 ctx.transform(Affine::scale(WIDTH as f64 / 1600.0)); // FIXME
-                for (_, curve) in anim.snippets() {
-                    ctx.stroke(
-                        curve.path_at(time),
-                        &curve.curve.color,
-                        curve.curve.thickness,
-                    );
+                for (_, snip) in anim.snippets() {
+                    snip.render(ctx, time);
                 }
                 Ok(())
             })

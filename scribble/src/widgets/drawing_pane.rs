@@ -3,7 +3,7 @@ use druid::{
     PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
 };
 
-use scribble_curves::{SnippetsCursor, SnippetsData};
+use scribble_curves::SnippetsCursor;
 
 use crate::data::{AppState, CurrentAction};
 
@@ -126,29 +126,17 @@ impl Widget<AppState> for DrawingPane {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &AppState, _env: &Env) {
-        use druid::piet::{LineCap, LineJoin, StrokeStyle};
-
         ctx.stroke(&self.paper_rect, &PAPER_BDY_COLOR, PAPER_BDY_THICKNESS);
         ctx.fill(&self.paper_rect, &PAPER_COLOR);
-        let style = StrokeStyle {
-            line_join: Some(LineJoin::Round),
-            line_cap: Some(LineCap::Round),
-            ..StrokeStyle::new()
-        };
 
         ctx.with_save(|ctx| {
             ctx.transform(self.from_image_coords());
             if let Some(curve) = data.scribble.curve_in_progress() {
-                ctx.stroke_styled(&curve.path, &curve.color, curve.thickness, &style);
+                curve.render(ctx.render_ctx, data.time);
             }
 
-            for (_, curve) in data.scribble.snippets.snippets() {
-                ctx.stroke_styled(
-                    curve.path_at(data.time),
-                    &curve.curve.color,
-                    curve.curve.thickness,
-                    &style,
-                );
+            for (_, snip) in data.scribble.snippets.snippets() {
+                snip.render(ctx.render_ctx, data.time);
             }
         });
     }

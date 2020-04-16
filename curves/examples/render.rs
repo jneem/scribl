@@ -28,16 +28,11 @@ fn main() {
         let mut ctx = CairoRenderContext::new(&mut cr);
         ctx.clear(Color::WHITE);
         for (_, curve) in snippets.snippets() {
-            ctx.stroke(
-                curve.path_at(time),
-                &curve.curve.color,
-                curve.curve.thickness,
-            );
+            curve.render(&mut ctx, time);
         }
         ctx.finish().unwrap();
         surface.flush();
 
         time += diff;
     }
-
 }

@@ -1,5 +1,5 @@
-use druid::kurbo::{BezPath, Point, PathEl, Shape, Rect};
-use druid::piet::{StrokeStyle, LineCap, LineJoin};
+use druid::kurbo::{BezPath, PathEl, Point};
+use druid::piet::{LineCap, LineJoin, StrokeStyle};
 use druid::{Color, Data, RenderContext};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
@@ -9,8 +9,8 @@ pub mod lerp;
 pub mod span_cursor;
 pub mod time;
 
-pub use crate::time::{Diff, Time};
 pub use crate::lerp::Lerp;
+pub use crate::time::{Diff, Time};
 
 mod serde_path {
     use super::*;
@@ -39,13 +39,24 @@ mod serde_color {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct LineStyle {
+    #[serde(with = "serde_color")]
+    pub color: Color,
+    pub thickness: f64,
+}
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Curve {
     #[serde(with = "serde_path")]
     pub path: BezPath,
     pub times: Vec<Time>,
-    #[serde(with = "serde_color")]
-    pub color: Color,
-    pub thickness: f64,
+
+    // The path can consist of many different "segments" (continuous parts between
+    // pen lifts). This contains the first index of each segment, which will always
+    // point to a `MoveTo`.
+    seg_boundaries: Vec<usize>,
+
+    // Each segment can have a different style.
+    styles: Vec<LineStyle>,
 }
 
 /// Snippets are identified by unique ids.
@@ -53,26 +64,72 @@ pub struct Curve {
 pub struct SnippetId(u64);
 
 impl Curve {
-    pub fn new(color: &Color, thickness: f64) -> Curve {
+    pub fn new() -> Curve {
         Curve {
             path: BezPath::new(),
             times: Vec::new(),
-            color: color.clone(),
-            thickness,
+            seg_boundaries: Vec::new(),
+            styles: Vec::new(),
         }
     }
-}
 
-impl Curve {
     pub fn line_to(&mut self, p: Point, time: Time) {
         self.path.line_to(p);
         self.times.push(time);
     }
 
-    pub fn move_to(&mut self, p: Point, time: Time) {
+    pub fn move_to(&mut self, p: Point, time: Time, style: LineStyle) {
+        self.seg_boundaries.push(self.path.elements().len());
+        self.styles.push(style);
         self.path.move_to(p);
         self.times.push(time);
     }
+
+    pub fn segments_until<'a>(&'a self, time: Time) -> impl Iterator<Item = Segment<'a>> + 'a {
+        let end_idx = match self.times.binary_search(&time) {
+            Ok(i) => i + 1,
+            Err(i) => i,
+        };
+        self.seg_boundaries
+            .iter()
+            .enumerate()
+            .map(move |(idx, &seg_start_idx)| {
+                let seg_end_idx = self
+                    .seg_boundaries
+                    .get(idx + 1)
+                    .cloned()
+                    .unwrap_or(end_idx)
+                    .min(end_idx)
+                    .max(seg_start_idx);
+                Segment {
+                    style: self.styles[idx].clone(),
+                    elements: &self.path.elements()[seg_start_idx..seg_end_idx],
+                }
+            })
+            .take_while(|seg| !seg.elements.is_empty())
+    }
+
+    pub fn render(&self, ctx: &mut impl RenderContext, time: Time) {
+        let stroke_style = StrokeStyle {
+            line_join: Some(LineJoin::Round),
+            line_cap: Some(LineCap::Round),
+            ..StrokeStyle::new()
+        };
+
+        for seg in self.segments_until(time) {
+            ctx.stroke_styled(
+                &seg.elements,
+                &seg.style.color,
+                seg.style.thickness,
+                &stroke_style,
+            );
+        }
+    }
+}
+
+pub struct Segment<'a> {
+    pub elements: &'a [PathEl],
+    pub style: LineStyle,
 }
 
 #[derive(Deserialize, Serialize, Data, Debug, Clone)]
@@ -106,13 +163,16 @@ impl SnippetData {
         }
     }
 
-    pub fn path_at(&self, time: Time) -> &[PathEl] {
+    pub fn visible_at(&self, time: Time) -> bool {
         if let Some(end) = self.end {
-            if time > end {
-                return &[];
-            }
+            self.start_time() <= time && time <= end
+        } else {
+            self.start_time() <= time
         }
-        if time < self.start_time() {
+    }
+
+    pub fn path_at(&self, time: Time) -> &[PathEl] {
+        if !self.visible_at(time) {
             return &[];
         }
 
@@ -163,18 +223,11 @@ impl SnippetData {
     }
 
     pub fn render(&self, ctx: &mut impl RenderContext, time: Time) {
-        let style = StrokeStyle {
-            line_join: Some(LineJoin::Round),
-            line_cap: Some(LineCap::Round),
-            ..StrokeStyle::new()
-        };
-
-        ctx.stroke_styled(
-            self.path_at(time),
-            &self.curve.color,
-            self.curve.thickness,
-            &style,
-        );
+        if !self.visible_at(time) {
+            return;
+        }
+        let local_time = self.lerp.unlerp_clamped(time);
+        self.curve.render(ctx, local_time);
     }
 }
 
@@ -227,12 +280,20 @@ impl SnippetsData {
     }
 
     pub fn create_cursor(&self, time: Time) -> SnippetsCursor {
-        let spans = self.snippets.iter()
-            .map(|(id, snip)| span_cursor::Span { start: snip.start_time(), end: snip.end_time(), id: *id });
+        let spans = self.snippets.iter().map(|(id, snip)| span_cursor::Span {
+            start: snip.start_time(),
+            end: snip.end_time(),
+            id: *id,
+        });
         span_cursor::Cursor::new(spans, time)
     }
 
-    pub fn render_changes(&self, ctx: &mut impl RenderContext, cursor: &mut SnippetsCursor, new_time: Time) {
+    pub fn render_changes(
+        &self,
+        ctx: &mut impl RenderContext,
+        cursor: &mut SnippetsCursor,
+        new_time: Time,
+    ) {
         //let old_time = cursor.current();
         let active_snips = cursor.advance_to(new_time);
 
@@ -256,5 +317,47 @@ impl SnippetsData {
             let snip = &self.snippets[&id];
             snip.render(ctx, new_time);
         }
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    #[test]
+    fn segments() {
+        let mut c = Curve::new();
+        let style = LineStyle {
+            color: Color::WHITE,
+            thickness: 1.0,
+        };
+        c.move_to(Point::new(0.0, 0.0), Time::from_micros(1), style.clone());
+        c.line_to(Point::new(1.0, 1.0), Time::from_micros(2));
+        c.line_to(Point::new(2.0, 2.0), Time::from_micros(3));
+
+        c.move_to(Point::new(4.0, 0.0), Time::from_micros(6), style.clone());
+        c.line_to(Point::new(1.0, 1.0), Time::from_micros(7));
+        c.line_to(Point::new(2.0, 2.0), Time::from_micros(8));
+
+        assert_eq!(c.segments_until(Time::from_micros(0)).count(), 0);
+        assert_eq!(c.segments_until(Time::from_micros(1)).count(), 1);
+        assert_eq!(
+            1,
+            c.segments_until(Time::from_micros(1))
+                .next()
+                .unwrap()
+                .elements
+                .len(),
+        );
+
+        assert_eq!(c.segments_until(Time::from_micros(6)).count(), 2);
+        assert_eq!(
+            c.segments_until(Time::from_micros(6))
+                .next()
+                .unwrap()
+                .elements
+                .len(),
+            3
+        );
     }
 }

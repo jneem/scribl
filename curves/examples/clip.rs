@@ -2,16 +2,23 @@ use std::any::Any;
 
 use std::time::Instant;
 
-use piet_common::kurbo::{Line, Rect, Point, Vec2, Affine};
-use piet_common::{Color, FontBuilder, Piet, RenderContext, Text, TextLayoutBuilder};
+use piet_common::kurbo::{Affine, Point, Rect, Vec2};
+use piet_common::{Color, Piet, RenderContext};
 
 use druid_shell::{Application, KeyEvent, WinHandler, WindowBuilder, WindowHandle};
 
-use scribble_curves::{Curve, SnippetData, Time};
+use scribble_curves::{Curve, LineStyle, SnippetData, Time};
 
 fn make_curve(center: Point) -> Curve {
-    let mut ret = Curve::new(&FG_COLOR, 0.2);
-    ret.move_to(center, Time::from_micros(0));
+    let mut ret = Curve::new();
+    ret.move_to(
+        center,
+        Time::from_micros(0),
+        LineStyle {
+            color: FG_COLOR.clone(),
+            thickness: 0.2,
+        },
+    );
     for i in 0..100_000 {
         let time = Time::from_micros(i * 100);
         let t = i as f64 * 2.0 * std::f64::consts::PI / 1000.0;
@@ -62,7 +69,8 @@ impl WinHandler for PerfTest {
                 snip.render(&mut *piet, anim_time);
             }
             Ok(())
-        }).unwrap();
+        })
+        .unwrap();
         println!("{}ms", (now - self.last_time).as_millis());
         self.last_time = now;
 
@@ -103,9 +111,11 @@ fn main() {
     let mut builder = WindowBuilder::new();
     let perf_test = PerfTest {
         size: Default::default(),
-        snippets: vec![make_snippet(Point::ZERO),
+        snippets: vec![
+            make_snippet(Point::ZERO),
             make_snippet(Point::new(100.0, 20.0)),
-            make_snippet(Point::new(-100.0, -100.0))],
+            make_snippet(Point::new(-100.0, -100.0)),
+        ],
         handle: Default::default(),
         last_time: Instant::now(),
         start_time: Instant::now(),
@@ -117,4 +127,3 @@ fn main() {
     window.show();
     app.run();
 }
-
