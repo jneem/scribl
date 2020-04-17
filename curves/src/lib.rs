@@ -1,4 +1,4 @@
-use druid::kurbo::{BezPath, PathEl, Point};
+use druid::kurbo::{BezPath, ParamCurve, PathEl, PathSeg, Point};
 use druid::piet::{LineCap, LineJoin, StrokeStyle};
 use druid::{Color, Data, RenderContext};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub mod lerp;
+pub mod simplify;
+pub mod smooth;
 pub mod span_cursor;
 pub mod time;
 
@@ -85,11 +87,7 @@ impl Curve {
         self.times.push(time);
     }
 
-    pub fn segments_until<'a>(&'a self, time: Time) -> impl Iterator<Item = Segment<'a>> + 'a {
-        let end_idx = match self.times.binary_search(&time) {
-            Ok(i) => i + 1,
-            Err(i) => i,
-        };
+    pub fn segments<'a>(&'a self) -> impl Iterator<Item = Segment<'a>> + 'a {
         self.seg_boundaries
             .iter()
             .enumerate()
@@ -98,15 +96,47 @@ impl Curve {
                     .seg_boundaries
                     .get(idx + 1)
                     .cloned()
-                    .unwrap_or(end_idx)
-                    .min(end_idx)
-                    .max(seg_start_idx);
+                    .unwrap_or(self.times.len());
                 Segment {
                     style: self.styles[idx].clone(),
                     elements: &self.path.elements()[seg_start_idx..seg_end_idx],
+                    times: &self.times[seg_start_idx..seg_end_idx],
                 }
             })
-            .take_while(|seg| !seg.elements.is_empty())
+    }
+
+    // TODO: test this. Maybe add a check_consistent function to check the invariants of `Curve`
+    pub fn smoothed(&self, distance_threshold: f64, angle_threshold: f64) -> Curve {
+        let mut ret = Curve::new();
+        let mut path = Vec::new();
+        if self.times.is_empty() {
+            return ret;
+        }
+
+        for seg in self.segments() {
+            let points: Vec<Point> = seg
+                .elements
+                .iter()
+                .map(|el| match el {
+                    PathEl::MoveTo(p) => *p,
+                    PathEl::LineTo(p) => *p,
+                    _ => panic!("can only smooth polylines"),
+                })
+                .collect();
+
+            let point_indices = crate::simplify::simplify(&points, distance_threshold);
+            let times: Vec<Time> = point_indices.iter().map(|&i| seg.times[i]).collect();
+            let points: Vec<Point> = point_indices.iter().map(|&i| points[i]).collect();
+            let curve = crate::smooth::smooth(&points, 0.4, angle_threshold);
+
+            ret.times.extend_from_slice(&times);
+            ret.styles.push(seg.style);
+            ret.seg_boundaries.push(path.len());
+            path.extend_from_slice(curve.elements());
+        }
+
+        ret.path = BezPath::from_vec(path);
+        ret
     }
 
     pub fn render(&self, ctx: &mut impl RenderContext, time: Time) {
@@ -116,19 +146,63 @@ impl Curve {
             ..StrokeStyle::new()
         };
 
-        for seg in self.segments_until(time) {
-            ctx.stroke_styled(
-                &seg.elements,
-                &seg.style.color,
-                seg.style.thickness,
-                &stroke_style,
-            );
+        for seg in self.segments() {
+            if let Some(last) = seg.times.last() {
+                if *last <= time {
+                    ctx.stroke_styled(
+                        &seg.elements,
+                        &seg.style.color,
+                        seg.style.thickness,
+                        &stroke_style,
+                    );
+                } else {
+                    // For the last segment, we construct a new segment whose end time is interpolated
+                    // up until the current time.
+                    // Note: we're doing some unnecessary cloning, just for the convenience of being able
+                    // to use BezPath::get_seg.
+                    let c = BezPath::from_vec(seg.elements.to_owned());
+                    let t_idx = seg.times.binary_search(&time).unwrap_or_else(|i| i);
+
+                    if t_idx == 0 {
+                        // If we only contain the first element of the curve, it's a MoveTo and doesn't
+                        // need to be drawn anyway.
+                        break;
+                    }
+
+                    // We already checked that time > seg.times.last().
+                    assert!(t_idx < seg.times.len());
+                    assert_eq!(seg.times.len(), seg.elements.len());
+                    let last_seg = c.get_seg(t_idx).unwrap();
+                    // The indexing is ok, because we already checked t_idx > 0.
+                    let prev_t = seg.times[t_idx - 1].as_micros() as f64;
+                    let next_t = seg.times[t_idx].as_micros() as f64;
+                    let t_ratio = if prev_t == next_t {
+                        1.0
+                    } else {
+                        (time.as_micros() as f64 - prev_t) / (next_t - prev_t)
+                    };
+                    let last_seg = last_seg.subsegment(0.0..t_ratio);
+
+                    let mut c: BezPath = c.iter().take(t_idx).collect();
+                    match last_seg {
+                        PathSeg::Cubic(x) => c.curve_to(x.p1, x.p2, x.p3),
+                        PathSeg::Quad(x) => c.quad_to(x.p1, x.p2),
+                        PathSeg::Line(x) => c.line_to(x.p1),
+                    }
+
+                    ctx.stroke_styled(&c, &seg.style.color, seg.style.thickness, &stroke_style);
+
+                    // We've already rendered the segment spanning the ending time, so we're done.
+                    break;
+                }
+            }
         }
     }
 }
 
 pub struct Segment<'a> {
     pub elements: &'a [PathEl],
+    pub times: &'a [Time],
     pub style: LineStyle,
 }
 
@@ -339,25 +413,6 @@ pub mod tests {
         c.line_to(Point::new(1.0, 1.0), Time::from_micros(7));
         c.line_to(Point::new(2.0, 2.0), Time::from_micros(8));
 
-        assert_eq!(c.segments_until(Time::from_micros(0)).count(), 0);
-        assert_eq!(c.segments_until(Time::from_micros(1)).count(), 1);
-        assert_eq!(
-            1,
-            c.segments_until(Time::from_micros(1))
-                .next()
-                .unwrap()
-                .elements
-                .len(),
-        );
-
-        assert_eq!(c.segments_until(Time::from_micros(6)).count(), 2);
-        assert_eq!(
-            c.segments_until(Time::from_micros(6))
-                .next()
-                .unwrap()
-                .elements
-                .len(),
-            3
-        );
+        assert_eq!(c.segments().count(), 2);
     }
 }

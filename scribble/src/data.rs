@@ -50,8 +50,11 @@ impl CurveInProgressData {
         self.len += 1;
     }
 
-    pub fn into_curve(self) -> Curve {
-        self.inner.replace(Curve::new())
+    // TODO: we don't need to consume self, so we could reuse the old curve's memory
+    pub fn into_curve(self, distance_threshold: f64, angle_threshold: f64) -> Curve {
+        self.inner
+            .borrow()
+            .smoothed(distance_threshold, angle_threshold)
     }
 }
 
@@ -157,7 +160,7 @@ impl AppState {
             .take()
             .expect("Tried to stop recording, but we hadn't started!");
         self.action = CurrentAction::Idle;
-        let new_curve = new_snippet.into_curve();
+        let new_curve = new_snippet.into_curve(1.0, std::f64::consts::PI / 4.0);
         if !new_curve.path.elements().is_empty() {
             Some(SnippetData::new(new_curve))
         } else {
