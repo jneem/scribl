@@ -11,7 +11,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use scribble_curves::{time, Time};
+use scribble_curves::{time, Diff, Time};
 
 pub struct AudioState {
     event_loop: Arc<cpal::EventLoop>,
@@ -40,17 +40,18 @@ pub struct AudioSnippetsData {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct BufCursor {
+struct CursorBuffer {
     id: AudioSnippetId,
-    idx: isize,
+    start: isize,
     len: isize,
 }
 
 #[derive(Default, Debug)]
 pub struct Cursor {
-    all_cursors: Vec<BufCursor>,
+    cur_idx: isize,
+    all_cursors: Vec<CursorBuffer>,
     next_cursor: usize,
-    active_cursors: Vec<BufCursor>,
+    active_cursors: Vec<CursorBuffer>,
 }
 
 #[derive(Debug)]
@@ -108,34 +109,38 @@ impl<'a> std::ops::Index<isize> for Buf<'a> {
     }
 }
 
-impl BufCursor {
-    fn new(id: AudioSnippetId, snip: &AudioSnippetData, time: Time, sample_rate: u32) -> BufCursor {
-        BufCursor {
+impl CursorBuffer {
+    fn new(
+        id: AudioSnippetId,
+        snip: &AudioSnippetData,
+        time: Time,
+        sample_rate: u32,
+    ) -> CursorBuffer {
+        CursorBuffer {
             id,
-            idx: (time - snip.start_time).as_audio_idx(sample_rate),
+            start: (time - snip.start_time).as_audio_idx(sample_rate),
             len: snip.buf.len() as isize,
         }
     }
 
-    fn get_buf_and_advance<'a>(&mut self, data: &'a AudioSnippetsData, amount: isize) -> Buf<'a> {
+    fn get_buf<'a>(&mut self, data: &'a AudioSnippetsData, from: isize, amount: isize) -> Buf<'a> {
         if amount > 0 {
-            debug_assert!(self.idx < self.len);
-            debug_assert!(self.idx + amount > 0);
+            debug_assert!(self.start + from < self.len);
+            debug_assert!(self.start + from + amount > 0);
         } else {
-            debug_assert!(self.idx > 0);
-            debug_assert!(self.len + amount < self.len);
+            debug_assert!(self.start + from > 0);
+            debug_assert!(self.start + from + amount < self.len);
         }
 
         let snip = data.snippet(self.id);
         let (start, end) = if amount > 0 {
-            (self.idx, self.idx + amount)
+            (self.start + from, self.start + from + amount)
         } else {
-            (self.idx + amount, self.idx)
+            (self.start + from + amount, self.start + from)
         };
         let offset = (-start).max(0) as usize;
         let start = start.max(0) as usize;
         let end = (end as usize).min(snip.buf.len());
-        self.idx += amount;
 
         Buf {
             inner: &snip.buf[start..end],
@@ -145,27 +150,27 @@ impl BufCursor {
         }
     }
 
-    fn will_be_active(&self, len: isize) -> bool {
-        if len > 0 {
-            self.idx + len > 0
+    fn is_active(&self, from: isize, amount: isize) -> bool {
+        if amount > 0 {
+            self.start + from + amount > 0
         } else {
-            self.idx + len < self.len
+            self.start + from + amount < self.len
         }
     }
 
-    fn is_finished(&self, direction: isize) -> bool {
+    fn is_finished(&self, idx: isize, direction: isize) -> bool {
         if direction >= 0 {
-            self.idx >= self.len
+            self.start + idx >= self.len
         } else {
-            self.idx < 0
+            self.start + idx < 0
         }
     }
 
-    fn is_started(&self, direction: isize) -> bool {
+    fn is_started(&self, idx: isize, direction: isize) -> bool {
         if direction >= 0 {
-            self.idx >= 0
+            self.start + idx >= 0
         } else {
-            self.idx < self.len
+            self.start + idx < self.len
         }
     }
 }
@@ -181,29 +186,30 @@ impl Cursor {
         let direction = velocity.signum() as isize;
 
         for (&id, snip) in snippets.snippets.iter() {
-            cursors.push(BufCursor::new(id, snip, time, sample_rate));
+            cursors.push(CursorBuffer::new(id, snip, time, sample_rate));
         }
         // TODO: explain
         if direction == 1 {
-            cursors.sort_by_key(|c| -c.idx);
+            cursors.sort_by_key(|c| -c.start);
         } else {
-            cursors.sort_by_key(|c| c.idx - c.len);
+            cursors.sort_by_key(|c| c.start - c.len);
         }
 
         let mut active = Vec::new();
         let mut next_cursor = cursors.len();
         for (c_idx, c) in cursors.iter().enumerate() {
-            if !c.is_started(direction) {
+            if !c.is_started(0, direction) {
                 next_cursor = c_idx;
                 break;
             }
 
-            if !c.is_finished(direction) {
+            if !c.is_finished(0, direction) {
                 active.push(*c);
             }
         }
 
         Cursor {
+            cur_idx: 0,
             all_cursors: cursors,
             next_cursor,
             active_cursors: active,
@@ -222,7 +228,7 @@ impl Cursor {
         let direction = speed_factor.signum() as isize;
 
         while self.next_cursor < self.all_cursors.len() {
-            if self.all_cursors[self.next_cursor].will_be_active(input_amount) {
+            if self.all_cursors[self.next_cursor].is_active(self.cur_idx, input_amount) {
                 self.active_cursors.push(self.all_cursors[self.next_cursor]);
                 self.next_cursor += 1;
             } else {
@@ -232,7 +238,7 @@ impl Cursor {
 
         // TODO: we do a lot of rounding here. Maybe we should work with floats internally?
         for c in &mut self.active_cursors {
-            let in_buf = c.get_buf_and_advance(data, input_amount);
+            let in_buf = c.get_buf(data, self.cur_idx, input_amount);
 
             // TODO: we could be more efficient here, because we're potentially copying a bunch of
             // zeros from in_buf, whereas we could simply skip to the non-zero section. But it's
@@ -242,7 +248,10 @@ impl Cursor {
                 *out_sample += in_buf.interpolated_index(in_idx);
             }
         }
-        self.active_cursors.retain(|c| !c.is_finished(direction));
+        self.cur_idx += input_amount;
+        let cur_idx = self.cur_idx;
+        self.active_cursors
+            .retain(|c| !c.is_finished(cur_idx, direction));
     }
 
     pub fn is_finished(&self) -> bool {
@@ -308,18 +317,7 @@ impl AudioState {
         let mut buf = Vec::new();
         std::mem::swap(&mut input_data.buf, &mut buf);
 
-        // Denoise the recorded audio. (TODO: we could do this in real-time as it records)
-        // RNNoise like the input to be a multiple of FRAME_SIZE;
-        let fs = rnnoise_c::FRAME_SIZE;
-        let new_size = ((buf.len() + (fs - 1)) / fs) * fs;
-        buf.resize(new_size, 0);
-        let float_buf: Vec<f32> = buf.iter().map(|x| *x as f32).collect();
-        let mut out_buf = vec![0.0f32; float_buf.len()];
-        let mut state = rnnoise_c::DenoiseState::new();
-        for (in_chunk, out_chunk) in float_buf.chunks_exact(fs).zip(out_buf.chunks_exact_mut(fs)) {
-            state.process_frame_mut(in_chunk, out_chunk);
-        }
-        out_buf.into_iter().map(|x| x as i16).collect()
+        process_audio(buf)
     }
 
     pub fn start_playing(&mut self, data: AudioSnippetsData, time: Time, velocity: f64) {
@@ -454,6 +452,38 @@ fn audio_thread(
     });
 }
 
+// Processes the recorded audio.
+// - Truncates the beginning and end a little bit (to remove to sound of the user pressing the keyboard to start/stop recording).
+// - Runs noise removal using RNNoise.
+const TRUNCATION_LEN: Diff = Diff::from_micros(100_000);
+fn process_audio(mut buf: Vec<i16>) -> Vec<i16> {
+    let trunc_samples = TRUNCATION_LEN.as_audio_idx(SAMPLE_RATE) as usize;
+    if buf.len() <= 2 * trunc_samples {
+        return Vec::new();
+    }
+    // We truncate the end of the buffer, but instead of truncating the beginning we set
+    // it all to zero (because if we truncate it, it messes with the synchronization between
+    // audio and animation).
+    for i in 0..trunc_samples {
+        buf[i] = 0;
+    }
+
+    // Truncate the buffer and convert it to f32 also, since that's what RNNoise wants.
+    let buf_end = buf.len() - trunc_samples;
+    let mut float_buf: Vec<f32> = buf[..buf_end].iter().map(|x| *x as f32).collect();
+
+    // RNNoise likes the input to be a multiple of FRAME_SIZE.
+    let fs = rnnoise_c::FRAME_SIZE;
+    let new_size = ((float_buf.len() + (fs - 1)) / fs) * fs;
+    float_buf.resize(new_size, 0.0);
+    let mut out_buf = vec![0.0f32; float_buf.len()];
+    let mut state = rnnoise_c::DenoiseState::new();
+    for (in_chunk, out_chunk) in float_buf.chunks_exact(fs).zip(out_buf.chunks_exact_mut(fs)) {
+        state.process_frame_mut(in_chunk, out_chunk);
+    }
+    out_buf.into_iter().map(|x| x as i16).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -550,5 +580,21 @@ mod tests {
         let mut out = vec![0; 10];
         c.mix_to_buffer(&snips, &mut out[..], -1.0);
         assert_eq!(out, vec![0, 0, 0, 0, 0, 3, 2, 4, 2, 1]);
+    }
+
+    #[test]
+    fn non_overlapping_snippets() {
+        let snips = snips!(
+            0 => &[1, 2, 3],
+            12 => &[1, 2, 3]
+        );
+        let mut c = Cursor::new(&snips, time::ZERO, 1, 1.0);
+        let mut out = vec![0; 10];
+        c.mix_to_buffer(&snips, &mut out[..], 1.0);
+        assert_eq!(out, vec![1, 2, 3, 0, 0, 0, 0, 0, 0, 0]);
+
+        let mut out = vec![0; 10];
+        c.mix_to_buffer(&snips, &mut out[..], 1.0);
+        assert_eq!(out, vec![0, 0, 1, 2, 3, 0, 0, 0, 0, 0]);
     }
 }

@@ -68,11 +68,11 @@ impl Diff {
         Diff(((idx as f64) * 1e6 / sample_rate as f64) as i64)
     }
 
-    pub fn as_micros(self) -> i64 {
+    pub const fn as_micros(self) -> i64 {
         self.0
     }
 
-    pub fn from_micros(us: i64) -> Diff {
+    pub const fn from_micros(us: i64) -> Diff {
         Diff(us)
     }
 }
