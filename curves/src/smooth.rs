@@ -1,5 +1,15 @@
 use druid::kurbo::{BezPath, Point};
 
+/// Turns a polyline into a (mostly) smooth curve through the same points.
+///
+/// Points are dividing into "smooth" or "non-smooth" points depending on the angle between the
+/// incoming and outgoing edges: if the angle is less than `angle_threshold` radians,
+/// the point will not be smoothed, and the tangents of the returned curve will be in the same
+/// direction as the original tangents.
+///
+/// The magnitude of the tangents of the returned curve are controlled by `tangent_factor`.
+/// A reasonable default value is `0.4`; higher values will smooth out the corners more, but
+/// at the cost of possibly introducing loops or other artifacts between them.
 pub fn smooth(points: &[Point], tangent_factor: f64, angle_threshold: f64) -> BezPath {
     let mut ret = BezPath::new();
 
@@ -67,7 +77,7 @@ mod tests {
     fn test_angle_threshold() {
         let almost_straight: Vec<Point> =
             vec![(0.0, 0.0).into(), (1.0, 0.01).into(), (2.0, 0.0).into()];
-        let smoothed = smooth(&almost_straight, 0.25, std::f64::consts::PI / 12.0);
+        let smoothed = smooth(&almost_straight, 0.25, std::f64::consts::PI / 2.0);
         let seg_before = smoothed.get_seg(1).unwrap();
         let seg_after = smoothed.get_seg(2).unwrap();
         if let (PathSeg::Cubic(c0), PathSeg::Cubic(c1)) = (seg_before, seg_after) {
@@ -77,7 +87,7 @@ mod tests {
         }
 
         let right_angle: Vec<Point> = vec![(0.0, 0.0).into(), (1.0, 0.0).into(), (1.0, 1.0).into()];
-        let smoothed = smooth(&right_angle, 0.25, std::f64::consts::PI / 12.0);
+        let smoothed = smooth(&right_angle, 0.25, std::f64::consts::PI / 1.9);
         let seg_before = smoothed.get_seg(1).unwrap();
         let seg_after = smoothed.get_seg(2).unwrap();
         if let (PathSeg::Cubic(c0), PathSeg::Cubic(c1)) = (seg_before, seg_after) {
