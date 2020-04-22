@@ -17,6 +17,7 @@ mod widgets;
 
 const BUTTON_DISABLED: Key<Color> = Key::new("button_disabled");
 pub const FRAME_TIME: Duration = Duration::from_millis(16);
+pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("text_size_small");
 
 use data::AppState;
 use widgets::Root;
@@ -40,6 +41,7 @@ fn main() {
         .configure_env(|e, _| {
             e.set(theme::BUTTON_LIGHT, Color::rgb8(0x70, 0x70, 0x70));
             e.set(BUTTON_DISABLED, Color::rgb8(0x55, 0x55, 0x55));
+            e.set(TEXT_SIZE_SMALL, 10.0);
         })
         .launch(initial_state)
         .expect("failed to launch");

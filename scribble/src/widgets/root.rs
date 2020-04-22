@@ -15,7 +15,9 @@ use crate::cmd;
 use crate::data::{AppState, CurrentAction, ScribbleState};
 use crate::encode::EncodingStatus;
 use crate::undo::UndoStack;
-use crate::widgets::{make_status_bar, make_timeline, DrawingPane, Palette, ToggleButton};
+use crate::widgets::{
+    make_status_bar, make_timeline, DrawingPane, LabelledContainer, Palette, ToggleButton,
+};
 use crate::FRAME_TIME;
 
 pub struct Root {
@@ -61,10 +63,28 @@ impl Root {
 
         let palette = Palette::default();
 
+        let draw_button_group = Flex::row().with_child(rec_button).padding(5.0);
+        let draw_button_group = LabelledContainer::new(draw_button_group, "Draw")
+            .border_color(Color::WHITE)
+            .corner_radius(druid::theme::BUTTON_BORDER_RADIUS)
+            .padding(5.0);
+
+        let audio_button_group = Flex::row().with_child(rec_audio_button).padding(5.0);
+        let audio_button_group = LabelledContainer::new(audio_button_group, "Talk")
+            .border_color(Color::WHITE)
+            .corner_radius(druid::theme::BUTTON_BORDER_RADIUS)
+            .padding(5.0);
+
+        let watch_button_group = Flex::row().with_child(play_button).padding(5.0);
+        let watch_button_group = LabelledContainer::new(watch_button_group, "Watch")
+            .border_color(Color::WHITE)
+            .corner_radius(druid::theme::BUTTON_BORDER_RADIUS)
+            .padding(5.0);
+
         let button_row = Flex::row()
-            .with_child(rec_button)
-            .with_child(rec_audio_button)
-            .with_child(play_button)
+            .with_child(draw_button_group)
+            .with_child(audio_button_group)
+            .with_child(watch_button_group)
             .with_flex_spacer(1.0)
             .with_child(palette.lens(AppState::palette));
         let timeline_id = WidgetId::next();
