@@ -16,7 +16,7 @@ use crate::data::{AppState, CurrentAction, ScribbleState};
 use crate::encode::EncodingStatus;
 use crate::undo::UndoStack;
 use crate::widgets::{
-    make_status_bar, make_timeline, DrawingPane, LabelledContainer, Palette, ToggleButton,
+    icons, make_status_bar, make_timeline, DrawingPane, LabelledContainer, Palette, ToggleButton,
 };
 use crate::FRAME_TIME;
 
@@ -36,7 +36,8 @@ impl Root {
     pub fn new(scribble_state: ScribbleState) -> Root {
         let drawing = DrawingPane::default();
         let rec_button: ToggleButton<AppState> = ToggleButton::new(
-            "Rec",
+            &icons::VIDEO,
+            20.0,
             |state: &AppState| state.action.rec_toggle(),
             |_, data, _| data.start_recording(),
             |ctx, data, _| {
@@ -46,7 +47,8 @@ impl Root {
             },
         );
         let rec_audio_button: ToggleButton<AppState> = ToggleButton::new(
-            "Audio",
+            &icons::MICROPHONE,
+            20.0,
             |state: &AppState| state.action.rec_audio_toggle(),
             |_, data, _| data.start_recording_audio(),
             |ctx, data, _| {
@@ -55,7 +57,8 @@ impl Root {
             },
         );
         let play_button = ToggleButton::new(
-            "Play",
+            &icons::PLAY,
+            20.0,
             |state: &AppState| state.action.play_toggle(),
             |_, data, _| data.start_playing(),
             |_, data, _| data.stop_playing(),

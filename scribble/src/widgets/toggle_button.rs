@@ -1,12 +1,13 @@
+use druid::kurbo::BezPath;
 use druid::theme;
-use druid::widget::{Label, LabelText};
 use druid::{
     Affine, BoxConstraints, Data, Env, Event, EventCtx, Insets, LayoutCtx, LifeCycle, LifeCycleCtx,
     LinearGradient, PaintCtx, Point, Rect, RenderContext, Size, UnitPoint, UpdateCtx, Widget,
 };
 
-// copy-paste from the Button source
-const LABEL_INSETS: Insets = Insets::uniform_xy(8., 2.);
+use crate::widgets::Icon;
+
+const ICON_PADDING: Insets = Insets::uniform_xy(2., 2.);
 
 #[derive(Clone, Copy, Data, Debug, Eq, PartialEq)]
 pub enum ToggleButtonState {
@@ -22,8 +23,9 @@ impl ToggleButtonState {
 }
 
 pub struct ToggleButton<T> {
-    label: Label<T>,
-    label_size: Size,
+    icon_path: BezPath,
+    icon_size: Size,
+    icon_scale: f64,
     toggle_state: Box<dyn Fn(&T) -> ToggleButtonState + 'static>,
     toggle_action: Box<dyn Fn(&mut EventCtx, &mut T, &Env) + 'static>,
     untoggle_action: Box<dyn Fn(&mut EventCtx, &mut T, &Env) + 'static>,
@@ -31,14 +33,18 @@ pub struct ToggleButton<T> {
 
 impl<T: Data> ToggleButton<T> {
     pub fn new(
-        text: impl Into<LabelText<T>>,
+        icon: &Icon,
+        icon_height: f64,
         toggle_state: impl Fn(&T) -> ToggleButtonState + 'static,
         toggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
         untoggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
     ) -> ToggleButton<T> {
+        let icon_scale = icon_height / icon.height as f64;
+        let icon_width = icon.width as f64 * icon_scale;
         ToggleButton {
-            label: Label::new(text),
-            label_size: Size::ZERO,
+            icon_path: BezPath::from_svg(icon.path).unwrap(),
+            icon_size: (icon_width, icon_height).into(),
+            icon_scale,
             toggle_state: Box::new(toggle_state),
             toggle_action: Box::new(toggle_action),
             untoggle_action: Box::new(untoggle_action),
@@ -82,30 +88,27 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
         }
     }
 
-    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, data: &T, env: &Env) {
+    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, _data: &T, _env: &Env) {
         if let LifeCycle::HotChanged(_) = event {
             ctx.request_paint();
         }
-        self.label.lifecycle(ctx, event, data, env);
     }
 
-    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &T, data: &T, env: &Env) {
-        self.label.update(ctx, old_data, data, env);
+    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &T, data: &T, _env: &Env) {
+        if !old_data.same(data) {
+            ctx.request_paint();
+        }
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints, data: &T, env: &Env) -> Size {
-        // Copy-paste from Button
-        let padding = Size::new(LABEL_INSETS.x_value(), LABEL_INSETS.y_value());
-        let label_bc = bc.shrink(padding).loosen();
-        self.label_size = self.label.layout(ctx, &label_bc, data, env);
-        // HACK: to make sure we look okay at default sizes when beside a textbox,
-        // we make sure we will have at least the same height as the default textbox.
-        let min_height = env.get(theme::BORDERED_WIDGET_HEIGHT);
-
-        bc.constrain(Size::new(
-            self.label_size.width + padding.width,
-            (self.label_size.height + padding.height).max(min_height),
-        ))
+    fn layout(&mut self, _ctx: &mut LayoutCtx, bc: &BoxConstraints, _data: &T, env: &Env) -> Size {
+        let h_padding = ICON_PADDING.x_value();
+        let v_padding: f64 = ICON_PADDING.y_value();
+        let border_width = env.get(theme::BUTTON_BORDER_WIDTH);
+        let size = (
+            self.icon_size.width + h_padding * 2.0 + border_width * 2.0,
+            self.icon_size.height + v_padding * 2.0 + border_width * 2.0,
+        );
+        bc.constrain(size)
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &T, env: &Env) {
@@ -115,14 +118,16 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
         let is_disabled = state.is_disabled();
         let is_hot = ctx.is_hot();
         let size = ctx.size();
+        let border_width = env.get(theme::BUTTON_BORDER_WIDTH);
 
         let rounded_rect = Rect::from_origin_size(Point::ORIGIN, size)
+            .inset(-border_width / 2.0)
             .to_rounded_rect(env.get(theme::BUTTON_BORDER_RADIUS));
 
         let gradient = if is_disabled {
             (
-                env.get(crate::BUTTON_DISABLED),
-                env.get(crate::BUTTON_DISABLED),
+                env.get(crate::BUTTON_BACKGROUND_DISABLED),
+                env.get(crate::BUTTON_BACKGROUND_DISABLED),
             )
         } else if is_toggled != is_active {
             (env.get(theme::BUTTON_LIGHT), env.get(theme::BUTTON_DARK))
@@ -131,31 +136,25 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
         };
         let gradient = LinearGradient::new(UnitPoint::TOP, UnitPoint::BOTTOM, gradient);
 
-        let border_color = if is_hot {
+        let border_color = if is_hot && !is_disabled {
             env.get(theme::BORDER_LIGHT)
         } else {
             env.get(theme::BORDER_DARK)
         };
 
-        ctx.stroke(
-            rounded_rect,
-            &border_color,
-            env.get(theme::BUTTON_BORDER_WIDTH),
-        );
+        let icon_color = if is_disabled {
+            env.get(crate::BUTTON_FOREGROUND_DISABLED)
+        } else {
+            env.get(theme::FOREGROUND_LIGHT)
+        };
+
+        ctx.stroke(rounded_rect, &border_color, border_width);
         ctx.fill(rounded_rect, &gradient);
 
-        let label_offset = (size.to_vec2() - self.label_size.to_vec2()) / 2.0;
-        if let Err(e) = ctx.save() {
-            log::error!("saving render context failed: {:?}", e);
-            return;
-        }
-
-        ctx.transform(Affine::translate(label_offset));
-        self.label.paint(ctx, data, env);
-
-        if let Err(e) = ctx.restore() {
-            log::error!("saving render context failed: {:?}", e);
-            return;
-        }
+        let icon_offset = (size.to_vec2() - self.icon_size.to_vec2()) / 2.0;
+        ctx.with_save(|ctx| {
+            ctx.transform(Affine::translate(icon_offset) * Affine::scale(self.icon_scale));
+            ctx.fill(&self.icon_path, &icon_color);
+        });
     }
 }

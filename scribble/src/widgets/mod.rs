@@ -1,4 +1,5 @@
 mod drawing_pane;
+mod icons;
 mod labelled_container;
 mod palette;
 mod root;
@@ -7,6 +8,7 @@ mod timeline;
 mod toggle_button;
 
 pub use drawing_pane::DrawingPane;
+pub use icons::Icon;
 pub use labelled_container::LabelledContainer;
 pub use palette::{Palette, PaletteData};
 pub use root::Root;
