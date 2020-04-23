@@ -136,7 +136,7 @@ impl AppState {
         }
     }
 
-    pub fn start_recording(&mut self) {
+    pub fn start_recording(&mut self, time_factor: f64) {
         assert!(self.scribble.new_snippet.is_none());
         assert_eq!(self.action, CurrentAction::Idle);
 
@@ -144,15 +144,18 @@ impl AppState {
             self.palette.selected_color().clone(),
             self.line_thickness,
         ));
-        self.action = CurrentAction::WaitingToRecord;
+        if time_factor > 0.0 {
+            self.action = CurrentAction::WaitingToRecord(time_factor);
+        } else {
+            self.action = CurrentAction::Recording(0.0);
+        }
     }
 
     /// Stops recording drawing, returning the snippet that we just finished recording (if it was
     /// non-empty).
     pub fn stop_recording(&mut self) -> Option<SnippetData> {
         assert!(
-            self.action == CurrentAction::Recording
-                || self.action == CurrentAction::WaitingToRecord
+            matches!(self.action, CurrentAction::Recording(_) | CurrentAction::WaitingToRecord(_))
         );
         let new_snippet = self
             .scribble
@@ -260,8 +263,15 @@ impl ScribbleState {
 
 #[derive(Clone, Copy, Data, Debug, PartialEq)]
 pub enum CurrentAction {
-    WaitingToRecord,
-    Recording,
+    /// They started an animation (e.g. by pressing the "video" button), but
+    /// haven't actually started drawing yet. The time is not moving; we're
+    /// waiting until they start drawing.
+    WaitingToRecord(f64),
+
+    /// They are drawing an animation, while the time is ticking.
+    Recording(f64),
+
+    /// They are watching the animation.
     Playing,
 
     /// The argument is the time at which audio capture started.
@@ -269,6 +279,8 @@ pub enum CurrentAction {
 
     /// Fast-forward or reverse. The parameter is the speed factor, negative for reverse.
     Scanning(f64),
+
+    /// They aren't doing anything.
     Idle,
 }
 
@@ -283,12 +295,18 @@ impl CurrentAction {
         use CurrentAction::*;
         use ToggleButtonState::*;
         match *self {
-            WaitingToRecord => ToggledOn,
-            Recording => ToggledOn,
+            WaitingToRecord(_) => ToggledOn,
+            Recording(x) if x > 0.0 => ToggledOn,
             Idle => ToggledOff,
-            Playing => Disabled,
-            Scanning(_) => Disabled,
-            RecordingAudio(_) => Disabled,
+            _ => Disabled,
+        }
+    }
+
+    pub fn snapshot_toggle(&self) -> ToggleButtonState {
+        match *self {
+            CurrentAction::Recording(x) if x == 0.0 => ToggleButtonState::ToggledOn,
+            CurrentAction::Idle => ToggleButtonState::ToggledOff,
+            _ => ToggleButtonState::Disabled,
         }
     }
 
@@ -296,12 +314,9 @@ impl CurrentAction {
         use CurrentAction::*;
         use ToggleButtonState::*;
         match *self {
-            WaitingToRecord => Disabled,
-            Recording => Disabled,
-            Scanning(_) => Disabled,
             Playing => ToggledOn,
             Idle => ToggledOff,
-            RecordingAudio(_) => Disabled,
+            _ => Disabled,
         }
     }
 
@@ -309,12 +324,9 @@ impl CurrentAction {
         use CurrentAction::*;
         use ToggleButtonState::*;
         match *self {
-            WaitingToRecord => Disabled,
-            Recording => Disabled,
-            Scanning(_) => Disabled,
-            Playing => Disabled,
-            Idle => ToggledOff,
             RecordingAudio(_) => ToggledOn,
+            Idle => ToggledOff,
+            _ => Disabled,
         }
     }
 
@@ -323,26 +335,25 @@ impl CurrentAction {
     }
 
     pub fn is_recording(&self) -> bool {
-        *self == CurrentAction::Recording
+        matches!(*self, CurrentAction::Recording(_))
     }
 
     pub fn is_waiting_to_record(&self) -> bool {
-        *self == CurrentAction::WaitingToRecord
+        matches!(*self, CurrentAction::WaitingToRecord(_))
     }
 
-    pub fn is_ticking(&self) -> bool {
+    pub fn time_factor(&self) -> f64 {
         use CurrentAction::*;
         match *self {
-            Recording | Playing | RecordingAudio(_) => true,
-            _ => false,
+            Playing => 1.0,
+            RecordingAudio(_) => 1.0,
+            Recording(x) => x,
+            Scanning(x) => x,
+            _ => 0.0,
         }
     }
 
     pub fn is_scanning(&self) -> bool {
-        if let CurrentAction::Scanning(_) = *self {
-            true
-        } else {
-            false
-        }
+        matches!(*self, CurrentAction::Scanning(_))
     }
 }

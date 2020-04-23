@@ -3,7 +3,6 @@ use druid::{
     BoxConstraints, Color, Command, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx, LifeCycle,
     LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt, WidgetId,
 };
-use std::convert::TryInto;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 use std::time::Instant;
@@ -39,7 +38,18 @@ impl Root {
             &icons::VIDEO,
             20.0,
             |state: &AppState| state.action.rec_toggle(),
-            |_, data, _| data.start_recording(),
+            |_, data, _| data.start_recording(1.0),
+            |ctx, data, _| {
+                if let Some(new_snippet) = data.stop_recording() {
+                    ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
+                }
+            },
+        );
+        let snapshot_button: ToggleButton<AppState> = ToggleButton::new(
+            &icons::CAMERA,
+            20.0,
+            |state: &AppState| state.action.snapshot_toggle(),
+            |_, data, _| data.start_recording(0.0),
             |ctx, data, _| {
                 if let Some(new_snippet) = data.stop_recording() {
                     ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
@@ -66,7 +76,10 @@ impl Root {
 
         let palette = Palette::default();
 
-        let draw_button_group = Flex::row().with_child(rec_button).padding(5.0);
+        let draw_button_group = Flex::row()
+            .with_child(rec_button)
+            .with_child(snapshot_button)
+            .padding(5.0);
         let draw_button_group = LabelledContainer::new(draw_button_group, "Draw")
             .border_color(Color::WHITE)
             .corner_radius(druid::theme::BUTTON_BORDER_RADIUS)
@@ -355,15 +368,10 @@ impl Widget<AppState> for Root {
                         }
                     }
 
+                    // TODO: we should handing ticking using animation instead of timers?
                     // Update the current time, if necessary.
-                    let frame_time_us: i64 = if data.action.is_ticking() {
-                        FRAME_TIME.as_micros().try_into().unwrap()
-                    } else if let CurrentAction::Scanning(speed) = data.action {
-                        let t = FRAME_TIME.as_micros() as f64;
-                        (t * speed) as i64
-                    } else {
-                        0
-                    };
+                    let frame_time_us: i64 =
+                        (data.action.time_factor() * FRAME_TIME.as_micros() as f64) as i64;
                     if frame_time_us != 0 {
                         ctx.submit_command(
                             Command::new(cmd::SCROLL_TO_TIME, data.time),
