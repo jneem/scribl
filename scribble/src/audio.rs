@@ -1,6 +1,7 @@
-// The audio thread takes care of recording and playback. It has two methods of communication: it
-// has an ExtEventSink for submitting commands (basically just recorded buffers) to the application,
-// and it has a channel for receiving requests.
+//! This module is in charge of audio (both recording and playback). We are
+//! currently using cpal, but it might be work switching to gstreamer (which
+//! would be way overkill just for this module's needs, but we depend on it for
+//! video encoding anyway).
 
 use cpal::traits::{EventLoopTrait, HostTrait};
 use cpal::{EventLoop, StreamData, UnknownTypeInputBuffer, UnknownTypeOutputBuffer};
@@ -14,48 +15,69 @@ use std::thread;
 
 use scribble_curves::{time, Diff, Time};
 
+/// This is in charge of the audio event loop, and various other things. There should only be one
+/// of these alive at any one time, and it is intended to be long-lived (i.e., create it at startup
+/// and just keep it around).
 pub struct AudioState {
     event_loop: Arc<cpal::EventLoop>,
     input_device: cpal::Device,
     output_device: cpal::Device,
     format: cpal::Format,
+
+    // These are the main ways that the audio data is synchronized with the rest of the application.
     input_data: Arc<Mutex<AudioInput>>,
     output_data: Arc<Mutex<AudioOutput>>,
 }
 
 pub const SAMPLE_RATE: u32 = 48000;
 
+/// Each audio snippet is uniquelty identified by one of these ids.
 #[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AudioSnippetId(u64);
 
+/// A buffer of audio data, starting at a particular time.
+///
+/// The actual data is beind a pointer, so this is cheap to clone.
 #[derive(Deserialize, Serialize, Clone, Data)]
 pub struct AudioSnippetData {
     buf: Arc<Vec<i16>>,
     start_time: Time,
 }
 
+/// A collection of [`AudioSnippetData`](struct.AudioSnippetData.html), each one
+/// identified by an [`AudioSnippetId`](struct.AudioSnippetId.html).
 #[derive(Deserialize, Serialize, Clone, Data, Default)]
 pub struct AudioSnippetsData {
     last_id: u64,
     snippets: Arc<BTreeMap<AudioSnippetId, AudioSnippetData>>,
 }
 
+// Represents a single snippet within the cursor.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct CursorBuffer {
+struct CursorSnippet {
     id: AudioSnippetId,
     start: usize,
     end: usize,
 }
 
+/// A `Cursor` is in charge of taking a bunch of short, possibly overlapping,
+/// audio buffers and presenting them as a single logical sequence of samples. It
+/// does not actually store a reference to the buffers, instead working entirely
+/// with indices.
+///
+/// A `Cursor` can either move forwards or backwards, but not both.
 #[derive(Default, Debug)]
 pub struct Cursor {
     cur_idx: usize,
-    all_cursors: Vec<CursorBuffer>,
+    all_cursors: Vec<CursorSnippet>,
     next_cursor: usize,
-    active_cursors: Vec<CursorBuffer>,
+    active_cursors: Vec<CursorSnippet>,
     forwards: bool,
 }
 
+// A convenience wrapper around the audio buffer of a snippet. This does two things:
+// - it implicitly does some zero padding, and
+// - it can reverse the order.
 #[derive(Debug)]
 struct Buf<'a> {
     inner: &'a [i16],
@@ -81,45 +103,25 @@ impl<'a> std::ops::Index<usize> for Buf<'a> {
     }
 }
 
-// Signed indexing (negative numbers index from the end, and the sign must match `direction`).
-// This panics if the sign of the index doesn't match `direction`, but otherwise it doesn't panic:
-// if the requested index is out of bounds in either direction, we just return zero.
-impl<'a> std::ops::Index<isize> for Buf<'a> {
-    type Output = i16;
-
-    fn index(&self, idx: isize) -> &i16 {
-        if self.direction > 0 {
-            assert!(idx >= 0);
-        } else {
-            assert!(idx <= 0);
-        }
-
-        let actual_idx = if self.direction > 0 {
-            idx as usize
-        } else {
-            self.len
-                .checked_sub((idx - 1).abs() as usize)
-                .unwrap_or(std::usize::MAX)
-        };
-
-        if actual_idx < self.offset {
-            &0
-        } else {
-            self.inner.get(actual_idx - self.offset).unwrap_or(&0i16)
-        }
-    }
-}
-
-impl CursorBuffer {
-    fn new(id: AudioSnippetId, snip: &AudioSnippetData, sample_rate: u32) -> CursorBuffer {
+impl CursorSnippet {
+    fn new(id: AudioSnippetId, snip: &AudioSnippetData, sample_rate: u32) -> CursorSnippet {
         let start = snip.start_time.as_audio_idx(sample_rate);
-        CursorBuffer {
+        CursorSnippet {
             id,
             start,
             end: start + snip.buf.len(),
         }
     }
 
+    /// Gets an audio buffer from this cursor snippet. The length of the audio
+    /// buffer is `amount.abs()`, and indexing the audio buffer from 0 through
+    /// its length corresponds to indexing the snippet from `from` to `from +
+    /// amount`. In particular, if `amount` is negative then iterating forwards
+    /// through the returned buffer actually goes backwards through the audio
+    /// data.
+    ///
+    /// The audio snippet must have a non-trivial overlap with the requested
+    /// range; if not, this panics.
     fn get_buf<'a>(&mut self, data: &'a AudioSnippetsData, from: usize, amount: isize) -> Buf<'a> {
         if amount > 0 {
             debug_assert!(from < self.end);
@@ -154,6 +156,8 @@ impl CursorBuffer {
         }
     }
 
+    /// If we are interested in samples between `from` and `from + amount`, does
+    /// this snippet have anything to contribute?
     fn is_active(&self, from: usize, amount: isize) -> bool {
         if amount > 0 {
             from + amount as usize > self.start
@@ -162,6 +166,8 @@ impl CursorBuffer {
         }
     }
 
+    /// If the audio cursor is currently at `from`, is this snippet finished
+    /// contributing?
     fn is_finished(&self, from: usize, forwards: bool) -> bool {
         if forwards {
             from >= self.end
@@ -170,6 +176,8 @@ impl CursorBuffer {
         }
     }
 
+    /// If the audio cursor is currently at `from`, has this snippet started
+    /// contributing yet?
     fn is_started(&self, from: usize, forwards: bool) -> bool {
         if forwards {
             from >= self.start
@@ -180,6 +188,17 @@ impl CursorBuffer {
 }
 
 impl Cursor {
+    /// Creates a new cursor.
+    ///
+    /// - `snippets` are the snippets that the new cursor will curse over.
+    /// - `time` gives the initial position of the cursor.
+    /// - `sample_rate` is the sample rate of the audio data (TODO: maybe this
+    ///     should be contained in `AudioSnippetsData`?)
+    /// - `forwards` is true if the audio should be played forwards.
+    ///
+    /// Note that we're currently a bit wasteful when it comes to creating cursors.
+    /// We don't support any kind of seeking, so we just keep creating and
+    /// destroying cursors.
     pub fn new(
         snippets: &AudioSnippetsData,
         time: Time,
@@ -190,7 +209,7 @@ impl Cursor {
         let cur_idx = time.as_audio_idx(sample_rate);
 
         for (&id, snip) in snippets.snippets.iter() {
-            cursors.push(CursorBuffer::new(id, snip, sample_rate));
+            cursors.push(CursorSnippet::new(id, snip, sample_rate));
         }
         // TODO: explain
         if forwards {
@@ -221,6 +240,8 @@ impl Cursor {
         }
     }
 
+    /// Fills the provided buffer with samples from the cursor, and advances the
+    /// cursor past those samples.
     pub fn mix_to_buffer<B: DerefMut<Target = [i16]>>(
         &mut self,
         data: &AudioSnippetsData,
@@ -261,12 +282,15 @@ impl Cursor {
             .retain(|c| !c.is_finished(cur_idx, forwards));
     }
 
+    /// Has this cursor finished producing non-zero samples?
     pub fn is_finished(&self) -> bool {
         self.active_cursors.is_empty() && self.next_cursor == self.all_cursors.len()
     }
 }
 
 impl AudioState {
+    /// Initializes the audio and spawns the audio thread. Returns an object that can be used
+    /// to control the audio.
     pub fn init() -> AudioState {
         let host = cpal::default_host();
         let event_loop = host.event_loop();

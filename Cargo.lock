@@ -1179,6 +1179,7 @@ checksum = "19b17cddbe7ec3f8bc800887bab5e717348c95ea2ca0b1bf0837fb964dc67099"
 [[package]]
 name = "phase_vocoder"
 version = "0.1.0"
+source = "git+https://github.com/jneem/phase_vocoder.git#2a067379a4e9c63b59a0886bc708f82502c5abd9"
 dependencies = [
  "apodize",
  "rustfft",
