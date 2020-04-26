@@ -152,7 +152,7 @@ fn create_pipeline(
         frame_counter += 1;
     };
 
-    let mut cursor = Cursor::new(&audio, time::ZERO, crate::audio::SAMPLE_RATE, 1.0);
+    let mut cursor = Cursor::new(&audio, time::ZERO, crate::audio::SAMPLE_RATE, true);
     let mut time_us = 0i64;
     let need_audio_data = move |src: &gst_app::AppSrc, size_hint: u32| {
         if cursor.is_finished() {
@@ -167,7 +167,7 @@ fn create_pipeline(
         // gstreamer buffers seem to only ever hand out [u8], but we prefer to work with
         // [i16]s. Here, we're doing an extra copy to handle endian-ness and avoid unsafe.
         let mut buf = vec![0i16; size as usize / 2];
-        cursor.mix_to_buffer(&audio, &mut buf[..], 1.0);
+        cursor.mix_to_buffer(&audio, &mut buf[..]);
 
         let mut gst_buffer = gst::Buffer::with_size(size as usize).expect("audio buffer");
         {

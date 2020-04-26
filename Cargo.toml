@@ -4,3 +4,6 @@ members = [
     "curves",
     "scribble",
 ]
+
+[profile.dev.package.phase_vocoder]
+opt-level = 3

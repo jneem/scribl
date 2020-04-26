@@ -386,8 +386,8 @@ pub enum RecordingSpeed {
 impl RecordingSpeed {
     pub fn factor(&self) -> f64 {
         match self {
-            RecordingSpeed::Slower => 0.25,
-            RecordingSpeed::Slow => 0.5,
+            RecordingSpeed::Slower => 1.0 / 8.0,
+            RecordingSpeed::Slow => 1.0 / 3.0,
             RecordingSpeed::Normal => 1.0,
         }
     }

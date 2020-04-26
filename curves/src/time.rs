@@ -45,6 +45,10 @@ impl Time {
     pub fn as_video_frame(&self, fps: f64) -> u32 {
         (self.0 as f64 * fps / 1e6) as u32
     }
+
+    pub fn as_audio_idx(&self, sample_rate: u32) -> usize {
+        (self.0 as f64 / 1e6 * sample_rate as f64) as usize
+    }
 }
 
 impl Diff {
