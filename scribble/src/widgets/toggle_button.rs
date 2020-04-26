@@ -1,13 +1,11 @@
 use druid::kurbo::BezPath;
 use druid::theme;
 use druid::{
-    Affine, BoxConstraints, Data, Env, Event, EventCtx, Insets, LayoutCtx, LifeCycle, LifeCycleCtx,
+    Affine, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
     LinearGradient, PaintCtx, Point, Rect, RenderContext, Size, UnitPoint, UpdateCtx, Widget,
 };
 
 use crate::widgets::Icon;
-
-const ICON_PADDING: Insets = Insets::uniform_xy(2., 2.);
 
 #[derive(Clone, Copy, Data, Debug, Eq, PartialEq)]
 pub enum ToggleButtonState {
@@ -101,12 +99,11 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
     }
 
     fn layout(&mut self, _ctx: &mut LayoutCtx, bc: &BoxConstraints, _data: &T, env: &Env) -> Size {
-        let h_padding = ICON_PADDING.x_value();
-        let v_padding: f64 = ICON_PADDING.y_value();
+        let padding = env.get(crate::BUTTON_ICON_PADDING);
         let border_width = env.get(theme::BUTTON_BORDER_WIDTH);
         let size = (
-            self.icon_size.width + h_padding * 2.0 + border_width * 2.0,
-            self.icon_size.height + v_padding * 2.0 + border_width * 2.0,
+            self.icon_size.width + padding * 2.0 + border_width * 2.0,
+            self.icon_size.height + padding * 2.0 + border_width * 2.0,
         );
         bc.constrain(size)
     }

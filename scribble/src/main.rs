@@ -17,6 +17,7 @@ mod widgets;
 
 const BUTTON_BACKGROUND_DISABLED: Key<Color> = Key::new("button_background_disabled");
 const BUTTON_FOREGROUND_DISABLED: Key<Color> = Key::new("button_foreground_disabled");
+const BUTTON_ICON_PADDING: Key<f64> = Key::new("scribble.button_icon_padding");
 pub const FRAME_TIME: Duration = Duration::from_millis(16);
 pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("text_size_small");
 
@@ -43,6 +44,7 @@ fn main() {
             e.set(theme::BUTTON_LIGHT, Color::rgb8(0x70, 0x70, 0x70));
             e.set(BUTTON_BACKGROUND_DISABLED, Color::rgb8(0x55, 0x55, 0x55));
             e.set(BUTTON_FOREGROUND_DISABLED, Color::rgb8(0x33, 0x33, 0x33));
+            e.set(BUTTON_ICON_PADDING, 2.0);
             e.set(TEXT_SIZE_SMALL, 10.0);
         })
         .launch(initial_state)

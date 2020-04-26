@@ -11,7 +11,7 @@ use scribble_curves::{Diff, SnippetData, Time};
 
 use crate::audio::AudioSnippetData;
 use crate::cmd;
-use crate::data::{AppState, CurrentAction, ScribbleState};
+use crate::data::{AppState, CurrentAction, RecordingSpeed, ScribbleState};
 use crate::encode::EncodingStatus;
 use crate::undo::UndoStack;
 use crate::widgets::{
@@ -38,7 +38,7 @@ impl Root {
             &icons::VIDEO,
             20.0,
             |state: &AppState| state.action.rec_toggle(),
-            |_, data, _| data.start_recording(1.0),
+            |_, data, _| data.start_recording(data.recording_speed.factor()),
             |ctx, data, _| {
                 if let Some(new_snippet) = data.stop_recording() {
                     ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
@@ -55,6 +55,14 @@ impl Root {
                     ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
                 }
             },
+        );
+        let rec_speed_group = crate::widgets::radio_icon::make_radio_icon_group(
+            20.0,
+            vec![
+                (&icons::SNAIL, RecordingSpeed::Slower),
+                (&icons::TURTLE, RecordingSpeed::Slow),
+                (&icons::RABBIT, RecordingSpeed::Normal),
+            ],
         );
         let rec_audio_button: ToggleButton<AppState> = ToggleButton::new(
             &icons::MICROPHONE,
@@ -79,6 +87,8 @@ impl Root {
         let draw_button_group = Flex::row()
             .with_child(rec_button)
             .with_child(snapshot_button)
+            .with_spacer(10.0)
+            .with_child(rec_speed_group.lens(AppState::recording_speed))
             .padding(5.0);
         let draw_button_group = LabelledContainer::new(draw_button_group, "Draw")
             .border_color(Color::WHITE)

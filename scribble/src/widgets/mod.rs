@@ -2,6 +2,7 @@ mod drawing_pane;
 mod icons;
 mod labelled_container;
 mod palette;
+pub mod radio_icon;
 mod root;
 mod status;
 mod timeline;

@@ -62,8 +62,8 @@ impl Widget<AppState> for DrawingPane {
                 }
             }
             Event::MouseDown(ev) if ev.button.is_left() => {
-                if let CurrentAction::WaitingToRecord(time_factor) = state.action {
-                    state.action = CurrentAction::Recording(time_factor);
+                if let CurrentAction::WaitingToRecord(_) = state.action {
+                    state.start_actually_recording();
                 }
                 if state.action.is_recording() {
                     let snip = state

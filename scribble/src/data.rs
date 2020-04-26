@@ -81,6 +81,7 @@ pub struct ScribbleState {
 pub struct AppState {
     pub scribble: ScribbleState,
     pub action: CurrentAction,
+    pub recording_speed: RecordingSpeed,
     pub time: Time,
 
     // This is a bit of an odd one out, since it's specifically for input handling in the
@@ -104,6 +105,7 @@ impl Default for AppState {
         AppState {
             scribble: ScribbleState::default(),
             action: CurrentAction::Idle,
+            recording_speed: RecordingSpeed::Slow,
             time: time::ZERO,
             mouse_down: false,
             line_thickness: 5.0,
@@ -151,12 +153,28 @@ impl AppState {
         }
     }
 
+    pub fn start_actually_recording(&mut self) {
+        if let CurrentAction::WaitingToRecord(time_factor) = self.action {
+            self.action = CurrentAction::Recording(time_factor);
+            self.audio.borrow_mut().start_playing(
+                self.scribble.audio_snippets.clone(),
+                self.time,
+                time_factor,
+            );
+        } else {
+            panic!("wasn't waiting to record");
+        }
+    }
+
     /// Stops recording drawing, returning the snippet that we just finished recording (if it was
     /// non-empty).
     pub fn stop_recording(&mut self) -> Option<SnippetData> {
         assert!(
             matches!(self.action, CurrentAction::Recording(_) | CurrentAction::WaitingToRecord(_))
         );
+
+        self.audio.borrow_mut().stop_playing();
+
         let new_snippet = self
             .scribble
             .new_snippet
@@ -355,5 +373,22 @@ impl CurrentAction {
 
     pub fn is_scanning(&self) -> bool {
         matches!(*self, CurrentAction::Scanning(_))
+    }
+}
+
+#[derive(Clone, Copy, Data, PartialEq, Eq)]
+pub enum RecordingSpeed {
+    Slower,
+    Slow,
+    Normal,
+}
+
+impl RecordingSpeed {
+    pub fn factor(&self) -> f64 {
+        match self {
+            RecordingSpeed::Slower => 0.25,
+            RecordingSpeed::Slow => 0.5,
+            RecordingSpeed::Normal => 1.0,
+        }
     }
 }
