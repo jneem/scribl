@@ -214,9 +214,7 @@ impl AppState {
         if let CurrentAction::RecordingAudio(rec_start) = self.action {
             self.action = CurrentAction::Idle;
             let buf = self.audio.borrow_mut().stop_recording();
-            dbg!(buf.len());
             AudioSnippetData::new(buf, rec_start)
-        //self.audio_snippets = self.audio_snippets.with_new_snippet(buf, rec_start);
         } else {
             panic!("not recording");
         }

@@ -18,6 +18,8 @@ mod widgets;
 const BUTTON_BACKGROUND_DISABLED: Key<Color> = Key::new("button_background_disabled");
 const BUTTON_FOREGROUND_DISABLED: Key<Color> = Key::new("button_foreground_disabled");
 const BUTTON_ICON_PADDING: Key<f64> = Key::new("scribble.button_icon_padding");
+const RADIO_BUTTON_ICON_SELECTED: Key<Color> = Key::new("scribble-radio-button-icon-selected");
+const RADIO_BUTTON_ICON_HOT: Key<Color> = Key::new("scribble-radio-button-icon-hot");
 pub const FRAME_TIME: Duration = Duration::from_millis(16);
 pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("text_size_small");
 
@@ -44,6 +46,8 @@ fn main() {
             e.set(theme::BUTTON_LIGHT, Color::rgb8(0x70, 0x70, 0x70));
             e.set(BUTTON_BACKGROUND_DISABLED, Color::rgb8(0x55, 0x55, 0x55));
             e.set(BUTTON_FOREGROUND_DISABLED, Color::rgb8(0x33, 0x33, 0x33));
+            e.set(RADIO_BUTTON_ICON_SELECTED, Color::rgb8(45, 214, 51));
+            e.set(RADIO_BUTTON_ICON_HOT, Color::rgb8(197, 237, 198));
             e.set(BUTTON_ICON_PADDING, 2.0);
             e.set(TEXT_SIZE_SMALL, 10.0);
         })

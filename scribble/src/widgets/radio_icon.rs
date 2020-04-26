@@ -1,4 +1,4 @@
-use druid::kurbo::{Affine, BezPath, Circle, Vec2};
+use druid::kurbo::{Affine, BezPath, Vec2};
 use druid::widget::prelude::*;
 use druid::widget::{Flex, WidgetExt};
 use druid::{theme, Data};
@@ -82,26 +82,17 @@ impl<T: Data> Widget<T> for RadioIcon<T> {
         let selected = data.same(&self.variant);
         let hot = ctx.is_hot();
         let icon_offset = Vec2::new(padding, padding);
-        let icon_color = env.get(theme::FOREGROUND_LIGHT);
-        let circle_color = env.get(theme::FOREGROUND_DARK);
-        let circle = Circle::new(
-            (
-                self.icon_size.height / 2.0 + padding,
-                self.icon_size.height / 2.0 + padding,
-            ),
-            RADIO_CIRCLE_RADIUS,
-        );
+        let icon_color = if selected {
+            env.get(crate::RADIO_BUTTON_ICON_SELECTED)
+        } else if hot {
+            env.get(crate::RADIO_BUTTON_ICON_HOT)
+        } else {
+            env.get(theme::FOREGROUND_LIGHT)
+        };
 
         ctx.with_save(|ctx| {
             ctx.transform(Affine::translate(icon_offset) * Affine::scale(self.icon_scale));
             ctx.fill(&self.icon_path, &icon_color);
         });
-
-        if selected {
-            ctx.fill(circle, &circle_color);
-        }
-        if hot {
-            ctx.stroke(circle, &circle_color, 1.0);
-        }
     }
 }
