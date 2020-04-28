@@ -5,12 +5,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+pub mod effect;
 pub mod lerp;
 pub mod simplify;
 pub mod smooth;
 pub mod span_cursor;
 pub mod time;
 
+pub use crate::effect::{Effect, Effects, FadeEffect};
 pub use crate::lerp::Lerp;
 pub use crate::time::{Diff, Time};
 
@@ -46,6 +48,22 @@ pub struct LineStyle {
     pub color: Color,
     pub thickness: f64,
 }
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct SegmentData {
+    pub style: LineStyle,
+    pub effects: Effects,
+}
+
+impl From<LineStyle> for SegmentData {
+    fn from(style: LineStyle) -> SegmentData {
+        SegmentData {
+            style,
+            effects: Effects::default(),
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Curve {
     #[serde(with = "serde_path")]
@@ -57,8 +75,8 @@ pub struct Curve {
     // point to a `MoveTo`.
     seg_boundaries: Vec<usize>,
 
-    // Each segment can have a different style.
-    styles: Vec<LineStyle>,
+    // This has the same length as `seg_boundaries`.
+    seg_data: Vec<SegmentData>,
 }
 
 /// Snippets are identified by unique ids.
@@ -71,7 +89,7 @@ impl Curve {
             path: BezPath::new(),
             times: Vec::new(),
             seg_boundaries: Vec::new(),
-            styles: Vec::new(),
+            seg_data: Vec::new(),
         }
     }
 
@@ -80,9 +98,10 @@ impl Curve {
         self.times.push(time);
     }
 
-    pub fn move_to(&mut self, p: Point, time: Time, style: LineStyle) {
+    pub fn move_to(&mut self, p: Point, time: Time, style: LineStyle, effects: Effects) {
+        let seg_data = SegmentData { style, effects };
         self.seg_boundaries.push(self.path.elements().len());
-        self.styles.push(style);
+        self.seg_data.push(seg_data);
         self.path.move_to(p);
         self.times.push(time);
     }
@@ -98,7 +117,8 @@ impl Curve {
                     .cloned()
                     .unwrap_or(self.times.len());
                 Segment {
-                    style: self.styles[idx].clone(),
+                    style: self.seg_data[idx].style.clone(),
+                    effects: &self.seg_data[idx].effects,
                     elements: &self.path.elements()[seg_start_idx..seg_end_idx],
                     times: &self.times[seg_start_idx..seg_end_idx],
                 }
@@ -129,8 +149,12 @@ impl Curve {
             let points: Vec<Point> = point_indices.iter().map(|&i| points[i]).collect();
             let curve = crate::smooth::smooth(&points, 0.4, angle_threshold);
 
+            let seg_data = SegmentData {
+                style: seg.style.clone(),
+                effects: seg.effects.to_owned(),
+            };
             ret.times.extend_from_slice(&times);
-            ret.styles.push(seg.style);
+            ret.seg_data.push(seg_data);
             ret.seg_boundaries.push(path.len());
             path.extend_from_slice(curve.elements());
         }
@@ -149,12 +173,21 @@ impl Curve {
         for seg in self.segments() {
             if let Some(last) = seg.times.last() {
                 if *last <= time {
-                    ctx.stroke_styled(
-                        &seg.elements,
-                        &seg.style.color,
-                        seg.style.thickness,
-                        &stroke_style,
-                    );
+                    let color = if let Some(fade) = seg.effects.fade() {
+                        if time >= *last + fade.pause + fade.fade {
+                            // The curve has faded out; no need to draw it at all
+                            continue;
+                        } else if time >= *last + fade.pause {
+                            let ratio = (time - (*last + fade.pause)).as_micros() as f64
+                                / fade.fade.as_micros() as f64;
+                            seg.style.color.with_alpha(1.0 - ratio)
+                        } else {
+                            seg.style.color
+                        }
+                    } else {
+                        seg.style.color
+                    };
+                    ctx.stroke_styled(&seg.elements, &color, seg.style.thickness, &stroke_style);
                 } else {
                     // For the last segment, we construct a new segment whose end time is interpolated
                     // up until the current time.
@@ -204,6 +237,7 @@ pub struct Segment<'a> {
     pub elements: &'a [PathEl],
     pub times: &'a [Time],
     pub style: LineStyle,
+    pub effects: &'a Effects,
 }
 
 #[derive(Deserialize, Serialize, Data, Debug, Clone)]
@@ -300,7 +334,7 @@ impl SnippetData {
         if !self.visible_at(time) {
             return;
         }
-        let local_time = self.lerp.unlerp_clamped(time);
+        let local_time = self.lerp.unlerp_extended(time);
         self.curve.render(ctx, local_time);
     }
 }
@@ -405,11 +439,21 @@ pub mod tests {
             color: Color::WHITE,
             thickness: 1.0,
         };
-        c.move_to(Point::new(0.0, 0.0), Time::from_micros(1), style.clone());
+        c.move_to(
+            Point::new(0.0, 0.0),
+            Time::from_micros(1),
+            style.clone(),
+            Effects::default(),
+        );
         c.line_to(Point::new(1.0, 1.0), Time::from_micros(2));
         c.line_to(Point::new(2.0, 2.0), Time::from_micros(3));
 
-        c.move_to(Point::new(4.0, 0.0), Time::from_micros(6), style.clone());
+        c.move_to(
+            Point::new(4.0, 0.0),
+            Time::from_micros(6),
+            style.clone(),
+            Effects::default(),
+        );
         c.line_to(Point::new(1.0, 1.0), Time::from_micros(7));
         c.line_to(Point::new(2.0, 2.0), Time::from_micros(8));
 

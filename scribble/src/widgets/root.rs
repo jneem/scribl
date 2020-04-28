@@ -31,39 +31,65 @@ pub struct Root {
     undo: UndoStack,
 }
 
+fn make_draw_button_group() -> impl Widget<AppState> {
+    let rec_button: ToggleButton<AppState> = ToggleButton::new(
+        &icons::VIDEO,
+        20.0,
+        |state: &AppState| state.action.rec_toggle(),
+        |_, data, _| data.start_recording(data.recording_speed.factor()),
+        |ctx, data, _| {
+            if let Some(new_snippet) = data.stop_recording() {
+                ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
+            }
+        },
+    );
+    let snapshot_button: ToggleButton<AppState> = ToggleButton::new(
+        &icons::CAMERA,
+        20.0,
+        |state: &AppState| state.action.snapshot_toggle(),
+        |_, data, _| data.start_recording(0.0),
+        |ctx, data, _| {
+            if let Some(new_snippet) = data.stop_recording() {
+                ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
+            }
+        },
+    );
+    let rec_speed_group = crate::widgets::radio_icon::make_radio_icon_group(
+        20.0,
+        vec![
+            (&icons::SNAIL, RecordingSpeed::Slower),
+            (&icons::TURTLE, RecordingSpeed::Slow),
+            (&icons::RABBIT, RecordingSpeed::Normal),
+        ],
+    );
+    let rec_fade_button = ToggleButton::new(
+        &icons::FADE_OUT,
+        20.0,
+        |&b: &bool| b.into(),
+        |_, data, _| *data = true,
+        |_, data, _| *data = false,
+    )
+    .lens(AppState::fade_enabled);
+
+    let draw_button_group = Flex::row()
+        .with_child(rec_button)
+        .with_child(snapshot_button)
+        .with_spacer(10.0)
+        .with_child(rec_speed_group.lens(AppState::recording_speed))
+        .with_spacer(10.0)
+        .with_child(rec_fade_button)
+        .padding(5.0);
+    let draw_button_group = LabelledContainer::new(draw_button_group, "Draw")
+        .border_color(Color::WHITE)
+        .corner_radius(druid::theme::BUTTON_BORDER_RADIUS)
+        .padding(5.0);
+
+    draw_button_group
+}
+
 impl Root {
     pub fn new(scribble_state: ScribbleState) -> Root {
         let drawing = DrawingPane::default();
-        let rec_button: ToggleButton<AppState> = ToggleButton::new(
-            &icons::VIDEO,
-            20.0,
-            |state: &AppState| state.action.rec_toggle(),
-            |_, data, _| data.start_recording(data.recording_speed.factor()),
-            |ctx, data, _| {
-                if let Some(new_snippet) = data.stop_recording() {
-                    ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
-                }
-            },
-        );
-        let snapshot_button: ToggleButton<AppState> = ToggleButton::new(
-            &icons::CAMERA,
-            20.0,
-            |state: &AppState| state.action.snapshot_toggle(),
-            |_, data, _| data.start_recording(0.0),
-            |ctx, data, _| {
-                if let Some(new_snippet) = data.stop_recording() {
-                    ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
-                }
-            },
-        );
-        let rec_speed_group = crate::widgets::radio_icon::make_radio_icon_group(
-            20.0,
-            vec![
-                (&icons::SNAIL, RecordingSpeed::Slower),
-                (&icons::TURTLE, RecordingSpeed::Slow),
-                (&icons::RABBIT, RecordingSpeed::Normal),
-            ],
-        );
         let rec_audio_button: ToggleButton<AppState> = ToggleButton::new(
             &icons::MICROPHONE,
             20.0,
@@ -83,17 +109,7 @@ impl Root {
         );
 
         let palette = Palette::default();
-
-        let draw_button_group = Flex::row()
-            .with_child(rec_button)
-            .with_child(snapshot_button)
-            .with_spacer(10.0)
-            .with_child(rec_speed_group.lens(AppState::recording_speed))
-            .padding(5.0);
-        let draw_button_group = LabelledContainer::new(draw_button_group, "Draw")
-            .border_color(Color::WHITE)
-            .corner_radius(druid::theme::BUTTON_BORDER_RADIUS)
-            .padding(5.0);
+        let draw_button_group = make_draw_button_group();
 
         let audio_button_group = Flex::row().with_child(rec_audio_button).padding(5.0);
         let audio_button_group = LabelledContainer::new(audio_button_group, "Talk")

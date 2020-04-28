@@ -7,7 +7,7 @@ use piet_common::{Color, Piet, RenderContext};
 
 use druid_shell::{Application, KeyEvent, WinHandler, WindowBuilder, WindowHandle};
 
-use scribble_curves::{Curve, LineStyle, SnippetData, Time};
+use scribble_curves::{Curve, Effects, LineStyle, SnippetData, Time};
 
 fn make_curve(center: Point) -> Curve {
     let mut ret = Curve::new();
@@ -18,6 +18,7 @@ fn make_curve(center: Point) -> Curve {
             color: FG_COLOR.clone(),
             thickness: 0.2,
         },
+        Effects::default(),
     );
     for i in 0..100_000 {
         let time = Time::from_micros(i * 100);

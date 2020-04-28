@@ -20,6 +20,16 @@ impl ToggleButtonState {
     }
 }
 
+impl From<bool> for ToggleButtonState {
+    fn from(b: bool) -> ToggleButtonState {
+        if b {
+            ToggleButtonState::ToggledOn
+        } else {
+            ToggleButtonState::ToggledOff
+        }
+    }
+}
+
 pub struct ToggleButton<T> {
     icon_path: BezPath,
     icon_size: Size,

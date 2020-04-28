@@ -4,7 +4,9 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use scribble_curves::{time, Curve, LineStyle, SnippetData, SnippetId, SnippetsData, Time};
+use scribble_curves::{
+    time, Curve, Effect, Effects, FadeEffect, LineStyle, SnippetData, SnippetId, SnippetsData, Time,
+};
 
 use crate::audio::{AudioSnippetData, AudioSnippetsData, AudioState};
 use crate::widgets::ToggleButtonState;
@@ -17,19 +19,23 @@ pub struct CurveInProgressData {
     #[data(ignore)]
     cur_style: LineStyle,
 
+    #[data(ignore)]
+    cur_effects: Effects,
+
     // Data comparison is done using only the curve's length, since the length grows with
     // every modification.
     len: usize,
 }
 
 impl CurveInProgressData {
-    pub fn new(color: Color, thickness: f64) -> CurveInProgressData {
+    pub fn new(color: Color, thickness: f64, effects: Effects) -> CurveInProgressData {
         CurveInProgressData {
             inner: Arc::new(RefCell::new(Curve::new())),
             cur_style: LineStyle {
                 color: color,
                 thickness,
             },
+            cur_effects: effects,
             len: 0,
         }
     }
@@ -37,12 +43,19 @@ impl CurveInProgressData {
     pub fn move_to(&mut self, p: Point, time: Time) {
         self.inner
             .borrow_mut()
-            .move_to(p, time, self.cur_style.clone());
+            .move_to(p, time, self.cur_style.clone(), self.cur_effects.clone());
         self.len += 1;
     }
 
     pub fn set_color(&mut self, c: Color) {
         self.cur_style.color = c;
+    }
+
+    // TODO: note that this isn't actually used yet, because we aren't supporting changing effects in
+    // the middle of recording. We support color-changing by using a command, but it's unwieldy to do *every*
+    // state change with a command...
+    pub fn set_effects(&mut self, effects: Effects) {
+        self.cur_effects = effects;
     }
 
     pub fn line_to(&mut self, p: Point, time: Time) {
@@ -84,6 +97,9 @@ pub struct AppState {
     pub recording_speed: RecordingSpeed,
     pub time: Time,
 
+    /// When true, the "fade out" toggle button is pressed down.
+    pub fade_enabled: bool,
+
     // This is a bit of an odd one out, since it's specifically for input handling in the
     // drawing-pane widget. If there get to be more of these, maybe they should get split out.
     pub mouse_down: bool,
@@ -107,6 +123,7 @@ impl Default for AppState {
             action: CurrentAction::Idle,
             recording_speed: RecordingSpeed::Slow,
             time: time::ZERO,
+            fade_enabled: false,
             mouse_down: false,
             line_thickness: 5.0,
             audio: Arc::new(RefCell::new(AudioState::init())),
@@ -138,13 +155,27 @@ impl AppState {
         }
     }
 
+    fn selected_effects(&self) -> Effects {
+        let mut ret = Effects::default();
+        if self.fade_enabled {
+            ret.add(Effect::Fade(FadeEffect {
+                pause: time::Diff::from_micros(250_000),
+                fade: time::Diff::from_micros(250_000),
+            }));
+        }
+        ret
+    }
+
     pub fn start_recording(&mut self, time_factor: f64) {
         assert!(self.scribble.new_snippet.is_none());
         assert_eq!(self.action, CurrentAction::Idle);
 
+        dbg!(self.selected_effects());
+
         self.scribble.new_snippet = Some(CurveInProgressData::new(
             self.palette.selected_color().clone(),
             self.line_thickness,
+            self.selected_effects(),
         ));
         if time_factor > 0.0 {
             self.action = CurrentAction::WaitingToRecord(time_factor);

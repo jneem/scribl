@@ -76,6 +76,16 @@ impl Lerp {
         }
     }
 
+    pub fn unlerp_extended(&self, t: Time) -> Time {
+        use LerpResult::*;
+        match lerp_interval(t, &self.lerped_values, &self.original_values) {
+            AfterEnd(t) => *self.original_values.last().unwrap() + t,
+            BeforeStart(t) => *self.original_values.first().unwrap() + t,
+            SingleTime(t) => t,
+            Interval(t, _) => t,
+        }
+    }
+
     pub fn add_lerp(&mut self, time_from: Time, time_to: Time) {
         let local_time_from = self.unlerp_clamped(time_from);
         let idx = match self.original_values.binary_search(&local_time_from) {
@@ -189,16 +199,17 @@ mod tests {
         assert_eq!((0, 2), search(1, &[1, 1, 1]));
     }
 
+    fn t(x: i64) -> Time {
+        Time::from_micros(x)
+    }
+    macro_rules! tvec {
+        [$($t:tt)*] => {
+            vec![$($t)*].into_iter().map(Time::from_micros).collect::<Vec<_>>()
+        }
+    }
+
     #[test]
     fn add_lerp() {
-        fn t(x: i64) -> Time {
-            Time::from_micros(x)
-        }
-        macro_rules! tvec {
-            [$($t:tt)*] => {
-                vec![$($t)*].into_iter().map(Time::from_micros).collect::<Vec<_>>()
-            }
-        }
         let lerp = Lerp::new(tvec![0, 100], tvec![0, 100]);
 
         let out = lerp.with_new_lerp(t(50), t(80));
@@ -217,5 +228,21 @@ mod tests {
         let out = lerp.with_new_lerp(t(100), t(150));
         assert_eq!(out.original_values, tvec![0, 50, 100]);
         assert_eq!(out.lerped_values, tvec![0, 150, 200]);
+    }
+
+    #[test]
+    fn unlerp() {
+        let lerp = Lerp::new(tvec![1, 101], tvec![201, 301]);
+        assert_eq!(lerp.unlerp(t(201)), Some(t(1)));
+        assert_eq!(lerp.unlerp(t(301)), Some(t(101)));
+        assert_eq!(lerp.unlerp(t(200)), None);
+        assert_eq!(lerp.unlerp(t(302)), None);
+
+        assert_eq!(lerp.unlerp_clamped(t(200)), t(1));
+        assert_eq!(lerp.unlerp_clamped(t(302)), t(101));
+
+        assert_eq!(lerp.unlerp_extended(t(200)), t(0));
+        assert_eq!(lerp.unlerp_extended(t(199)), t(0));
+        assert_eq!(lerp.unlerp_extended(t(302)), t(102));
     }
 }
