@@ -5,6 +5,21 @@ use scribble_curves::{SnippetId, SnippetsData, Time};
 
 use crate::audio::AudioSnippetsData;
 
+/// Starts recording a drawing. There is no argument.
+pub const DRAW: Selector = Selector::new("scribble.draw");
+
+/// Starts recording audio. There is no argument.
+pub const TALK: Selector = Selector::new("scribble.talk");
+
+/// Starts playing. There is no argument.
+pub const PLAY: Selector = Selector::new("scribble.play");
+
+/// Pauses an animation. There is no argument.
+pub const PAUSE: Selector = Selector::new("scribble.pause");
+
+/// Stops recording, playing, or whatever else is going on.
+pub const STOP: Selector = Selector::new("scribble.stop");
+
 /// Adds a new snippet. The argument is a [`SnippetData`].
 pub const ADD_SNIPPET: Selector = Selector::new("scribble.add-snippet");
 

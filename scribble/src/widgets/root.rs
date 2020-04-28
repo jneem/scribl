@@ -36,23 +36,8 @@ fn make_draw_button_group() -> impl Widget<AppState> {
         &icons::VIDEO,
         20.0,
         |state: &AppState| state.action.rec_toggle(),
-        |_, data, _| data.start_recording(data.recording_speed.factor()),
-        |ctx, data, _| {
-            if let Some(new_snippet) = data.stop_recording() {
-                ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
-            }
-        },
-    );
-    let snapshot_button: ToggleButton<AppState> = ToggleButton::new(
-        &icons::CAMERA,
-        20.0,
-        |state: &AppState| state.action.snapshot_toggle(),
-        |_, data, _| data.start_recording(0.0),
-        |ctx, data, _| {
-            if let Some(new_snippet) = data.stop_recording() {
-                ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
-            }
-        },
+        |ctx, _, _| ctx.submit_command(cmd::DRAW, None),
+        |ctx, _, _| ctx.submit_command(cmd::STOP, None),
     );
     let rec_speed_group = crate::widgets::radio_icon::make_radio_icon_group(
         20.0,
@@ -73,7 +58,6 @@ fn make_draw_button_group() -> impl Widget<AppState> {
 
     let draw_button_group = Flex::row()
         .with_child(rec_button)
-        .with_child(snapshot_button)
         .with_spacer(10.0)
         .with_child(rec_speed_group.lens(AppState::recording_speed))
         .with_spacer(10.0)
@@ -94,18 +78,15 @@ impl Root {
             &icons::MICROPHONE,
             20.0,
             |state: &AppState| state.action.rec_audio_toggle(),
-            |_, data, _| data.start_recording_audio(),
-            |ctx, data, _| {
-                let snip = data.stop_recording_audio();
-                ctx.submit_command(Command::new(cmd::ADD_AUDIO_SNIPPET, snip), None);
-            },
+            |ctx, _, _| ctx.submit_command(cmd::TALK, None),
+            |ctx, _, _| ctx.submit_command(cmd::STOP, None),
         );
         let play_button = ToggleButton::new(
             &icons::PLAY,
             20.0,
             |state: &AppState| state.action.play_toggle(),
-            |_, data, _| data.start_playing(),
-            |_, data, _| data.stop_playing(),
+            |ctx, _, _| ctx.submit_command(cmd::PLAY, None),
+            |ctx, _, _| ctx.submit_command(cmd::STOP, None),
         );
 
         let palette = Palette::default();
@@ -355,6 +336,47 @@ impl Root {
                 if let Some(redone_state) = self.undo.redo() {
                     data.scribble = redone_state;
                     ctx.request_paint();
+                }
+                true
+            }
+            cmd::PLAY => {
+                if data.action.is_idle() {
+                    data.start_playing();
+                } else {
+                    log::error!("can't play, current action is {:?}", data.action);
+                }
+                true
+            }
+            cmd::DRAW => {
+                if data.action.is_idle() {
+                    data.start_recording(data.recording_speed.factor());
+                } else {
+                    log::error!("can't draw, current action is {:?}", data.action);
+                }
+                true
+            }
+            cmd::TALK => {
+                if data.action.is_idle() {
+                    data.start_recording_audio();
+                } else {
+                    log::error!("can't talk, current action is {:?}", data.action);
+                }
+                true
+            }
+            cmd::STOP => {
+                match data.action {
+                    CurrentAction::Idle => {}
+                    CurrentAction::Scanning(_) => {}
+                    CurrentAction::Playing => data.stop_playing(),
+                    CurrentAction::WaitingToRecord(_) | CurrentAction::Recording(_) => {
+                        if let Some(new_snippet) = data.stop_recording() {
+                            ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
+                        }
+                    }
+                    CurrentAction::RecordingAudio(_) => {
+                        let snip = data.stop_recording_audio();
+                        ctx.submit_command(Command::new(cmd::ADD_AUDIO_SNIPPET, snip), None);
+                    }
                 }
                 true
             }
