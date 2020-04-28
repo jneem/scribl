@@ -2,7 +2,10 @@ use druid::commands;
 use druid::platform_menus;
 use druid::{Command, FileDialogOptions, FileSpec, LocalizedString, MenuDesc, MenuItem};
 
+use crate::cmd;
+
 const SCRIBBLE_FILE_TYPE: FileSpec = FileSpec::new("Scribble animation", &["scb"]);
+const EXPORT_FILE_TYPE: FileSpec = FileSpec::new("mp4 video", &["mp4"]);
 
 use crate::data::AppState;
 
@@ -25,6 +28,16 @@ fn file_menu(data: &AppState) -> MenuDesc<AppState> {
         ),
     );
 
+    // Note that we're reusing the SHOW_SAVE_PANEL command for exporting. There doesn't appear to
+    // be another way to get the system file dialog.
+    let export = MenuItem::new(
+        LocalizedString::new("scribble-menu-file-export").with_placeholder("Export"),
+        Command::new(
+            commands::SHOW_SAVE_PANEL,
+            FileDialogOptions::new().allowed_types(vec![EXPORT_FILE_TYPE]),
+        ),
+    );
+
     let mut menu = MenuDesc::new(LocalizedString::new("common-menu-file-menu")).append(open);
 
     if has_path {
@@ -32,6 +45,7 @@ fn file_menu(data: &AppState) -> MenuDesc<AppState> {
     }
 
     menu.append(save_as)
+        .append(export)
         .append(platform_menus::win::file::exit())
 }
 

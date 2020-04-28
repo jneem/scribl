@@ -3,7 +3,6 @@ use std::fs;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
-use crate::cmd;
 use crate::data::{AppState, SaveFileData};
 
 #[derive(Debug, Default)]
@@ -46,12 +45,37 @@ impl AppDelegate<AppState> for Delegate {
     ) -> bool {
         match cmd.selector {
             druid::commands::SAVE_FILE => {
-                if let Ok(info) = cmd.get_object::<FileInfo>() {
-                    data.save_path = Some(info.path().to_owned());
-                }
-                let path = data.save_path.as_ref().expect("no save path");
-                if let Err(e) = save_file(path, &data.scribble.to_save_file()) {
-                    log::error!("error saving: '{}'", e);
+                let path = if let Ok(info) = cmd.get_object::<FileInfo>() {
+                    info.path().to_owned()
+                } else {
+                    data.save_path.as_ref().expect("no save path").to_owned()
+                };
+
+                // Note that we use the SAVE_FILE command for both saving and
+                // exporting, and we decide which to do based on the file
+                // extension.
+                match path.extension().and_then(|e| e.to_str()) {
+                    Some("mp4") => {
+                        let export = cmd::ExportCmd {
+                            snippets: data.scribble.snippets.clone(),
+                            audio_snippets: data.scribble.audio_snippets.clone(),
+                            filename: path.to_owned(),
+                        };
+                        ctx.submit_command(Command::new(cmd::EXPORT, export), None);
+                    }
+                    Some("scb") => {
+                        data.save_path = Some(path.clone());
+                        if let Err(e) = save_file(&path, &data.scribble.to_save_file()) {
+                            log::error!("error saving: '{}'", e);
+                        }
+                    }
+                    _ => {
+                        log::error!("unknown extension! Trying to save anyway");
+                        data.save_path = Some(path.clone());
+                        if let Err(e) = save_file(&path, &data.scribble.to_save_file()) {
+                            log::error!("error saving: '{}'", e);
+                        }
+                    }
                 }
                 ctx.submit_command(
                     Command::new(druid::commands::SET_MENU, crate::menus::make_menu(data)),
