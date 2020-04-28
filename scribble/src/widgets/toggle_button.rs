@@ -2,7 +2,7 @@ use druid::kurbo::BezPath;
 use druid::theme;
 use druid::{
     Affine, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
-    LinearGradient, PaintCtx, Point, Rect, RenderContext, Size, UnitPoint, UpdateCtx, Widget,
+    PaintCtx, RenderContext, Size, UpdateCtx, Widget,
 };
 
 use crate::widgets::Icon;
@@ -119,44 +119,21 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &T, env: &Env) {
-        let is_active = ctx.is_active();
         let state = (self.toggle_state)(data);
         let is_toggled = state == ToggleButtonState::ToggledOn;
         let is_disabled = state.is_disabled();
         let is_hot = ctx.is_hot();
         let size = ctx.size();
-        let border_width = env.get(theme::BUTTON_BORDER_WIDTH);
-
-        let rounded_rect = Rect::from_origin_size(Point::ORIGIN, size)
-            .inset(-border_width / 2.0)
-            .to_rounded_rect(env.get(theme::BUTTON_BORDER_RADIUS));
-
-        let gradient = if is_disabled {
-            (
-                env.get(crate::BUTTON_BACKGROUND_DISABLED),
-                env.get(crate::BUTTON_BACKGROUND_DISABLED),
-            )
-        } else if is_toggled != is_active {
-            (env.get(theme::BUTTON_LIGHT), env.get(theme::BUTTON_DARK))
-        } else {
-            (env.get(theme::BUTTON_DARK), env.get(theme::BUTTON_LIGHT))
-        };
-        let gradient = LinearGradient::new(UnitPoint::TOP, UnitPoint::BOTTOM, gradient);
-
-        let border_color = if is_hot && !is_disabled {
-            env.get(theme::BORDER_LIGHT)
-        } else {
-            env.get(theme::BORDER_DARK)
-        };
 
         let icon_color = if is_disabled {
-            env.get(crate::BUTTON_FOREGROUND_DISABLED)
+            env.get(crate::BUTTON_ICON_DISABLED)
+        } else if is_toggled {
+            env.get(crate::BUTTON_ICON_SELECTED)
+        } else if is_hot {
+            env.get(crate::BUTTON_ICON_HOT)
         } else {
-            env.get(theme::FOREGROUND_LIGHT)
+            env.get(crate::BUTTON_ICON_IDLE)
         };
-
-        ctx.stroke(rounded_rect, &border_color, border_width);
-        ctx.fill(rounded_rect, &gradient);
 
         let icon_offset = (size.to_vec2() - self.icon_size.to_vec2()) / 2.0;
         ctx.with_save(|ctx| {

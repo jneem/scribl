@@ -83,9 +83,9 @@ impl<T: Data> Widget<T> for RadioIcon<T> {
         let hot = ctx.is_hot();
         let icon_offset = Vec2::new(padding, padding);
         let icon_color = if selected {
-            env.get(crate::RADIO_BUTTON_ICON_SELECTED)
+            env.get(crate::BUTTON_ICON_SELECTED)
         } else if hot {
-            env.get(crate::RADIO_BUTTON_ICON_HOT)
+            env.get(crate::BUTTON_ICON_HOT)
         } else {
             env.get(theme::FOREGROUND_LIGHT)
         };

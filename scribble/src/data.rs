@@ -170,8 +170,6 @@ impl AppState {
         assert!(self.scribble.new_snippet.is_none());
         assert_eq!(self.action, CurrentAction::Idle);
 
-        dbg!(self.selected_effects());
-
         self.scribble.new_snippet = Some(CurveInProgressData::new(
             self.palette.selected_color().clone(),
             self.line_thickness,
