@@ -2,14 +2,15 @@ use druid::kurbo::{BezPath, Line, Vec2};
 use druid::theme;
 use druid::widget::{Controller, Scroll};
 use druid::{
-    BoxConstraints, Color, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
+    BoxConstraints, Color, Command, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
     PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetExt, WidgetPod,
 };
 use std::collections::HashMap;
 
-use scribble_curves::{time, Diff, Time, SnippetData, SnippetId, SnippetsData};
+use scribble_curves::{time, Diff, SnippetData, SnippetId, SnippetsData, Time};
 
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData};
+use crate::cmd;
 use crate::data::AppState;
 use crate::snippet_layout;
 
@@ -190,6 +191,7 @@ pub fn make_timeline() -> impl Widget<AppState> {
 struct TimelineScrollController;
 
 impl<W: Widget<AppState>> Controller<AppState, Scroll<AppState, W>> for TimelineScrollController {
+    // TODO: we should be able to do this using `update` instead of relying on a command
     fn event(
         &mut self,
         child: &mut Scroll<AppState, W>,
@@ -383,14 +385,16 @@ impl Widget<AppState> for TimelineInner {
                 ctx.request_paint();
             }
             Event::MouseDown(ev) => {
-                data.time = Time::from_micros((ev.pos.x / PIXELS_PER_USEC) as i64);
+                let time = Time::from_micros((ev.pos.x / PIXELS_PER_USEC) as i64);
+                ctx.submit_command(Command::new(cmd::WARP_TIME_TO, time), None);
                 ctx.set_active(true);
                 ctx.request_paint();
             }
-            Event::MouseMoved(ev) => {
+            Event::MouseMove(ev) => {
                 // On click-and-drag, we change the time with the drag.
                 if ctx.is_active() {
-                    data.time = Time::from_micros((ev.pos.x.max(0.0) / PIXELS_PER_USEC) as i64);
+                    let time = Time::from_micros((ev.pos.x.max(0.0) / PIXELS_PER_USEC) as i64);
+                    ctx.submit_command(Command::new(cmd::WARP_TIME_TO, time), None);
                     ctx.request_paint();
                 }
             }
@@ -421,7 +425,7 @@ impl Widget<AppState> for TimelineInner {
             );
             ctx.children_changed();
         }
-        if old_data.time != data.time || old_data.scribble.mark != data.scribble.mark {
+        if old_data.time() != data.time() || old_data.scribble.mark != data.scribble.mark {
             ctx.request_paint();
         }
         for child in self.children.values_mut() {
@@ -448,7 +452,7 @@ impl Widget<AppState> for TimelineInner {
             let y = offset as f64 * SNIPPET_HEIGHT;
 
             let size = child.layout(ctx, bc, data, env);
-            child.set_layout_rect(Rect::from_origin_size((x, y), size));
+            child.set_layout_rect(ctx, data, env, Rect::from_origin_size((x, y), size));
         }
 
         let height = SNIPPET_HEIGHT * self.num_rows as f64;
@@ -456,7 +460,7 @@ impl Widget<AppState> for TimelineInner {
         let last_audio_time = data.scribble.audio_snippets.end_time();
         let time_width = last_draw_time
             .max(last_audio_time)
-            .max(data.time)
+            .max(data.time())
             // TODO: this is to work around some issues with filling the scrollable area.
             .max(Time::from_micros(59_000_000))
             + Diff::from_micros(1_000_000);
@@ -474,7 +478,7 @@ impl Widget<AppState> for TimelineInner {
         }
 
         // Draw the cursor.
-        let cursor_x = pix_x(data.time);
+        let cursor_x = pix_x(data.time());
         let line = Line::new((cursor_x, 0.0), (cursor_x, size.height));
         ctx.stroke(line, &CURSOR_COLOR, CURSOR_THICKNESS);
 

@@ -65,12 +65,19 @@ impl<T: Data> Widget<T> for LabelledContainer<T> {
         let inner_size = self.inner.layout(ctx, &inner_bc, data, env);
         let inner_origin = Point::new(border_width, top);
         self.label.set_layout_rect(
+            ctx,
+            data,
+            env,
             self.text_size
                 .to_rect()
                 .with_origin((corner_radius * 2.0, 0.0)),
         );
-        self.inner
-            .set_layout_rect(Rect::from_origin_size(inner_origin, inner_size));
+        self.inner.set_layout_rect(
+            ctx,
+            data,
+            env,
+            Rect::from_origin_size(inner_origin, inner_size),
+        );
 
         // Also make sure to allocate enough width for the text, with a little horizontal padding.
         let inner_width = inner_size

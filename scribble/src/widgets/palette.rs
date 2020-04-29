@@ -167,10 +167,10 @@ impl Widget<PaletteData> for Palette {
 
     fn layout(
         &mut self,
-        _ctx: &mut LayoutCtx,
+        ctx: &mut LayoutCtx,
         bc: &BoxConstraints,
         data: &PaletteData,
-        _env: &Env,
+        env: &Env,
     ) -> Size {
         let rows = PALETTE_ROWS;
         // The (+ rows / 2) part means the columns round up. (and it works even if rows == 1)
@@ -194,7 +194,12 @@ impl Widget<PaletteData> for Palette {
             let col = i / PALETTE_ROWS;
             let x = actual_child_width * col as f64 + PALETTE_ELT_PADDING * col as f64;
             let y = actual_child_height * row as f64 + PALETTE_ELT_PADDING * row as f64;
-            c.set_layout_rect(Rect::from_origin_size((x, y), actual_child_size));
+            c.set_layout_rect(
+                ctx,
+                &data.colors[i as usize],
+                env,
+                Rect::from_origin_size((x, y), actual_child_size),
+            );
         }
 
         size

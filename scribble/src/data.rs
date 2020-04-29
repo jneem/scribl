@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
 use scribble_curves::{
     time, Curve, Effect, Effects, FadeEffect, LineStyle, SnippetData, SnippetId, SnippetsData, Time,
@@ -95,7 +96,18 @@ pub struct AppState {
     pub scribble: ScribbleState,
     pub action: CurrentAction,
     pub recording_speed: RecordingSpeed,
-    pub time: Time,
+
+    #[lens(name = "time_lens")]
+    time: Time,
+
+    /// Here is how our time-keeping works: whenever something changes the
+    /// current "speed" (e.g, starting to scan, draw command, etc.), we store the
+    /// current wall clock time and the current logical time. Then on every
+    /// frame, we use those stored values to update `time`. This is better than
+    /// just incrementing `time` based on the inter-frame time, which is prone to
+    /// drift.
+    #[data(ignore)]
+    time_snapshot: (Instant, Time),
 
     /// When true, the "fade out" toggle button is pressed down.
     pub fade_enabled: bool,
@@ -122,6 +134,8 @@ impl Default for AppState {
             scribble: ScribbleState::default(),
             action: CurrentAction::Idle,
             recording_speed: RecordingSpeed::Slow,
+
+            time_snapshot: (Instant::now(), time::ZERO),
             time: time::ZERO,
             fade_enabled: false,
             mouse_down: false,
@@ -166,6 +180,29 @@ impl AppState {
         ret
     }
 
+    /// Updates `self.time` according to the current wall clock time.
+    pub fn update_time(&mut self) {
+        let wall_micros_elapsed = Instant::now()
+            .duration_since(self.time_snapshot.0)
+            .as_micros();
+        let logical_time_elapsed = time::Diff::from_micros(
+            (wall_micros_elapsed as f64 * self.action.time_factor()) as i64,
+        );
+        self.time = self.time_snapshot.1 + logical_time_elapsed;
+    }
+
+    /// The current logical time.
+    pub fn time(&self) -> Time {
+        self.time
+    }
+
+    // Remembers the current time, for calculating time changes later. This should probably be
+    // called every time the action changes (TODO: we could make this less error-prone by
+    // centralizing the action changes somewhere)
+    fn take_time_snapshot(&mut self) {
+        self.time_snapshot = (Instant::now(), self.time);
+    }
+
     pub fn start_recording(&mut self, time_factor: f64) {
         assert!(self.scribble.new_snippet.is_none());
         assert_eq!(self.action, CurrentAction::Idle);
@@ -180,11 +217,13 @@ impl AppState {
         } else {
             self.action = CurrentAction::Recording(0.0);
         }
+        self.take_time_snapshot();
     }
 
     pub fn start_actually_recording(&mut self) {
         if let CurrentAction::WaitingToRecord(time_factor) = self.action {
             self.action = CurrentAction::Recording(time_factor);
+            self.take_time_snapshot();
             self.audio.borrow_mut().start_playing(
                 self.scribble.audio_snippets.clone(),
                 self.time,
@@ -210,6 +249,7 @@ impl AppState {
             .take()
             .expect("Tried to stop recording, but we hadn't started!");
         self.action = CurrentAction::Idle;
+        self.take_time_snapshot();
         let new_curve = new_snippet.into_curve(1.0, std::f64::consts::PI / 4.0);
         if !new_curve.path.elements().is_empty() {
             Some(SnippetData::new(new_curve))
@@ -221,6 +261,7 @@ impl AppState {
     pub fn start_playing(&mut self) {
         assert_eq!(self.action, CurrentAction::Idle);
         self.action = CurrentAction::Playing;
+        self.take_time_snapshot();
         self.audio
             .borrow_mut()
             .start_playing(self.scribble.audio_snippets.clone(), self.time, 1.0);
@@ -229,12 +270,14 @@ impl AppState {
     pub fn stop_playing(&mut self) {
         assert_eq!(self.action, CurrentAction::Playing);
         self.action = CurrentAction::Idle;
+        self.take_time_snapshot();
         self.audio.borrow_mut().stop_playing();
     }
 
     pub fn start_recording_audio(&mut self) {
         assert_eq!(self.action, CurrentAction::Idle);
         self.action = CurrentAction::RecordingAudio(self.time);
+        self.take_time_snapshot();
         self.audio.borrow_mut().start_recording();
     }
 
@@ -242,6 +285,7 @@ impl AppState {
     pub fn stop_recording_audio(&mut self) -> AudioSnippetData {
         if let CurrentAction::RecordingAudio(rec_start) = self.action {
             self.action = CurrentAction::Idle;
+            self.take_time_snapshot();
             let buf = self.audio.borrow_mut().stop_recording();
             AudioSnippetData::new(buf, rec_start)
         } else {
@@ -271,6 +315,7 @@ impl AppState {
                 log::warn!("not scanning, because I'm busy doing {:?}", self.action);
             }
         }
+        self.take_time_snapshot();
     }
 
     pub fn stop_scanning(&mut self) {
@@ -278,9 +323,15 @@ impl AppState {
             CurrentAction::Scanning(_) => {
                 self.audio.borrow_mut().stop_playing();
                 self.action = CurrentAction::Idle;
+                self.take_time_snapshot();
             }
             _ => panic!("not scanning"),
         }
+    }
+
+    pub fn warp_time_to(&mut self, time: Time) {
+        self.time = time;
+        self.take_time_snapshot();
     }
 }
 

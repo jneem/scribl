@@ -1,11 +1,11 @@
 use cairo::{Context, Format, ImageSurface};
-use druid::{Affine, Data, RenderContext};
+use druid::piet::{CairoRenderContext, RenderContext};
+use druid::{Affine, Data};
 use gst::prelude::*;
 use gstreamer as gst;
 use gstreamer_app as gst_app;
 use gstreamer_audio as gst_audio;
 use gstreamer_video as gst_video;
-use piet_cairo::CairoRenderContext;
 use std::path::Path;
 use std::sync::mpsc::Sender;
 

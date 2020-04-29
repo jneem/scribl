@@ -89,7 +89,7 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
                     }
                 }
             }
-            Event::MouseMoved(_) => {}
+            Event::MouseMove(_) => {}
             e => {
                 dbg!(e);
             }

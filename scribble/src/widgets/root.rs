@@ -5,9 +5,8 @@ use druid::{
 };
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
-use std::time::Instant;
 
-use scribble_curves::{Diff, SnippetData, Time};
+use scribble_curves::{SnippetData, Time};
 
 use crate::audio::AudioSnippetData;
 use crate::cmd;
@@ -189,7 +188,7 @@ impl Root {
                 None,
             ),
             KeyCode::KeyM => {
-                ctx.submit_command(Command::new(cmd::SET_MARK, data.time), None);
+                ctx.submit_command(Command::new(cmd::SET_MARK, data.time()), None);
                 ctx.set_handled();
             }
             KeyCode::KeyT => {
@@ -199,7 +198,7 @@ impl Root {
                             cmd::TRUNCATE_SNIPPET,
                             cmd::TruncateSnippetCmd {
                                 id: snip,
-                                time: data.time,
+                                time: data.time(),
                             },
                         ),
                         None,
@@ -215,7 +214,7 @@ impl Root {
                                 cmd::LERP_SNIPPET,
                                 cmd::LerpSnippetCmd {
                                     id: snip,
-                                    from_time: data.time,
+                                    from_time: data.time(),
                                     to_time: mark_time,
                                 },
                             ),
@@ -321,7 +320,7 @@ impl Root {
                     data.scribble
                         .snippets
                         .with_new_lerp(cmd.id, cmd.from_time, cmd.to_time);
-                data.time = cmd.to_time;
+                ctx.submit_command(Command::new(cmd::WARP_TIME_TO, cmd.to_time), None);
                 self.undo.push(&data.scribble);
                 true
             }
@@ -380,6 +379,14 @@ impl Root {
                 }
                 true
             }
+            cmd::WARP_TIME_TO => {
+                if data.action.is_idle() {
+                    data.warp_time_to(*cmd.get_object::<Time>().expect("API violation"));
+                } else {
+                    log::warn!("not warping: state is {:?}", data.action)
+                }
+                true
+            }
             _ => false,
         }
     }
@@ -391,7 +398,7 @@ impl Widget<AppState> for Root {
             Event::WindowConnected => {
                 ctx.request_focus();
                 ctx.request_paint();
-                self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);
+                self.timer_id = ctx.request_timer(FRAME_TIME);
             }
             Event::Command(cmd) => {
                 let handled = self.handle_command(ctx, cmd, data, env);
@@ -417,18 +424,19 @@ impl Widget<AppState> for Root {
                     }
 
                     // TODO: we should handing ticking using animation instead of timers?
+                    // The issue with that is that `lifecycle` doesn't get to mutate the data.
+
                     // Update the current time, if necessary.
-                    let frame_time_us: i64 =
-                        (data.action.time_factor() * FRAME_TIME.as_micros() as f64) as i64;
-                    if frame_time_us != 0 {
+                    let old_time = data.time();
+                    data.update_time();
+                    if data.time() != old_time {
                         ctx.submit_command(
-                            Command::new(cmd::SCROLL_TO_TIME, data.time),
+                            Command::new(cmd::SCROLL_TO_TIME, data.time()),
                             self.timeline_id,
                         );
                     }
-                    data.time += Diff::from_micros(frame_time_us);
 
-                    self.timer_id = ctx.request_timer(Instant::now() + FRAME_TIME);
+                    self.timer_id = ctx.request_timer(FRAME_TIME);
                     ctx.set_handled();
                 }
             }

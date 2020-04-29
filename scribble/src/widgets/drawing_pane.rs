@@ -48,16 +48,17 @@ impl Default for DrawingPane {
 impl Widget<AppState> for DrawingPane {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, state: &mut AppState, _env: &Env) {
         match event {
-            Event::MouseMoved(ev) => {
+            Event::MouseMove(ev) => {
                 if state.mouse_down && state.action.is_recording() {
                     // TODO: get the time with higher resolution by measuring the time elapsed
                     // since the last tick
+                    let time = state.time();
                     state
                         .scribble
                         .new_snippet
                         .as_mut()
                         .unwrap()
-                        .line_to(self.to_image_coords() * ev.pos, state.time);
+                        .line_to(self.to_image_coords() * ev.pos, time);
                     ctx.request_paint();
                 }
             }
@@ -66,6 +67,7 @@ impl Widget<AppState> for DrawingPane {
                     state.start_actually_recording();
                 }
                 if state.action.is_recording() {
+                    let time = state.time();
                     let snip = state
                         .scribble
                         .new_snippet
@@ -73,7 +75,7 @@ impl Widget<AppState> for DrawingPane {
                         .expect("Recording, but no snippet!");
                     // TODO: get the time with higher resolution by measuring the time elapsed
                     // since the last tick
-                    snip.move_to(self.to_image_coords() * ev.pos, state.time);
+                    snip.move_to(self.to_image_coords() * ev.pos, time);
 
                     state.mouse_down = true;
                     ctx.request_paint();
@@ -92,12 +94,12 @@ impl Widget<AppState> for DrawingPane {
     }
 
     fn update(&mut self, ctx: &mut UpdateCtx, old_data: &AppState, data: &AppState, _env: &Env) {
-        if old_data.time != data.time {
+        if old_data.time() != data.time() {
             ctx.request_paint();
         }
 
         if !old_data.scribble.snippets.same(&data.scribble.snippets) {
-            self.cursor = Some(data.scribble.snippets.create_cursor(data.time));
+            self.cursor = Some(data.scribble.snippets.create_cursor(data.time()));
             ctx.request_paint();
         }
     }
@@ -132,11 +134,11 @@ impl Widget<AppState> for DrawingPane {
         ctx.with_save(|ctx| {
             ctx.transform(self.from_image_coords());
             if let Some(curve) = data.scribble.curve_in_progress() {
-                curve.render(ctx.render_ctx, data.time);
+                curve.render(ctx.render_ctx, data.time());
             }
 
             for (_, snip) in data.scribble.snippets.snippets() {
-                snip.render(ctx.render_ctx, data.time);
+                snip.render(ctx.render_ctx, data.time());
             }
         });
     }

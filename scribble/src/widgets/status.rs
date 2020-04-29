@@ -8,7 +8,7 @@ use crate::encode::EncodingStatus;
 
 pub fn make_status_bar() -> impl Widget<AppState> {
     let time_label = Label::new(|data: &AppState, _env: &Env| {
-        let usecs = data.time.as_micros();
+        let usecs = data.time().as_micros();
         let mins = usecs / 60_000_000;
         let secs = (usecs / 1_000_000) % 60;
         let cents = (usecs / 10_000) % 100;
