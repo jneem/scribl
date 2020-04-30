@@ -41,6 +41,7 @@ fn make_draw_button_group() -> impl Widget<AppState> {
     let rec_speed_group = crate::widgets::radio_icon::make_radio_icon_group(
         20.0,
         vec![
+            (&icons::PAUSE, RecordingSpeed::Paused),
             (&icons::SNAIL, RecordingSpeed::Slower),
             (&icons::TURTLE, RecordingSpeed::Slow),
             (&icons::RABBIT, RecordingSpeed::Normal),

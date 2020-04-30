@@ -212,11 +212,7 @@ impl AppState {
             self.line_thickness,
             self.selected_effects(),
         ));
-        if time_factor > 0.0 {
-            self.action = CurrentAction::WaitingToRecord(time_factor);
-        } else {
-            self.action = CurrentAction::Recording(0.0);
-        }
+        self.action = CurrentAction::WaitingToRecord(time_factor);
         self.take_time_snapshot();
     }
 
@@ -224,11 +220,13 @@ impl AppState {
         if let CurrentAction::WaitingToRecord(time_factor) = self.action {
             self.action = CurrentAction::Recording(time_factor);
             self.take_time_snapshot();
-            self.audio.borrow_mut().start_playing(
-                self.scribble.audio_snippets.clone(),
-                self.time,
-                time_factor,
-            );
+            if time_factor > 0.0 {
+                self.audio.borrow_mut().start_playing(
+                    self.scribble.audio_snippets.clone(),
+                    self.time,
+                    time_factor,
+                );
+            }
         } else {
             panic!("wasn't waiting to record");
         }
@@ -392,17 +390,9 @@ impl CurrentAction {
         use ToggleButtonState::*;
         match *self {
             WaitingToRecord(_) => ToggledOn,
-            Recording(x) if x > 0.0 => ToggledOn,
+            Recording(_) => ToggledOn,
             Idle => ToggledOff,
             _ => Disabled,
-        }
-    }
-
-    pub fn snapshot_toggle(&self) -> ToggleButtonState {
-        match *self {
-            CurrentAction::Recording(x) if x == 0.0 => ToggleButtonState::ToggledOn,
-            CurrentAction::Idle => ToggleButtonState::ToggledOff,
-            _ => ToggleButtonState::Disabled,
         }
     }
 
@@ -456,6 +446,7 @@ impl CurrentAction {
 
 #[derive(Clone, Copy, Data, PartialEq, Eq)]
 pub enum RecordingSpeed {
+    Paused,
     Slower,
     Slow,
     Normal,
@@ -464,6 +455,7 @@ pub enum RecordingSpeed {
 impl RecordingSpeed {
     pub fn factor(&self) -> f64 {
         match self {
+            RecordingSpeed::Paused => 0.0,
             RecordingSpeed::Slower => 1.0 / 8.0,
             RecordingSpeed::Slow => 1.0 / 3.0,
             RecordingSpeed::Normal => 1.0,

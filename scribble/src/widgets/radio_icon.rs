@@ -31,7 +31,7 @@ pub fn make_radio_icon_group<'a, T: Data, I: IntoIterator<Item = (&'a Icon, T)>>
         group.add_child(child);
     }
     group
-        .border(theme::BORDER_DARK, theme::BUTTON_BORDER_WIDTH)
+        .border(theme::BORDER_LIGHT, theme::BUTTON_BORDER_WIDTH)
         // TODO: Get from the theme
         .rounded(5.0)
 }
