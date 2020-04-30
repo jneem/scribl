@@ -62,13 +62,11 @@ impl UndoStack {
 
         // In case the top of the stack is transient and this one isn't, remove all the transient ones.
         if !transient {
-            dbg!(&self);
             let last_permanent = self
                 .stack
                 .iter()
                 .position(|s| !s.transient)
                 .unwrap_or(self.stack.len());
-            dbg!(last_permanent);
             self.stack.drain(..last_permanent);
         }
 

@@ -377,6 +377,14 @@ impl SnippetsData {
         ret
     }
 
+    pub fn without_snippet(&self, id: SnippetId) -> SnippetsData {
+        let mut ret = self.clone();
+        let mut map = (*ret.snippets).clone();
+        map.remove(&id).expect("tried to remove invalid snippet id");
+        ret.snippets = Arc::new(map);
+        ret
+    }
+
     pub fn with_new_lerp(&self, id: SnippetId, lerp_from: Time, lerp_to: Time) -> SnippetsData {
         let mut snip = self.snippet(id).clone();
         snip.lerp = Arc::new(snip.lerp.with_new_lerp(lerp_from, lerp_to));

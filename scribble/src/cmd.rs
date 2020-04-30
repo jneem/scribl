@@ -26,6 +26,9 @@ pub const ADD_SNIPPET: Selector = Selector::new("scribble.add-snippet");
 /// Deletes a snipppet. The argument is a [`SnippetId`].
 pub const DELETE_SNIPPET: Selector = Selector::new("scribble.delete-snippet");
 
+/// Deletes the snipppet that is currently selected (if there is one). There is no argument.
+pub const DELETE_SELECTED_SNIPPET: Selector = Selector::new("scribble.delete-selected-snippet");
+
 /// Adds a new audio snippet. The argument is an [`AudioSnippetData`].
 pub const ADD_AUDIO_SNIPPET: Selector = Selector::new("scribble.add-audio-snippet");
 

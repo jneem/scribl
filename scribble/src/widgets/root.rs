@@ -6,7 +6,7 @@ use druid::{
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 
-use scribble_curves::{SnippetData, Time};
+use scribble_curves::{SnippetData, SnippetId, Time};
 
 use crate::audio::AudioSnippetData;
 use crate::cmd;
@@ -259,6 +259,22 @@ impl Root {
                 let (new_snippets, new_id) = data.scribble.snippets.with_new_snippet(snip.clone());
                 data.scribble.snippets = new_snippets;
                 data.scribble.selected_snippet = Some(new_id);
+                self.undo.push(&data.scribble);
+                true
+            }
+            cmd::DELETE_SELECTED_SNIPPET => {
+                if let Some(id) = data.scribble.selected_snippet {
+                    ctx.submit_command(Command::new(cmd::DELETE_SNIPPET, id), None);
+                }
+                true
+            }
+            cmd::DELETE_SNIPPET => {
+                let &id = cmd.get_object::<SnippetId>().expect("no snippet id");
+                let new_snippets = data.scribble.snippets.without_snippet(id);
+                data.scribble.snippets = new_snippets;
+                if data.scribble.selected_snippet == Some(id) {
+                    data.scribble.selected_snippet = None;
+                }
                 self.undo.push(&data.scribble);
                 true
             }

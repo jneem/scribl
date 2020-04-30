@@ -83,7 +83,13 @@ fn edit_menu(_data: &AppState) -> MenuDesc<AppState> {
         LocalizedString::new("scribble-menu-edit-stop").with_placeholder("Stop"),
         cmd::STOP,
     )
-    .hotkey(SysMods::None, KeyCode::Escape);
+    .hotkey(SysMods::None, KeyCode::Space);
+
+    let delete = MenuItem::new(
+        LocalizedString::new("scribble-menu-edit-delete").with_placeholder("Delete selected"),
+        cmd::DELETE_SELECTED_SNIPPET,
+    )
+    .hotkey(SysMods::None, KeyCode::Delete);
 
     MenuDesc::new(LocalizedString::new("common-menu-edit-menu"))
         .append(undo)
@@ -93,6 +99,8 @@ fn edit_menu(_data: &AppState) -> MenuDesc<AppState> {
         .append(talk)
         .append(play)
         .append(stop)
+        .append_separator()
+        .append(delete)
 }
 
 pub fn make_menu(data: &AppState) -> MenuDesc<AppState> {
