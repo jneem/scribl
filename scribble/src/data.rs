@@ -1,4 +1,5 @@
-use druid::{Color, Data, Lens, Point};
+use druid::kurbo::BezPath;
+use druid::{Data, Lens, Point};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -6,69 +7,49 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use scribble_curves::{
-    time, Curve, Effect, Effects, FadeEffect, LineStyle, SnippetData, SnippetId, SnippetsData, Time,
+    time, Curve, Effect, Effects, FadeEffect, LineStyle, SegmentData, SnippetData, SnippetId,
+    SnippetsData, Time,
 };
 
 use crate::audio::{AudioSnippetData, AudioSnippetsData, AudioState};
 use crate::widgets::ToggleButtonState;
 
-#[derive(Clone, Data)]
-pub struct CurveInProgressData {
+/// While drawing, this stores one continuous poly-line (from pen-down to
+/// pen-up). Because we expect lots of fast changes to this, it uses interior
+/// mutability to avoid repeated allocations.
+#[derive(Clone, Data, Default)]
+pub struct SegmentInProgress {
     #[data(ignore)]
-    inner: Arc<RefCell<Curve>>,
+    points: Arc<RefCell<Vec<Point>>>,
 
     #[data(ignore)]
-    cur_style: LineStyle,
+    times: Arc<RefCell<Vec<Time>>>,
 
-    #[data(ignore)]
-    cur_effects: Effects,
-
-    // Data comparison is done using only the curve's length, since the length grows with
-    // every modification.
+    // Data comparison is done using the number of points, which grows with every modification.
     len: usize,
 }
 
-impl CurveInProgressData {
-    pub fn new(color: Color, thickness: f64, effects: Effects) -> CurveInProgressData {
-        CurveInProgressData {
-            inner: Arc::new(RefCell::new(Curve::new())),
-            cur_style: LineStyle {
-                color: color,
-                thickness,
-            },
-            cur_effects: effects,
-            len: 0,
-        }
-    }
-
-    pub fn move_to(&mut self, p: Point, time: Time) {
-        self.inner
-            .borrow_mut()
-            .move_to(p, time, self.cur_style.clone(), self.cur_effects.clone());
+impl SegmentInProgress {
+    pub fn add_point(&mut self, p: Point, t: Time) {
+        self.points.borrow_mut().push(p);
+        self.times.borrow_mut().push(t);
         self.len += 1;
     }
 
-    pub fn set_color(&mut self, c: Color) {
-        self.cur_style.color = c;
-    }
-
-    // TODO: note that this isn't actually used yet, because we aren't supporting changing effects in
-    // the middle of recording. We support color-changing by using a command, but it's unwieldy to do *every*
-    // state change with a command...
-    pub fn set_effects(&mut self, effects: Effects) {
-        self.cur_effects = effects;
-    }
-
-    pub fn line_to(&mut self, p: Point, time: Time) {
-        self.inner.borrow_mut().line_to(p, time);
-        self.len += 1;
-    }
-
-    // TODO: we don't need to consume self, so we could reuse the old curve's memory
-    pub fn into_curve(self, distance_threshold: f64, angle_threshold: f64) -> Curve {
-        self.inner
-            .borrow()
-            .smoothed(distance_threshold, angle_threshold)
+    /// Returns a simplified and smoothed version of this polyline.
+    ///
+    /// `distance_threshold` controls the simplification: higher values will result in
+    /// a curve with fewer points. `angle_threshold` affects the presence of angles in
+    /// the returned curve: higher values will result in more smooth parts and fewer
+    /// angular parts.
+    pub fn to_curve(&self, distance_threshold: f64, angle_threshold: f64) -> (BezPath, Vec<Time>) {
+        let points = self.points.borrow();
+        let times = self.times.borrow();
+        let point_indices = scribble_curves::simplify::simplify(&points, distance_threshold);
+        let times: Vec<Time> = point_indices.iter().map(|&i| times[i]).collect();
+        let points: Vec<Point> = point_indices.iter().map(|&i| points[i]).collect();
+        let path = scribble_curves::smooth::smooth(&points, 0.4, angle_threshold);
+        (path, times)
     }
 }
 
@@ -82,7 +63,7 @@ pub struct SaveFileData {
 /// This data contains the state of the drawing.
 #[derive(Clone, Data, Lens)]
 pub struct ScribbleState {
-    pub new_snippet: Option<CurveInProgressData>,
+    pub new_curve: Option<Arc<Curve>>,
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,
     pub selected_snippet: Option<SnippetId>,
@@ -94,6 +75,7 @@ pub struct ScribbleState {
 #[derive(Clone, Data, Lens)]
 pub struct AppState {
     pub scribble: ScribbleState,
+    pub new_segment: Option<SegmentInProgress>,
     pub action: CurrentAction,
     pub recording_speed: RecordingSpeed,
 
@@ -132,6 +114,7 @@ impl Default for AppState {
     fn default() -> AppState {
         AppState {
             scribble: ScribbleState::default(),
+            new_segment: None,
             action: CurrentAction::Idle,
             recording_speed: RecordingSpeed::Slow,
 
@@ -152,7 +135,7 @@ impl Default for AppState {
 impl Default for ScribbleState {
     fn default() -> ScribbleState {
         ScribbleState {
-            new_snippet: None,
+            new_curve: None,
             snippets: SnippetsData::default(),
             audio_snippets: AudioSnippetsData::default(),
             selected_snippet: None,
@@ -204,15 +187,34 @@ impl AppState {
     }
 
     pub fn start_recording(&mut self, time_factor: f64) {
-        assert!(self.scribble.new_snippet.is_none());
+        assert!(self.scribble.new_curve.is_none());
+        assert!(self.new_segment.is_none());
         assert_eq!(self.action, CurrentAction::Idle);
 
-        self.scribble.new_snippet = Some(CurveInProgressData::new(
-            self.palette.selected_color().clone(),
-            self.line_thickness,
-            self.selected_effects(),
-        ));
         self.action = CurrentAction::WaitingToRecord(time_factor);
+        self.take_time_snapshot();
+    }
+
+    /// Puts us into the `WaitingToRecord` state, after first cleaning up any
+    /// other states that need to be cleaned up. This is useful for handling
+    /// mid-drawing undos.
+    pub fn ensure_recording(&mut self) {
+        match self.action {
+            CurrentAction::Playing => self.stop_playing(),
+            CurrentAction::Recording(_) => {
+                // We don't want to call stop_recording(), because that will
+                // clear out the snippet in progress. But we do need to reset
+                // the audio.
+                self.audio.borrow_mut().stop_playing();
+            }
+            CurrentAction::RecordingAudio(_) => {
+                let _ = self.stop_recording_audio();
+            }
+            CurrentAction::Scanning(_) => self.stop_scanning(),
+            _ => {}
+        }
+        self.new_segment = None;
+        self.action = CurrentAction::WaitingToRecord(self.recording_speed.factor());
         self.take_time_snapshot();
     }
 
@@ -232,6 +234,26 @@ impl AppState {
         }
     }
 
+    /// Takes the segment that is currently being drawn and adds it to the snippet in progress.
+    pub fn add_segment_to_snippet(&mut self, seg: SegmentInProgress) {
+        let effects = self.selected_effects();
+        let style = LineStyle {
+            color: self.palette.selected_color().clone(),
+            thickness: self.line_thickness,
+        };
+        let seg_data = SegmentData { effects, style };
+        let (path, times) = seg.to_curve(1.0, std::f64::consts::PI / 4.0);
+        if let Some(curve) = self.scribble.new_curve.as_ref() {
+            let mut curve_clone = curve.as_ref().clone();
+            curve_clone.append_segment(path, times, seg_data);
+            self.scribble.new_curve = Some(Arc::new(curve_clone));
+        } else {
+            let mut curve = Curve::new();
+            curve.append_segment(path, times, seg_data);
+            self.scribble.new_curve = Some(Arc::new(curve));
+        }
+    }
+
     /// Stops recording drawing, returning the snippet that we just finished recording (if it was
     /// non-empty).
     pub fn stop_recording(&mut self) -> Option<SnippetData> {
@@ -241,19 +263,17 @@ impl AppState {
 
         self.audio.borrow_mut().stop_playing();
 
-        let new_snippet = self
-            .scribble
-            .new_snippet
-            .take()
-            .expect("Tried to stop recording, but we hadn't started!");
+        if let Some(seg) = self.new_segment.take() {
+            // If there is an unfinished segment, we add it directly to the snippet without going
+            // through a command, because we don't need the extra undo state.
+            self.add_segment_to_snippet(seg);
+        }
         self.action = CurrentAction::Idle;
         self.take_time_snapshot();
-        let new_curve = new_snippet.into_curve(1.0, std::f64::consts::PI / 4.0);
-        if !new_curve.path.elements().is_empty() {
-            Some(SnippetData::new(new_curve))
-        } else {
-            None
-        }
+        self.scribble
+            .new_curve
+            .take()
+            .map(|arc_curve| SnippetData::new(arc_curve.as_ref().clone()))
     }
 
     pub fn start_playing(&mut self) {
@@ -270,6 +290,7 @@ impl AppState {
         self.action = CurrentAction::Idle;
         self.take_time_snapshot();
         self.audio.borrow_mut().stop_playing();
+        dbg!("stopped playing");
     }
 
     pub fn start_recording_audio(&mut self) {
@@ -331,6 +352,51 @@ impl AppState {
         self.time = time;
         self.take_time_snapshot();
     }
+
+    pub fn add_to_cur_snippet(&mut self, p: Point, t: Time) {
+        assert!(self.action.is_recording());
+
+        if let Some(ref mut snip) = self.new_segment {
+            snip.add_point(p, t);
+        } else {
+            let mut snip = SegmentInProgress::default();
+            snip.add_point(p, t);
+            self.new_segment = Some(snip);
+        }
+    }
+
+    pub fn finish_cur_segment(&mut self) -> Option<SegmentInProgress> {
+        assert!(self.action.is_recording());
+        self.new_segment.take()
+    }
+
+    /// Returns the new snippet being drawn, converted to a [`Curve`] for your rendering convenience.
+    pub fn new_snippet_as_curve(&self) -> Option<Curve> {
+        if let Some(ref new_snippet) = self.new_segment {
+            let mut ret = Curve::new();
+            for (i, (p, t)) in new_snippet
+                .points
+                .borrow()
+                .iter()
+                .zip(new_snippet.times.borrow().iter())
+                .enumerate()
+            {
+                if i == 0 {
+                    let style = LineStyle {
+                        color: self.palette.selected_color().clone(),
+                        thickness: self.line_thickness,
+                    };
+                    let effects = self.selected_effects();
+                    ret.move_to(*p, *t, style, effects);
+                } else {
+                    ret.line_to(*p, *t);
+                }
+            }
+            Some(ret)
+        } else {
+            None
+        }
+    }
 }
 
 impl ScribbleState {
@@ -348,10 +414,6 @@ impl ScribbleState {
             snippets: self.snippets.clone(),
             audio_snippets: self.audio_snippets.clone(),
         }
-    }
-
-    pub fn curve_in_progress<'a>(&'a self) -> Option<impl std::ops::Deref<Target = Curve> + 'a> {
-        self.new_snippet.as_ref().map(|s| s.inner.borrow())
     }
 }
 

@@ -57,6 +57,9 @@ pub const SCROLL_TO_TIME: Selector = Selector::new("scribble.scroll-to-time");
 /// [`PathBuf`].
 pub const SAVE_ANIM_ONLY: Selector = Selector::new("scribble.save-anim-only");
 
+/// Appends a new segment to the currently-drawing snippet. The argument is a [`SegmentInProgress`].
+pub const APPEND_NEW_SEGMENT: Selector = Selector::new("scribble.append-new-segment");
+
 pub struct TruncateSnippetCmd {
     pub id: SnippetId,
     pub time: Time,

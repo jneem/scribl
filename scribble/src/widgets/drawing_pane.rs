@@ -1,10 +1,11 @@
 use druid::{
-    Affine, BoxConstraints, Color, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
-    PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
+    Affine, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle,
+    LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
 };
 
 use scribble_curves::SnippetsCursor;
 
+use crate::cmd;
 use crate::data::{AppState, CurrentAction};
 
 // Width/height of the drawing in image coordinates.
@@ -53,12 +54,7 @@ impl Widget<AppState> for DrawingPane {
                     // TODO: get the time with higher resolution by measuring the time elapsed
                     // since the last tick
                     let time = state.time();
-                    state
-                        .scribble
-                        .new_snippet
-                        .as_mut()
-                        .unwrap()
-                        .line_to(self.to_image_coords() * ev.pos, time);
+                    state.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
                     ctx.request_paint();
                 }
             }
@@ -67,15 +63,10 @@ impl Widget<AppState> for DrawingPane {
                     state.start_actually_recording();
                 }
                 if state.action.is_recording() {
-                    let time = state.time();
-                    let snip = state
-                        .scribble
-                        .new_snippet
-                        .as_mut()
-                        .expect("Recording, but no snippet!");
                     // TODO: get the time with higher resolution by measuring the time elapsed
                     // since the last tick
-                    snip.move_to(self.to_image_coords() * ev.pos, time);
+                    let time = state.time();
+                    state.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
 
                     state.mouse_down = true;
                     ctx.request_paint();
@@ -84,6 +75,9 @@ impl Widget<AppState> for DrawingPane {
             Event::MouseUp(ev) => {
                 if ev.button.is_left() && state.action.is_recording() {
                     state.mouse_down = false;
+                    if let Some(seg) = state.finish_cur_segment() {
+                        ctx.submit_command(Command::new(cmd::APPEND_NEW_SEGMENT, seg), None);
+                    }
                 }
             }
             Event::WindowConnected => {
@@ -133,7 +127,10 @@ impl Widget<AppState> for DrawingPane {
 
         ctx.with_save(|ctx| {
             ctx.transform(self.from_image_coords());
-            if let Some(curve) = data.scribble.curve_in_progress() {
+            if let Some(path_in_progress) = data.new_snippet_as_curve() {
+                path_in_progress.render(ctx.render_ctx, data.time());
+            }
+            if let Some(curve) = data.scribble.new_curve.as_ref() {
                 curve.render(ctx.render_ctx, data.time());
             }
 

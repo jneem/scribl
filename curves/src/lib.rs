@@ -106,6 +106,24 @@ impl Curve {
         self.times.push(time);
     }
 
+    pub fn append_segment(&mut self, p: BezPath, t: Vec<Time>, data: SegmentData) {
+        assert_eq!(p.elements().len(), t.len());
+        if t.is_empty() {
+            return;
+        }
+        if let Some(&last_time) = self.times.last() {
+            assert!(last_time <= t[0]);
+        }
+
+        self.seg_boundaries.push(self.times.len());
+        self.seg_data.push(data);
+        self.times.extend_from_slice(&t[..]);
+        // FIXME: this is inefficient, particularly when there are many segments.
+        let mut elts = self.path.elements().to_owned();
+        elts.extend_from_slice(p.elements());
+        self.path = BezPath::from_vec(elts);
+    }
+
     pub fn segments<'a>(&'a self) -> impl Iterator<Item = Segment<'a>> + 'a {
         self.seg_boundaries
             .iter()

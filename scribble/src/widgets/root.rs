@@ -10,7 +10,7 @@ use scribble_curves::{SnippetData, Time};
 
 use crate::audio::AudioSnippetData;
 use crate::cmd;
-use crate::data::{AppState, CurrentAction, RecordingSpeed, ScribbleState};
+use crate::data::{AppState, CurrentAction, RecordingSpeed, ScribbleState, SegmentInProgress};
 use crate::encode::EncodingStatus;
 use crate::undo::UndoStack;
 use crate::widgets::{
@@ -271,12 +271,15 @@ impl Root {
                 self.undo.push(&data.scribble);
                 true
             }
+            cmd::APPEND_NEW_SEGMENT => {
+                let seg = cmd.get_object::<SegmentInProgress>().expect("no segment");
+                data.add_segment_to_snippet(seg.clone());
+                self.undo.push_transient(&data.scribble);
+                true
+            }
             cmd::CHOOSE_COLOR => {
                 let color = cmd.get_object::<Color>().expect("API violation");
                 data.palette.select(color);
-                if let Some(ref mut curve) = data.scribble.new_snippet {
-                    curve.set_color(color.clone());
-                }
                 true
             }
             cmd::EXPORT => {
@@ -329,6 +332,19 @@ impl Root {
                 if let Some(undone_state) = self.undo.undo() {
                     data.scribble = undone_state;
                     ctx.request_paint();
+
+                    // This is a bit of a special-case hack. If there get to be
+                    // more of these, it might be worth storing some
+                    // metadata in the undo state.
+                    //
+                    // In case the undo resets us to a mid-recording state, we
+                    // ensure that the state is waiting-to-record (i.e.,
+                    // recording but paused).
+                    if let Some(ref new_curve) = data.scribble.new_curve {
+                        let time = *new_curve.times.last().unwrap();
+                        data.warp_time_to(time);
+                        data.ensure_recording();
+                    }
                 }
                 true
             }
