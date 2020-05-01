@@ -3,7 +3,6 @@ use druid::{
     BoxConstraints, Color, Command, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx, LifeCycle,
     LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt, WidgetId,
 };
-use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 
 use scribble_curves::{SnippetData, SnippetId, Time};
@@ -173,57 +172,6 @@ impl Root {
                 }
                 ctx.set_handled();
             }
-            KeyCode::KeyA => ctx.submit_command(
-                Command::new(cmd::SAVE_ANIM_ONLY, PathBuf::from("anim_only.json")),
-                None,
-            ),
-            KeyCode::KeyE => ctx.submit_command(
-                Command::new(
-                    cmd::EXPORT,
-                    cmd::ExportCmd {
-                        snippets: data.scribble.snippets.clone(),
-                        audio_snippets: data.scribble.audio_snippets.clone(),
-                        filename: "test.mp4".into(),
-                    },
-                ),
-                None,
-            ),
-            KeyCode::KeyM => {
-                ctx.submit_command(Command::new(cmd::SET_MARK, data.time()), None);
-                ctx.set_handled();
-            }
-            KeyCode::KeyT => {
-                if let Some(snip) = data.scribble.selected_snippet {
-                    ctx.submit_command(
-                        Command::new(
-                            cmd::TRUNCATE_SNIPPET,
-                            cmd::TruncateSnippetCmd {
-                                id: snip,
-                                time: data.time(),
-                            },
-                        ),
-                        None,
-                    );
-                    ctx.set_handled();
-                }
-            }
-            KeyCode::KeyW => {
-                if let Some(mark_time) = data.scribble.mark {
-                    if let Some(snip) = data.scribble.selected_snippet {
-                        ctx.submit_command(
-                            Command::new(
-                                cmd::LERP_SNIPPET,
-                                cmd::LerpSnippetCmd {
-                                    id: snip,
-                                    from_time: data.time(),
-                                    to_time: mark_time,
-                                },
-                            ),
-                            None,
-                        );
-                    }
-                }
-            }
             _ => {}
         }
     }
@@ -316,32 +264,40 @@ impl Root {
                 true
             }
             cmd::SET_MARK => {
-                let time = cmd.get_object::<Time>().expect("API violation");
-                data.scribble.mark = Some(*time);
+                let time = *cmd.get_object::<Time>().unwrap_or(&data.time());
+                data.scribble.mark = Some(time);
                 self.undo.push(&data.scribble);
                 true
             }
             cmd::TRUNCATE_SNIPPET => {
-                let cmd = cmd
-                    .get_object::<cmd::TruncateSnippetCmd>()
-                    .expect("API violation");
-                data.scribble.snippets = data
-                    .scribble
-                    .snippets
-                    .with_truncated_snippet(cmd.id, cmd.time);
-                self.undo.push(&data.scribble);
+                if let Some(id) = data.scribble.selected_snippet {
+                    data.scribble.snippets = data
+                        .scribble
+                        .snippets
+                        .with_truncated_snippet(id, data.time());
+                    self.undo.push(&data.scribble);
+                } else {
+                    log::error!("cannot truncate, nothing selected");
+                }
                 true
             }
             cmd::LERP_SNIPPET => {
-                let cmd = cmd
-                    .get_object::<cmd::LerpSnippetCmd>()
-                    .expect("API violation");
-                data.scribble.snippets =
-                    data.scribble
-                        .snippets
-                        .with_new_lerp(cmd.id, cmd.from_time, cmd.to_time);
-                ctx.submit_command(Command::new(cmd::WARP_TIME_TO, cmd.to_time), None);
-                self.undo.push(&data.scribble);
+                if let (Some(mark_time), Some(id)) =
+                    (data.scribble.mark, data.scribble.selected_snippet)
+                {
+                    data.scribble.snippets =
+                        data.scribble
+                            .snippets
+                            .with_new_lerp(id, data.time(), mark_time);
+                    self.undo.push(&data.scribble);
+                    ctx.submit_command(Command::new(cmd::WARP_TIME_TO, mark_time), None);
+                } else {
+                    log::error!(
+                        "cannot lerp, mark time {:?}, selected {:?}",
+                        data.scribble.mark,
+                        data.scribble.selected_snippet
+                    );
+                }
                 true
             }
             druid::commands::UNDO => {

@@ -85,6 +85,24 @@ fn edit_menu(_data: &AppState) -> MenuDesc<AppState> {
     )
     .hotkey(SysMods::None, KeyCode::Space);
 
+    let mark = MenuItem::new(
+        LocalizedString::new("scribble-menu-edit-mark").with_placeholder("Set mark"),
+        cmd::SET_MARK,
+    )
+    .hotkey(SysMods::None, KeyCode::KeyM);
+
+    let warp = MenuItem::new(
+        LocalizedString::new("scribble-menu-edit-warp").with_placeholder("Warp snippet"),
+        cmd::LERP_SNIPPET,
+    )
+    .hotkey(SysMods::None, KeyCode::KeyW);
+
+    let trunc = MenuItem::new(
+        LocalizedString::new("scribble-menu-edit-truncate").with_placeholder("Truncate snippet"),
+        cmd::TRUNCATE_SNIPPET,
+    )
+    .hotkey(SysMods::None, KeyCode::KeyT);
+
     let delete = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-delete").with_placeholder("Delete selected"),
         cmd::DELETE_SELECTED_SNIPPET,
@@ -100,6 +118,9 @@ fn edit_menu(_data: &AppState) -> MenuDesc<AppState> {
         .append(play)
         .append(stop)
         .append_separator()
+        .append(mark)
+        .append(warp)
+        .append(trunc)
         .append(delete)
 }
 

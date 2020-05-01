@@ -1,7 +1,7 @@
 use druid::Selector;
 use std::path::PathBuf;
 
-use scribble_curves::{SnippetId, SnippetsData, Time};
+use scribble_curves::SnippetsData;
 
 use crate::audio::AudioSnippetsData;
 
@@ -35,13 +35,15 @@ pub const ADD_AUDIO_SNIPPET: Selector = Selector::new("scribble.add-audio-snippe
 /// Deletes an audio snipppet. The argument is an [`AudioSnippetId`].
 pub const DELETE_AUDIO_SNIPPET: Selector = Selector::new("scribble.delete-audio-snippet");
 
-/// Truncates a snippet. The argument is a [`TruncateSnippetCmd`].
+/// Truncates the currently selected snippet at the current time. There is no
+/// argument.
 pub const TRUNCATE_SNIPPET: Selector = Selector::new("scribble.truncate-snippet");
 
-/// Adds a lerp to a snippet. The argument is a [`LerpSnippetCmd`].
+/// Adds a lerp to the selected snippet, lerping the current time to the marked time.
 pub const LERP_SNIPPET: Selector = Selector::new("scribble.lerp-snippet");
 
-/// Changes the current mark time. The argument is an i64.
+/// Changes the current mark time. The argument is an optional [`Time`]. If it is
+/// not present, the current time will be used instead.
 pub const SET_MARK: Selector = Selector::new("scribble.set-mark");
 
 /// Changes the current animation time. The argument is a [`Time`].
@@ -62,17 +64,6 @@ pub const SAVE_ANIM_ONLY: Selector = Selector::new("scribble.save-anim-only");
 
 /// Appends a new segment to the currently-drawing snippet. The argument is a [`SegmentInProgress`].
 pub const APPEND_NEW_SEGMENT: Selector = Selector::new("scribble.append-new-segment");
-
-pub struct TruncateSnippetCmd {
-    pub id: SnippetId,
-    pub time: Time,
-}
-
-pub struct LerpSnippetCmd {
-    pub id: SnippetId,
-    pub from_time: Time,
-    pub to_time: Time,
-}
 
 #[derive(Clone)]
 pub struct ExportCmd {
