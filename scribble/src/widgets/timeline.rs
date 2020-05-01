@@ -423,6 +423,17 @@ impl Widget<AppState> for TimelineInner {
     }
 
     fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, data: &AppState, env: &Env) {
+        match event {
+            LifeCycle::WidgetAdded => {
+                ctx.request_layout();
+                self.recalculate_snippet_offsets(
+                    &data.scribble.snippets,
+                    &data.scribble.audio_snippets,
+                );
+                ctx.children_changed();
+            }
+            _ => {}
+        }
         for child in self.children.values_mut() {
             child.lifecycle(ctx, event, data, env);
         }
