@@ -105,4 +105,12 @@ impl UndoStack {
             None
         }
     }
+
+    pub fn can_undo(&self) -> bool {
+        self.current_state + 1 < self.stack.len()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        self.current_state > 0
+    }
 }

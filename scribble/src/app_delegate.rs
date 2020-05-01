@@ -78,10 +78,7 @@ impl AppDelegate<AppState> for Delegate {
                         }
                     }
                 }
-                ctx.submit_command(
-                    Command::new(druid::commands::SET_MENU, crate::menus::make_menu(data)),
-                    *target,
-                );
+                ctx.submit_command(cmd::REBUILD_MENUS, *target);
                 false
             }
             cmd::SAVE_ANIM_ONLY => {
@@ -89,10 +86,7 @@ impl AppDelegate<AppState> for Delegate {
                 if let Err(e) = save_file(&path, &data.scribble.snippets) {
                     log::error!("error saving: '{}'", e);
                 }
-                ctx.submit_command(
-                    Command::new(druid::commands::SET_MENU, crate::menus::make_menu(data)),
-                    *target,
-                );
+                ctx.submit_command(cmd::REBUILD_MENUS, *target);
                 false
             }
             druid::commands::OPEN_FILE => {
@@ -105,6 +99,10 @@ impl AppDelegate<AppState> for Delegate {
                         log::error!("error loading: '{}'", e);
                     }
                 }
+                ctx.submit_command(cmd::REBUILD_MENUS, *target);
+                false
+            }
+            cmd::REBUILD_MENUS => {
                 ctx.submit_command(
                     Command::new(druid::commands::SET_MENU, crate::menus::make_menu(data)),
                     *target,

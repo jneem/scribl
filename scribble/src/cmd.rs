@@ -65,6 +65,9 @@ pub const SAVE_ANIM_ONLY: Selector = Selector::new("scribble.save-anim-only");
 /// Appends a new segment to the currently-drawing snippet. The argument is a [`SegmentInProgress`].
 pub const APPEND_NEW_SEGMENT: Selector = Selector::new("scribble.append-new-segment");
 
+/// Recreate the menus. There is no argument.
+pub const REBUILD_MENUS: Selector = Selector::new("scribble.rebuild-menus");
+
 #[derive(Clone)]
 pub struct ExportCmd {
     pub snippets: SnippetsData,

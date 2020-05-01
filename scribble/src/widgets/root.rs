@@ -9,9 +9,8 @@ use scribble_curves::{SnippetData, SnippetId, Time};
 
 use crate::audio::AudioSnippetData;
 use crate::cmd;
-use crate::data::{AppState, CurrentAction, RecordingSpeed, ScribbleState, SegmentInProgress};
+use crate::data::{AppState, CurrentAction, RecordingSpeed, SegmentInProgress};
 use crate::encode::EncodingStatus;
-use crate::undo::UndoStack;
 use crate::widgets::{
     icons, make_status_bar, make_timeline, DrawingPane, LabelledContainer, Palette, ToggleButton,
 };
@@ -26,7 +25,6 @@ pub struct Root {
     encoder_progress: Option<Receiver<EncodingStatus>>,
 
     inner: Box<dyn Widget<AppState>>,
-    undo: UndoStack,
 }
 
 fn make_draw_button_group() -> impl Widget<AppState> {
@@ -71,7 +69,7 @@ fn make_draw_button_group() -> impl Widget<AppState> {
 }
 
 impl Root {
-    pub fn new(scribble_state: ScribbleState) -> Root {
+    pub fn new() -> Root {
         let drawing = DrawingPane::default();
         let rec_audio_button: ToggleButton<AppState> = ToggleButton::new(
             &icons::MICROPHONE,
@@ -129,7 +127,6 @@ impl Root {
             encoder_progress: None,
             timer_id: TimerToken::INVALID,
             timeline_id,
-            undo: UndoStack::new(scribble_state),
         }
     }
 }
@@ -201,13 +198,13 @@ impl Root {
         data: &mut AppState,
         _env: &Env,
     ) -> bool {
-        match cmd.selector {
+        let ret = match cmd.selector {
             cmd::ADD_SNIPPET => {
                 let snip = cmd.get_object::<SnippetData>().expect("no snippet");
                 let (new_snippets, new_id) = data.scribble.snippets.with_new_snippet(snip.clone());
                 data.scribble.snippets = new_snippets;
                 data.scribble.selected_snippet = Some(new_id);
-                self.undo.push(&data.scribble);
+                data.undo.borrow_mut().push(&data.scribble);
                 true
             }
             cmd::DELETE_SELECTED_SNIPPET => {
@@ -223,7 +220,7 @@ impl Root {
                 if data.scribble.selected_snippet == Some(id) {
                     data.scribble.selected_snippet = None;
                 }
-                self.undo.push(&data.scribble);
+                data.undo.borrow_mut().push(&data.scribble);
                 true
             }
             cmd::ADD_AUDIO_SNIPPET => {
@@ -232,13 +229,13 @@ impl Root {
                     .expect("no audio snippet");
                 data.scribble.audio_snippets =
                     data.scribble.audio_snippets.with_new_snippet(snip.clone());
-                self.undo.push(&data.scribble);
+                data.undo.borrow_mut().push(&data.scribble);
                 true
             }
             cmd::APPEND_NEW_SEGMENT => {
                 let seg = cmd.get_object::<SegmentInProgress>().expect("no segment");
                 data.add_segment_to_snippet(seg.clone());
-                self.undo.push_transient(&data.scribble);
+                data.undo.borrow_mut().push_transient(&data.scribble);
                 true
             }
             cmd::CHOOSE_COLOR => {
@@ -266,7 +263,7 @@ impl Root {
             cmd::SET_MARK => {
                 let time = *cmd.get_object::<Time>().unwrap_or(&data.time());
                 data.scribble.mark = Some(time);
-                self.undo.push(&data.scribble);
+                data.undo.borrow_mut().push(&data.scribble);
                 true
             }
             cmd::TRUNCATE_SNIPPET => {
@@ -275,7 +272,7 @@ impl Root {
                         .scribble
                         .snippets
                         .with_truncated_snippet(id, data.time());
-                    self.undo.push(&data.scribble);
+                    data.undo.borrow_mut().push(&data.scribble);
                 } else {
                     log::error!("cannot truncate, nothing selected");
                 }
@@ -289,7 +286,7 @@ impl Root {
                         data.scribble
                             .snippets
                             .with_new_lerp(id, data.time(), mark_time);
-                    self.undo.push(&data.scribble);
+                    data.undo.borrow_mut().push(&data.scribble);
                     ctx.submit_command(Command::new(cmd::WARP_TIME_TO, mark_time), None);
                 } else {
                     log::error!(
@@ -301,7 +298,8 @@ impl Root {
                 true
             }
             druid::commands::UNDO => {
-                if let Some(undone_state) = self.undo.undo() {
+                let undone_state = data.undo.borrow_mut().undo();
+                if let Some(undone_state) = undone_state {
                     data.scribble = undone_state;
                     ctx.request_paint();
 
@@ -321,7 +319,7 @@ impl Root {
                 true
             }
             druid::commands::REDO => {
-                if let Some(redone_state) = self.undo.redo() {
+                if let Some(redone_state) = data.undo.borrow_mut().redo() {
                     data.scribble = redone_state;
                     ctx.request_paint();
                 }
@@ -377,7 +375,12 @@ impl Root {
                 true
             }
             _ => false,
-        }
+        };
+        // This might be a little conservative, but there are lots of state
+        // changes that cause the menus to change, so the easiest thing is just
+        // to rebuild the menus on every command.
+        ctx.submit_command(cmd::REBUILD_MENUS, None);
+        ret
     }
 }
 

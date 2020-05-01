@@ -5,6 +5,8 @@ use druid::{
 };
 
 use crate::cmd;
+use crate::data::CurrentAction;
+use crate::widgets::ToggleButtonState;
 
 const SCRIBBLE_FILE_TYPE: FileSpec = FileSpec::new("Scribble animation", &["scb"]);
 const EXPORT_FILE_TYPE: FileSpec = FileSpec::new("mp4 video", &["mp4"]);
@@ -56,34 +58,43 @@ fn file_menu(data: &AppState) -> MenuDesc<AppState> {
         .append(platform_menus::win::file::exit())
 }
 
-fn edit_menu(_data: &AppState) -> MenuDesc<AppState> {
-    // TODO: make these active/inactive depending on the current undo stack.
-    let undo = platform_menus::common::undo();
-    let redo = platform_menus::common::redo();
+fn edit_menu(data: &AppState) -> MenuDesc<AppState> {
+    let undo = platform_menus::common::undo().disabled_if(|| !data.undo.borrow().can_undo());
+    let redo = platform_menus::common::redo().disabled_if(|| !data.undo.borrow().can_redo());
 
     let draw = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-draw").with_placeholder("Draw"),
         cmd::DRAW,
     )
-    .hotkey(SysMods::Cmd, "d");
+    .hotkey(SysMods::Cmd, "d")
+    .disabled_if(|| data.action.rec_toggle() != ToggleButtonState::ToggledOff);
 
     let talk = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-talk").with_placeholder("Talk"),
         cmd::TALK,
     )
-    .hotkey(SysMods::Cmd, "t");
+    .hotkey(SysMods::Cmd, "t")
+    .disabled_if(|| data.action.rec_audio_toggle() != ToggleButtonState::ToggledOff);
 
     let play = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-play").with_placeholder("Play"),
         cmd::PLAY,
     )
-    .hotkey(SysMods::Cmd, "p");
+    .hotkey(SysMods::Cmd, "p")
+    .disabled_if(|| data.action.play_toggle() != ToggleButtonState::ToggledOff);
 
     let stop = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-stop").with_placeholder("Stop"),
         cmd::STOP,
     )
-    .hotkey(SysMods::None, KeyCode::Space);
+    .hotkey(SysMods::None, KeyCode::Space)
+    .disabled_if(|| {
+        !matches!(data.action,
+            CurrentAction::Playing
+            | CurrentAction::Recording(_)
+            | CurrentAction::WaitingToRecord(_)
+            | CurrentAction::RecordingAudio(_))
+    });
 
     let mark = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-mark").with_placeholder("Set mark"),
@@ -95,19 +106,22 @@ fn edit_menu(_data: &AppState) -> MenuDesc<AppState> {
         LocalizedString::new("scribble-menu-edit-warp").with_placeholder("Warp snippet"),
         cmd::LERP_SNIPPET,
     )
-    .hotkey(SysMods::None, KeyCode::KeyW);
+    .hotkey(SysMods::None, KeyCode::KeyW)
+    .disabled_if(|| data.scribble.mark.is_none());
 
     let trunc = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-truncate").with_placeholder("Truncate snippet"),
         cmd::TRUNCATE_SNIPPET,
     )
-    .hotkey(SysMods::None, KeyCode::KeyT);
+    .hotkey(SysMods::None, KeyCode::KeyT)
+    .disabled_if(|| data.scribble.selected_snippet.is_none());
 
     let delete = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-delete").with_placeholder("Delete selected"),
         cmd::DELETE_SELECTED_SNIPPET,
     )
-    .hotkey(SysMods::None, KeyCode::Delete);
+    .hotkey(SysMods::None, KeyCode::Delete)
+    .disabled_if(|| data.scribble.selected_snippet.is_none());
 
     MenuDesc::new(LocalizedString::new("common-menu-edit-menu"))
         .append(undo)

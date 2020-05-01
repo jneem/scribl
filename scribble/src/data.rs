@@ -12,6 +12,7 @@ use scribble_curves::{
 };
 
 use crate::audio::{AudioSnippetData, AudioSnippetsData, AudioState};
+use crate::undo::UndoStack;
 use crate::widgets::ToggleButtonState;
 
 /// While drawing, this stores one continuous poly-line (from pen-down to
@@ -79,6 +80,8 @@ pub struct AppState {
     pub action: CurrentAction,
     pub recording_speed: RecordingSpeed,
 
+    pub undo: Arc<RefCell<UndoStack>>,
+
     #[lens(name = "time_lens")]
     time: Time,
 
@@ -117,6 +120,8 @@ impl Default for AppState {
             new_segment: None,
             action: CurrentAction::Idle,
             recording_speed: RecordingSpeed::Slow,
+            // TODO: make sure undo works after loading.
+            undo: Arc::new(RefCell::new(UndoStack::new(ScribbleState::default()))),
 
             time_snapshot: (Instant::now(), time::ZERO),
             time: time::ZERO,

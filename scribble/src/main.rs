@@ -35,9 +35,8 @@ fn main() {
     }
 
     let initial_state = AppState::default();
-    let scribble_state = initial_state.scribble.clone();
 
-    let main_window = WindowDesc::new(|| Root::new(scribble_state))
+    let main_window = WindowDesc::new(|| Root::new())
         .title(LocalizedString::new("Scribble"))
         .menu(menus::make_menu(&initial_state))
         .window_size((400.0, 400.0));
