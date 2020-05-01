@@ -14,8 +14,10 @@ pub const TALK: Selector = Selector::new("scribble.talk");
 /// Starts playing. There is no argument.
 pub const PLAY: Selector = Selector::new("scribble.play");
 
+/*
 /// Pauses an animation. There is no argument.
 pub const PAUSE: Selector = Selector::new("scribble.pause");
+*/
 
 /// Stops recording, playing, or whatever else is going on.
 pub const STOP: Selector = Selector::new("scribble.stop");
@@ -32,6 +34,8 @@ pub const DELETE_SELECTED_SNIPPET: Selector = Selector::new("scribble.delete-sel
 /// Adds a new audio snippet. The argument is an [`AudioSnippetData`].
 pub const ADD_AUDIO_SNIPPET: Selector = Selector::new("scribble.add-audio-snippet");
 
+// TODO: use this
+#[allow(dead_code)]
 /// Deletes an audio snipppet. The argument is an [`AudioSnippetId`].
 pub const DELETE_AUDIO_SNIPPET: Selector = Selector::new("scribble.delete-audio-snippet");
 
@@ -57,10 +61,6 @@ pub const EXPORT: Selector = Selector::new("scribble.export");
 
 /// Scrolls the timeline so that a particular time is visible. The argument is a [`Time`].
 pub const SCROLL_TO_TIME: Selector = Selector::new("scribble.scroll-to-time");
-
-/// For testing only: serialize only the animation, and not the sounds. The argument is a
-/// [`PathBuf`].
-pub const SAVE_ANIM_ONLY: Selector = Selector::new("scribble.save-anim-only");
 
 /// Appends a new segment to the currently-drawing snippet. The argument is a [`SegmentInProgress`].
 pub const APPEND_NEW_SEGMENT: Selector = Selector::new("scribble.append-new-segment");

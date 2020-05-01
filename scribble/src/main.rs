@@ -1,7 +1,5 @@
-#![allow(dead_code)]
-
+use clap::{App, Arg};
 use druid::theme;
-
 use druid::{AppLauncher, Color, Key, LocalizedString, WindowDesc};
 use std::time::Duration;
 
@@ -28,13 +26,48 @@ pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("text_size_small");
 use data::AppState;
 use widgets::Root;
 
+const MAJOR: u32 = pkg_version::pkg_version_major!();
+const MINOR: u32 = pkg_version::pkg_version_minor!();
+const PATCH: u32 = pkg_version::pkg_version_patch!();
+
 fn main() {
     if let Err(e) = gstreamer::init() {
         println!("failed to init gstreamer: {}", e);
         return;
     }
 
-    let initial_state = AppState::default();
+    let matches = App::new("scribble")
+        .version(format!("{}.{}.{}", MAJOR, MINOR, PATCH).as_str())
+        .author("Joe Neeman <joeneeman@gmail.com>")
+        .arg(
+            Arg::with_name("FILE")
+                .help("The file to open")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("export-to")
+                .help("Export the animation as a video instead of opening it")
+                .long("export-to")
+                .takes_value(true),
+        )
+        .get_matches();
+
+    let initial_state = if let Some(path) = matches.value_of("FILE") {
+        match crate::data::SaveFileData::load_from(path) {
+            Ok(save_file) => AppState::from_save_file(save_file),
+            Err(e) => {
+                eprintln!("Error opening save file: {}", e);
+                return;
+            }
+        }
+    } else {
+        AppState::default()
+    };
+
+    if let Some(output_path) = matches.value_of("export-to") {
+        encode(initial_state, output_path);
+        return;
+    }
 
     let main_window = WindowDesc::new(|| Root::new())
         .title(LocalizedString::new("Scribble"))
@@ -56,4 +89,24 @@ fn main() {
         })
         .launch(initial_state)
         .expect("failed to launch");
+}
+
+fn encode(data: AppState, path: &str) {
+    let export = cmd::ExportCmd {
+        snippets: data.scribble.snippets,
+        audio_snippets: data.scribble.audio_snippets,
+        filename: path.into(),
+    };
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || crate::encode::encode_blocking(export, tx));
+
+    for msg in rx.iter() {
+        use crate::encode::EncodingStatus;
+        match msg {
+            // TODO: nicer display
+            EncodingStatus::Encoding(pct) => eprintln!("{}", pct),
+            EncodingStatus::Error(s) => eprintln!("Encoding error: {}", s),
+            EncodingStatus::Finished => eprintln!("Finished!"),
+        }
+    }
 }

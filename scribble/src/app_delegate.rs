@@ -1,7 +1,7 @@
 use druid::{AppDelegate, Command, DelegateCtx, Env, FileInfo, Target, WindowId};
 use std::fs;
 use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::cmd;
 use crate::data::{AppState, SaveFileData};
@@ -27,12 +27,6 @@ fn save_file<S: serde::Serialize>(path: &Path, data: &S) -> std::io::Result<()> 
     fs::rename(tmp_path, path)?;
 
     Ok(())
-}
-
-fn load_file(path: &Path) -> std::io::Result<SaveFileData> {
-    let file = File::open(path)?;
-    let ret = serde_json::from_reader(file).unwrap(); // FIXME: unwrap
-    Ok(ret)
 }
 
 impl AppDelegate<AppState> for Delegate {
@@ -81,17 +75,9 @@ impl AppDelegate<AppState> for Delegate {
                 ctx.submit_command(cmd::REBUILD_MENUS, *target);
                 false
             }
-            cmd::SAVE_ANIM_ONLY => {
-                let path = cmd.get_object::<PathBuf>().expect("API violation");
-                if let Err(e) = save_file(&path, &data.scribble.snippets) {
-                    log::error!("error saving: '{}'", e);
-                }
-                ctx.submit_command(cmd::REBUILD_MENUS, *target);
-                false
-            }
             druid::commands::OPEN_FILE => {
                 let info = cmd.get_object::<FileInfo>().expect("no file info");
-                match load_file(info.path()) {
+                match SaveFileData::load_from(info.path()) {
                     Ok(save_data) => {
                         *data = AppState::from_save_file(save_data);
                     }

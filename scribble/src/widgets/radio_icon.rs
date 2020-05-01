@@ -5,8 +5,6 @@ use druid::{theme, Data};
 
 use crate::widgets::icons::Icon;
 
-const RADIO_CIRCLE_RADIUS: f64 = 7.0;
-
 pub struct RadioIcon<T: Data> {
     icon_size: Size,
     icon_scale: f64,

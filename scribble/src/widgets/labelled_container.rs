@@ -26,10 +26,12 @@ impl<T: Data> LabelledContainer<T> {
         }
     }
 
+    /*
     pub fn border_width<S: Into<KeyOrValue<f64>>>(mut self, width: S) -> Self {
         self.border_width = width.into();
         self
     }
+    */
 
     pub fn border_color<S: Into<KeyOrValue<Color>>>(mut self, color: S) -> Self {
         self.border_color = color.into();

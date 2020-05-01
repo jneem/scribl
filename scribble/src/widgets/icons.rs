@@ -12,6 +12,7 @@ pub struct Icon {
     pub path: &'static str,
 }
 
+#[allow(dead_code)]
 pub const CAMERA: Icon = Icon {
     width: 512,
     height: 512,

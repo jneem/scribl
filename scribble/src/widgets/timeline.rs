@@ -16,7 +16,6 @@ use crate::snippet_layout;
 
 const SNIPPET_HEIGHT: f64 = 20.0;
 const MIN_NUM_ROWS: usize = 5;
-const MIN_WIDTH: f64 = 100.0;
 const PIXELS_PER_USEC: f64 = 100.0 / 1000000.0;
 const TIMELINE_BG_COLOR: Color = Color::rgb8(0x66, 0x66, 0x66);
 const CURSOR_COLOR: Color = Color::rgb8(0x10, 0x10, 0xaa);
@@ -72,16 +71,6 @@ impl Snip {
         match self {
             Snip::Audio(s) => Some(s.end_time()),
             Snip::Drawing(d) => d.end_time(),
-        }
-    }
-
-    fn last_draw_time(&self) -> Option<Time> {
-        match self {
-            Snip::Audio(_) => None,
-            Snip::Drawing(d) => {
-                let end = d.end_time().unwrap_or(Time::from_micros(std::i64::MAX));
-                Some(d.last_draw_time().min(end))
-            }
         }
     }
 

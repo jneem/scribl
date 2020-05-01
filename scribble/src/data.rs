@@ -2,7 +2,8 @@ use druid::kurbo::BezPath;
 use druid::{Data, Lens, Point};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::fs::File;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -59,6 +60,14 @@ pub struct SaveFileData {
     pub version: u64,
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,
+}
+
+impl SaveFileData {
+    pub fn load_from<P: AsRef<Path>>(path: P) -> anyhow::Result<SaveFileData> {
+        let file = File::open(path.as_ref())?;
+        let ret = serde_json::from_reader(file)?;
+        Ok(ret)
+    }
 }
 
 /// This data contains the state of the drawing.
@@ -489,10 +498,6 @@ impl CurrentAction {
 
     pub fn is_recording(&self) -> bool {
         matches!(*self, CurrentAction::Recording(_))
-    }
-
-    pub fn is_waiting_to_record(&self) -> bool {
-        matches!(*self, CurrentAction::WaitingToRecord(_))
     }
 
     pub fn time_factor(&self) -> f64 {
