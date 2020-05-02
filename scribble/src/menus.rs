@@ -118,7 +118,7 @@ fn edit_menu(data: &AppState) -> MenuDesc<AppState> {
 
     let delete = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-delete").with_placeholder("Delete selected"),
-        cmd::DELETE_SELECTED_SNIPPET,
+        cmd::DELETE_SNIPPET,
     )
     .hotkey(SysMods::None, KeyCode::Delete)
     .disabled_if(|| data.scribble.selected_snippet.is_none());

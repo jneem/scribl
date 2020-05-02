@@ -413,6 +413,14 @@ impl AudioSnippetsData {
         ret
     }
 
+    pub fn without_snippet(&self, id: AudioSnippetId) -> AudioSnippetsData {
+        let mut ret = self.clone();
+        let mut map = ret.snippets.deref().clone();
+        map.remove(&id);
+        ret.snippets = Arc::new(map);
+        ret
+    }
+
     pub fn snippet(&self, id: AudioSnippetId) -> &AudioSnippetData {
         self.snippets.get(&id).unwrap()
     }

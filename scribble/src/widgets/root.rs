@@ -7,9 +7,9 @@ use std::sync::mpsc::{channel, Receiver};
 
 use scribble_curves::{SnippetData, SnippetId, Time};
 
-use crate::audio::AudioSnippetData;
+use crate::audio::{AudioSnippetData, AudioSnippetId};
 use crate::cmd;
-use crate::data::{AppState, CurrentAction, RecordingSpeed, SegmentInProgress};
+use crate::data::{AppState, CurrentAction, MaybeSnippetId, RecordingSpeed, SegmentInProgress};
 use crate::encode::EncodingStatus;
 use crate::widgets::{
     icons, make_status_bar, make_timeline, DrawingPane, LabelledContainer, Palette, ToggleButton,
@@ -203,24 +203,38 @@ impl Root {
                 let snip = cmd.get_object::<SnippetData>().expect("no snippet");
                 let (new_snippets, new_id) = data.scribble.snippets.with_new_snippet(snip.clone());
                 data.scribble.snippets = new_snippets;
-                data.scribble.selected_snippet = Some(new_id);
+                data.scribble.selected_snippet = new_id.into();
                 data.undo.borrow_mut().push(&data.scribble);
-                true
-            }
-            cmd::DELETE_SELECTED_SNIPPET => {
-                if let Some(id) = data.scribble.selected_snippet {
-                    ctx.submit_command(Command::new(cmd::DELETE_SNIPPET, id), None);
-                }
                 true
             }
             cmd::DELETE_SNIPPET => {
-                let &id = cmd.get_object::<SnippetId>().expect("no snippet id");
-                let new_snippets = data.scribble.snippets.without_snippet(id);
-                data.scribble.snippets = new_snippets;
-                if data.scribble.selected_snippet == Some(id) {
-                    data.scribble.selected_snippet = None;
+                if let Some(id) = cmd
+                    .get_object::<SnippetId>()
+                    .ok()
+                    .cloned()
+                    .or(data.scribble.selected_snippet.as_draw())
+                {
+                    let new_snippets = data.scribble.snippets.without_snippet(id);
+                    data.scribble.snippets = new_snippets;
+                    if data.scribble.selected_snippet == id.into() {
+                        data.scribble.selected_snippet = MaybeSnippetId::None;
+                    }
+                    data.undo.borrow_mut().push(&data.scribble);
+                } else if let Some(id) = cmd
+                    .get_object::<AudioSnippetId>()
+                    .ok()
+                    .cloned()
+                    .or(data.scribble.selected_snippet.as_audio())
+                {
+                    let new_snippets = data.scribble.audio_snippets.without_snippet(id);
+                    data.scribble.audio_snippets = new_snippets;
+                    if data.scribble.selected_snippet == id.into() {
+                        data.scribble.selected_snippet = MaybeSnippetId::None;
+                    }
+                    data.undo.borrow_mut().push(&data.scribble);
+                } else {
+                    log::error!("No snippet id to delete");
                 }
-                data.undo.borrow_mut().push(&data.scribble);
                 true
             }
             cmd::ADD_AUDIO_SNIPPET => {
@@ -267,7 +281,7 @@ impl Root {
                 true
             }
             cmd::TRUNCATE_SNIPPET => {
-                if let Some(id) = data.scribble.selected_snippet {
+                if let Some(id) = data.scribble.selected_snippet.as_draw() {
                     data.scribble.snippets = data
                         .scribble
                         .snippets
@@ -280,7 +294,7 @@ impl Root {
             }
             cmd::LERP_SNIPPET => {
                 if let (Some(mark_time), Some(id)) =
-                    (data.scribble.mark, data.scribble.selected_snippet)
+                    (data.scribble.mark, data.scribble.selected_snippet.as_draw())
                 {
                     data.scribble.snippets =
                         data.scribble

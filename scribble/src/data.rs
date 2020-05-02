@@ -12,7 +12,7 @@ use scribble_curves::{
     SnippetsData, Time,
 };
 
-use crate::audio::{AudioSnippetData, AudioSnippetsData, AudioState};
+use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData, AudioState};
 use crate::undo::UndoStack;
 use crate::widgets::ToggleButtonState;
 
@@ -70,13 +70,54 @@ impl SaveFileData {
     }
 }
 
+#[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, Debug, Data)]
+pub enum MaybeSnippetId {
+    Draw(SnippetId),
+    Audio(AudioSnippetId),
+    None,
+}
+
+impl MaybeSnippetId {
+    pub fn is_none(&self) -> bool {
+        matches!(self, MaybeSnippetId::None)
+    }
+
+    pub fn as_draw(&self) -> Option<SnippetId> {
+        if let MaybeSnippetId::Draw(id) = self {
+            Some(*id)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_audio(&self) -> Option<AudioSnippetId> {
+        if let MaybeSnippetId::Audio(id) = self {
+            Some(*id)
+        } else {
+            None
+        }
+    }
+}
+
+impl From<SnippetId> for MaybeSnippetId {
+    fn from(id: SnippetId) -> MaybeSnippetId {
+        MaybeSnippetId::Draw(id)
+    }
+}
+
+impl From<AudioSnippetId> for MaybeSnippetId {
+    fn from(id: AudioSnippetId) -> MaybeSnippetId {
+        MaybeSnippetId::Audio(id)
+    }
+}
+
 /// This data contains the state of the drawing.
 #[derive(Clone, Data, Lens)]
 pub struct ScribbleState {
     pub new_curve: Option<Arc<Curve>>,
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,
-    pub selected_snippet: Option<SnippetId>,
+    pub selected_snippet: MaybeSnippetId,
 
     pub mark: Option<Time>,
 }
@@ -152,7 +193,7 @@ impl Default for ScribbleState {
             new_curve: None,
             snippets: SnippetsData::default(),
             audio_snippets: AudioSnippetsData::default(),
-            selected_snippet: None,
+            selected_snippet: MaybeSnippetId::None,
             mark: None,
         }
     }

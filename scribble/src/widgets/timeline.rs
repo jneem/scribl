@@ -24,6 +24,7 @@ const CURSOR_THICKNESS: f64 = 3.0;
 const DRAW_SNIPPET_COLOR: Color = Color::rgb8(0x99, 0x99, 0x22);
 const DRAW_SNIPPET_SELECTED_COLOR: Color = Color::rgb8(0x77, 0x77, 0x11);
 const AUDIO_SNIPPET_COLOR: Color = Color::rgb8(0x55, 0x55, 0xBB);
+const AUDIO_SNIPPET_SELECTED_COLOR: Color = Color::rgb8(0x44, 0x44, 0xAA);
 const SNIPPET_STROKE_COLOR: Color = Color::rgb8(0x22, 0x22, 0x22);
 const SNIPPET_HOVER_STROKE_COLOR: Color = Color::rgb8(0, 0, 0);
 const SNIPPET_STROKE_THICKNESS: f64 = 1.0;
@@ -278,13 +279,20 @@ impl TimelineSnippet {
     fn fill_color(&self, data: &AppState) -> Color {
         match self.id {
             Id::Drawing(id) => {
-                if data.scribble.selected_snippet == Some(id) {
+                if data.scribble.selected_snippet == id.into() {
                     DRAW_SNIPPET_SELECTED_COLOR
                 } else {
                     DRAW_SNIPPET_COLOR
                 }
             }
-            Id::Audio(_) => AUDIO_SNIPPET_COLOR,
+            // FIXME: make a audio selected color too
+            Id::Audio(id) => {
+                if data.scribble.selected_snippet == id.into() {
+                    AUDIO_SNIPPET_SELECTED_COLOR
+                } else {
+                    AUDIO_SNIPPET_COLOR
+                }
+            }
         }
     }
 }
@@ -300,11 +308,12 @@ impl Widget<AppState> for TimelineSnippet {
                 if ctx.is_active() {
                     ctx.set_active(false);
                     if ctx.is_hot() {
-                        if let Id::Drawing(id) = self.id {
-                            data.scribble.selected_snippet = Some(id);
-                            ctx.request_paint();
-                            ctx.set_handled();
+                        match self.id {
+                            Id::Drawing(id) => data.scribble.selected_snippet = id.into(),
+                            Id::Audio(id) => data.scribble.selected_snippet = id.into(),
                         }
+                        ctx.request_paint();
+                        ctx.set_handled();
                     }
                 }
             }
@@ -316,6 +325,10 @@ impl Widget<AppState> for TimelineSnippet {
         let snip = self.snip(data);
         let old_snip = self.snip(old_data);
         if !snip.same(&old_snip) {
+            ctx.request_paint();
+        }
+
+        if old_data.scribble.selected_snippet != data.scribble.selected_snippet {
             ctx.request_paint();
         }
     }
