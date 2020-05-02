@@ -83,7 +83,7 @@ fn main() {
             e.set(BUTTON_ICON_DISABLED, Color::rgb8(0x33, 0x33, 0x33));
             e.set(BUTTON_ICON_SELECTED, Color::rgb8(45, 214, 51));
             e.set(BUTTON_ICON_HOT, Color::rgb8(197, 237, 198));
-            e.set(BUTTON_ICON_IDLE, Color::rgb8(0x55, 0x55, 0x55));
+            e.set(BUTTON_ICON_IDLE, Color::rgb8(0x70, 0x70, 0x70));
             e.set(BUTTON_ICON_PADDING, 2.0);
             e.set(TEXT_SIZE_SMALL, 10.0);
         })

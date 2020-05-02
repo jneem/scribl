@@ -1,6 +1,9 @@
-//! This module contains icons from font awesome. Instead of using the svg files, we embed the
-//! paths directly (because that makes it easier to change their colors). These images are
-//! available under a CC-BY license. (TODO: what do we need to do to attribute them properly?)
+//! This module contains icons from font awesome. Instead of using the svg
+//! files, we embed the paths directly (because that makes it easier to change
+//! their colors). Some of these images (specifically CAMERA, VIDEO,
+//! MICROPHONE, PLAY, PAUSE, FADE_OUT) were derived from font-awesome, which is
+//! available under a CC-BY license.
+//! (TODO: is this comment enough for the attribution requirements?)
 
 /// An icon made up of a single path (which should be filled with whatever color we want).
 pub struct Icon {

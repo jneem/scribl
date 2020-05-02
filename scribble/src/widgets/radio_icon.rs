@@ -85,7 +85,7 @@ impl<T: Data> Widget<T> for RadioIcon<T> {
         } else if hot {
             env.get(crate::BUTTON_ICON_HOT)
         } else {
-            env.get(theme::FOREGROUND_LIGHT)
+            env.get(crate::BUTTON_ICON_IDLE)
         };
 
         ctx.with_save(|ctx| {
