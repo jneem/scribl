@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use cairo::{Context, Format, ImageSurface};
 use druid::piet::{CairoRenderContext, RenderContext};
 use druid::{Affine, Data};
@@ -68,37 +69,37 @@ fn create_pipeline(
     gst::Element::link_many(&[&a_src, &a_queue1, &a_convert, &a_encode, &a_queue2, &mux])?;
     gst::Element::link(&mux, &sink)?;
 
-    // FIXME: allow weirder filenames
+    // TODO: allow weirder filenames
     sink.set_property(
         "location",
-        &path.to_str().expect("non-utf string").to_value(),
+        &path
+            .to_str()
+            .ok_or(anyhow!("this filename is too weird"))?
+            .to_value(),
     )?;
 
     let video_info =
         gst_video::VideoInfo::new(gst_video::VideoFormat::Bgra, WIDTH as u32, HEIGHT as u32)
             .fps(gst::Fraction::new(FPS as i32, 1))
-            .build()
-            .expect("failed to create video info");
+            .build()?;
 
     let v_src = v_src
         .dynamic_cast::<gst_app::AppSrc>()
-        .expect("failed to get video src");
-    v_src.set_caps(Some(&video_info.to_caps().unwrap()));
+        .map_err(|_| anyhow!("bug: couldn't cast v_src to an AppSrc"))?;
+    v_src.set_caps(Some(&video_info.to_caps()?));
     v_src.set_property_format(gst::Format::Time); // FIXME: what does this mean?
 
     let a_src = a_src
         .dynamic_cast::<gst_app::AppSrc>()
-        .expect("failed to get audio src");
+        .map_err(|_| anyhow!("bug: couldn't cast a_src to an AppSrc"))?;
     let audio_info =
-        gst_audio::AudioInfo::new(gst_audio::AudioFormat::S16le, SAMPLE_RATE as u32, 1)
-            .build()
-            .expect("failed to create audio info");
-    a_src.set_caps(Some(&audio_info.to_caps().unwrap()));
+        gst_audio::AudioInfo::new(gst_audio::AudioFormat::S16le, SAMPLE_RATE as u32, 1).build()?;
+    a_src.set_caps(Some(&audio_info.to_caps()?));
     a_src.set_property_format(gst::Format::Time); // FIXME: needed?
 
     // This will be called every time the video source requests data.
     let mut frame_counter = 0;
-    let need_data = move |src: &gst_app::AppSrc, _: u32| {
+    let mut need_data_inner = move |src: &gst_app::AppSrc| -> anyhow::Result<()> {
         // We track encoding progress by the fraction of video frames that we've rendered.  This
         // isn't perfect (what with gstreamer's buffering, etc.), but it's probably good enough.
         let _ = progress.send(EncodingStatus::Encoding(
@@ -106,80 +107,98 @@ fn create_pipeline(
         ));
         if frame_counter == frame_count {
             let _ = src.end_of_stream();
-            return;
+            return Ok(());
         }
 
         let time = Time::from_video_frame(frame_counter, FPS);
 
         // Create a cairo surface and render to it.
         let mut surface = ImageSurface::create(Format::ARgb32, WIDTH as i32, HEIGHT as i32)
-            .expect("failed to create surface");
+            .map_err(|_| anyhow!("failed to create a surface"))?;
         {
             let mut cr = Context::new(&surface);
             let mut ctx = CairoRenderContext::new(&mut cr);
             ctx.clear(druid::Color::WHITE);
             ctx.with_save(|ctx| {
-                ctx.transform(Affine::scale(WIDTH as f64 / 1600.0)); // FIXME
+                // FIXME: if/when we support other aspect ratios, this will need to be changed too.
+                ctx.transform(Affine::scale(WIDTH as f64 / 1600.0));
                 for (_, snip) in anim.snippets() {
                     snip.render(ctx, time);
                 }
                 Ok(())
+                // FIXME: piet's errors are not Send + Sync, so we'll need to wrap them or something.
             })
-            .unwrap();
-            ctx.finish().unwrap();
+            .map_err(|_| anyhow!("error saving ctx"))?;
+            ctx.finish()
+                .map_err(|_| anyhow!("error finishing render"))?;
             surface.flush();
         }
 
         // Create a gst buffer and copy the cairo surface over to it. (TODO: it would be nice to render
         // directly into this buffer, but cairo doesn't seem to safely support rendering into borrowed
         // buffers.)
-        let mut gst_buffer =
-            gst::Buffer::with_size(video_info.size()).expect("failed to get buffer");
+        let mut gst_buffer = gst::Buffer::with_size(video_info.size())?;
         {
-            let gst_buffer_ref = gst_buffer.get_mut().unwrap();
+            let gst_buffer_ref = gst_buffer
+                .get_mut()
+                .ok_or(anyhow!("failed to get mutable buffer"))?;
             // Presentation time stamp (i.e. when should this frame be displayed).
             gst_buffer_ref.set_pts(time.as_gst_clock_time());
 
-            let mut data = gst_buffer_ref
-                .map_writable()
-                .expect("failed to get buffer data");
-            data.as_mut_slice()
-                .copy_from_slice(&surface.get_data().expect("failed to get surface data"));
+            let mut data = gst_buffer_ref.map_writable()?;
+            data.as_mut_slice().copy_from_slice(&surface.get_data()?);
         }
 
         // Ignore the error, since appsrc is supposed to handle it.
         let _ = src.push_buffer(gst_buffer);
         frame_counter += 1;
+        Ok(())
+    };
+
+    let need_data = move |src: &gst_app::AppSrc, _: u32| {
+        if let Err(e) = need_data_inner(src) {
+            log::error!("error rendering frame: {}", e);
+        }
     };
 
     let mut cursor = Cursor::new(&audio, time::ZERO, crate::audio::SAMPLE_RATE, true);
     let mut time_us = 0i64;
-    let need_audio_data = move |src: &gst_app::AppSrc, size_hint: u32| {
-        if cursor.is_finished() {
-            let _ = src.end_of_stream();
-            return;
-        }
-
-        // I'm not sure if this is necessary, but there isn't much documentation on `size_hint` in
-        // gstreamer, so just to be sure let's make sure it isn't too small.
-        let size = size_hint.max(1024);
-
-        // gstreamer buffers seem to only ever hand out [u8], but we prefer to work with
-        // [i16]s. Here, we're doing an extra copy to handle endian-ness and avoid unsafe.
-        let mut buf = vec![0i16; size as usize / 2];
-        cursor.mix_to_buffer(&audio, &mut buf[..]);
-
-        let mut gst_buffer = gst::Buffer::with_size(size as usize).expect("audio buffer");
-        {
-            let gst_buffer_ref = gst_buffer.get_mut().unwrap();
-            gst_buffer_ref.set_pts(time_us as u64 * gst::USECOND);
-            time_us += (size as i64 / 2 * 1000000) / SAMPLE_RATE as i64;
-            let mut data = gst_buffer_ref.map_writable().expect("audio buffer data");
-            for (idx, bytes) in data.as_mut_slice().chunks_mut(2).enumerate() {
-                bytes.copy_from_slice(&buf[idx].to_le_bytes());
+    let mut need_audio_data_inner =
+        move |src: &gst_app::AppSrc, size_hint: u32| -> anyhow::Result<()> {
+            if cursor.is_finished() {
+                let _ = src.end_of_stream();
+                return Ok(());
             }
+
+            // I'm not sure if this is necessary, but there isn't much documentation on `size_hint` in
+            // gstreamer, so just to be sure let's make sure it isn't too small.
+            let size = size_hint.max(1024);
+
+            // gstreamer buffers seem to only ever hand out [u8], but we prefer to work with
+            // [i16]s. Here, we're doing an extra copy to handle endian-ness and avoid unsafe.
+            let mut buf = vec![0i16; size as usize / 2];
+            cursor.mix_to_buffer(&audio, &mut buf[..]);
+
+            let mut gst_buffer = gst::Buffer::with_size(size as usize)?;
+            {
+                let gst_buffer_ref = gst_buffer
+                    .get_mut()
+                    .ok_or(anyhow!("couldn't get mut buffer"))?;
+                gst_buffer_ref.set_pts(time_us as u64 * gst::USECOND);
+                time_us += (size as i64 / 2 * 1000000) / SAMPLE_RATE as i64;
+                let mut data = gst_buffer_ref.map_writable()?;
+                for (idx, bytes) in data.as_mut_slice().chunks_mut(2).enumerate() {
+                    bytes.copy_from_slice(&buf[idx].to_le_bytes());
+                }
+            }
+            let _ = src.push_buffer(gst_buffer);
+            Ok(())
+        };
+
+    let need_audio_data = move |src: &gst_app::AppSrc, size_hint: u32| {
+        if let Err(e) = need_audio_data_inner(src, size_hint) {
+            log::error!("error synthesizing audio: {}", e);
         }
-        let _ = src.push_buffer(gst_buffer);
     };
 
     v_src.set_callbacks(gst_app::AppSrcCallbacks::new().need_data(need_data).build());
@@ -195,7 +214,9 @@ fn create_pipeline(
 // Runs the pipeline (blocking) until it exits or errors.
 fn main_loop(pipeline: gst::Pipeline) -> Result<(), anyhow::Error> {
     pipeline.set_state(gst::State::Playing)?;
-    let bus = pipeline.get_bus().expect("no bus");
+    let bus = pipeline
+        .get_bus()
+        .ok_or_else(|| anyhow!("couldn't get pipeline bus"))?;
 
     for msg in bus.iter_timed(gst::CLOCK_TIME_NONE) {
         use gst::MessageView::*;
