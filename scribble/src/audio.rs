@@ -20,8 +20,8 @@ use scribble_curves::{time, Diff, Time};
 /// and just keep it around).
 pub struct AudioState {
     event_loop: Arc<cpal::EventLoop>,
-    input_device: cpal::Device,
-    output_device: cpal::Device,
+    input_device: Option<cpal::Device>,
+    output_device: Option<cpal::Device>,
     format: cpal::Format,
 
     // These are the main ways that the audio data is synchronized with the rest of the application.
@@ -294,13 +294,20 @@ impl AudioState {
     pub fn init() -> AudioState {
         let host = cpal::default_host();
         let event_loop = host.event_loop();
-        let input_device = host.default_input_device().expect("no input device");
-        let output_device = host.default_output_device().expect("no input device");
+        let input_device = host.default_input_device();
+        let output_device = host.default_output_device();
         let format = cpal::Format {
             channels: 1,
             sample_rate: cpal::SampleRate(SAMPLE_RATE as u32),
             data_type: cpal::SampleFormat::I16,
         };
+
+        if input_device.is_none() {
+            log::error!("failed to open an input audio device");
+        }
+        if output_device.is_none() {
+            log::error!("failed to open an output audio device");
+        }
 
         let ret = AudioState {
             event_loop: Arc::new(event_loop),
@@ -322,28 +329,31 @@ impl AudioState {
         self.output_data.lock().unwrap().speed_factor = vel;
     }
 
-    pub fn start_recording(&mut self) {
-        let input_stream = self
-            .event_loop
-            .build_input_stream(&self.input_device, &self.format)
-            .expect("couldn't build input stream");
+    pub fn start_recording(&mut self) -> anyhow::Result<()> {
+        if let Some(ref input_device) = self.input_device {
+            let input_stream = self
+                .event_loop
+                .build_input_stream(input_device, &self.format)?;
 
-        {
-            let mut input = self.input_data.lock().unwrap();
-            assert!(input.id.is_none());
-            input.id = Some(input_stream.clone());
-            input.buf.clear();
+            {
+                let mut input = self.input_data.lock().unwrap();
+                assert!(input.id.is_none());
+                input.id = Some(input_stream.clone());
+                input.buf.clear();
+            }
+
+            self.event_loop.play_stream(input_stream)?;
         }
-
-        self.event_loop
-            .play_stream(input_stream)
-            .expect("failed to play");
+        Ok(())
     }
 
     pub fn stop_recording(&mut self) -> Vec<i16> {
         let mut input_data = self.input_data.lock().unwrap();
-        self.event_loop
-            .destroy_stream(input_data.id.take().unwrap());
+        if let Some(id) = input_data.id.take() {
+            self.event_loop.destroy_stream(id);
+        } else {
+            log::error!("no input stream while stopping recording");
+        }
 
         let mut buf = Vec::new();
         std::mem::swap(&mut input_data.buf, &mut buf);
@@ -351,31 +361,38 @@ impl AudioState {
         process_audio(buf)
     }
 
-    pub fn start_playing(&mut self, data: AudioSnippetsData, time: Time, velocity: f64) {
-        let cursor = Cursor::new(&data, time, SAMPLE_RATE, velocity > 0.0);
-        let output_stream = self
-            .event_loop
-            .build_output_stream(&self.output_device, &self.format)
-            .expect("couldn't build output stream");
+    pub fn start_playing(
+        &mut self,
+        data: AudioSnippetsData,
+        time: Time,
+        velocity: f64,
+    ) -> anyhow::Result<()> {
+        if let Some(ref output_device) = self.output_device {
+            let cursor = Cursor::new(&data, time, SAMPLE_RATE, velocity > 0.0);
+            let output_stream = self
+                .event_loop
+                .build_output_stream(output_device, &self.format)?;
 
-        {
-            let mut output = self.output_data.lock().unwrap();
-            assert!(output.id.is_none());
-            output.id = Some(output_stream.clone());
-            output.bufs = data;
-            output.speed_factor = velocity;
-            output.cursor = cursor;
+            {
+                let mut output = self.output_data.lock().unwrap();
+                assert!(output.id.is_none());
+                output.id = Some(output_stream.clone());
+                output.bufs = data;
+                output.speed_factor = velocity;
+                output.cursor = cursor;
+            }
+
+            self.event_loop.play_stream(output_stream)?;
         }
-
-        self.event_loop
-            .play_stream(output_stream)
-            .expect("failed to play");
+        Ok(())
     }
 
     pub fn stop_playing(&mut self) {
         let mut output = self.output_data.lock().unwrap();
-        if output.id.is_some() {
-            self.event_loop.destroy_stream(output.id.take().unwrap());
+        if let Some(id) = output.id.take() {
+            self.event_loop.destroy_stream(id);
+        } else {
+            log::error!("tried to stop a non-existent stream");
         }
     }
 }
@@ -458,15 +475,23 @@ fn audio_thread(
     output: Arc<Mutex<AudioOutput>>,
 ) {
     let mut pvoc = PhaseVocoder::new(1.0);
-    let mut pvoc_speed = 1.0;
+    let mut pvoc_speed = 1.0f64;
     let mut mix_buffer = vec![0; 2048];
 
+    // Keep track of the last output stream, because when the output
+    // stream changes then we need to clear the vocoder's buffer.
+    let mut last_output_stream_id = None;
+
     event_loop.run(move |stream_id, stream_data| {
-        let stream_data = stream_data.expect("error on input stream");
+        let stream_data = stream_data.expect("error getting stream data");
         match stream_data {
             StreamData::Output {
                 buffer: UnknownTypeOutputBuffer::I16(mut buf),
             } => {
+                if last_output_stream_id.as_ref() != Some(&stream_id) {
+                    pvoc.reset(pvoc_speed.abs() as f32);
+                    last_output_stream_id = Some(stream_id.clone());
+                }
                 let mut buf: &mut [i16] = &mut *buf;
 
                 for elem in buf.iter_mut() {
@@ -525,7 +550,7 @@ fn audio_thread(
 const TRUNCATION_LEN: Diff = Diff::from_micros(100_000);
 fn process_audio(mut buf: Vec<i16>) -> Vec<i16> {
     let trunc_samples = TRUNCATION_LEN.as_audio_idx(SAMPLE_RATE) as usize;
-    if buf.len() <= 2 * trunc_samples {
+    if buf.len() <= 4 * trunc_samples {
         return Vec::new();
     }
     // We truncate the end of the buffer, but instead of truncating the beginning we set
@@ -538,6 +563,12 @@ fn process_audio(mut buf: Vec<i16>) -> Vec<i16> {
     // Truncate the buffer and convert it to f32 also, since that's what RNNoise wants.
     let buf_end = buf.len() - trunc_samples;
     let mut float_buf: Vec<f32> = buf[..buf_end].iter().map(|x| *x as f32).collect();
+    // Do some fade-in and fade-out.
+    for i in 0..trunc_samples {
+        let factor = i as f32 / trunc_samples as f32;
+        float_buf[trunc_samples + i] *= factor;
+        float_buf[buf_end - 1 - i] *= factor;
+    }
 
     // RNNoise likes the input to be a multiple of FRAME_SIZE.
     let fs = rnnoise_c::FRAME_SIZE;
