@@ -78,19 +78,9 @@ enum Snip {
 impl AudioWaveform {
     fn from_audio(data: AudioSnippetData) -> AudioWaveform {
         // Converts a PCM sample to a y coordinate. This could use some more
-        // thought and/or testing. Audio samples seem to never get anywhere near
-        // i16::MAX, and so a linear scale up to i16:MAX ends up not drawing
-        // anything. Taking a log evens out the magnitudes a lot, and discarding
-        // the lower values seems to improve the appearance too, but 10.0 is
-        // completely arbitrary.
-        let audio_height = |x: i16| -> f64 {
-            let x = x as f64;
-            let sign = x.signum();
-            let x = (x.abs() - 10.0).max(1.0);
-
-            // This gives a height between -1 and 1.
-            sign as f64 * x.log(std::i16::MAX as f64)
-        };
+        // thought and/or testing. Audio samples seem to rarely get anywhere near
+        // i16::MAX, so we inflate them a little.
+        let audio_height = |x: f64| -> f64 { (x / std::i16::MAX as f64 * 1.5).max(-1.0).min(1.0) };
 
         let width = pix_width(data.end_time() - data.start_time());
         let pix_per_sample = 5;
@@ -107,9 +97,9 @@ impl AudioWaveform {
                 (end_time.as_audio_idx(crate::audio::SAMPLE_RATE) as usize).min(buf.len());
             let sub_buf = &buf[start_idx..end_idx];
 
-            let mag = (sub_buf.iter().cloned().max().unwrap_or(0)
-                - sub_buf.iter().cloned().min().unwrap_or(0))
-                / 2;
+            let mag = (sub_buf.iter().cloned().max().unwrap_or(0) as f64
+                - sub_buf.iter().cloned().min().unwrap_or(0) as f64)
+                / 2.0;
             path.line_to((p as f64, audio_height(mag)));
             mags.push((p, mag));
         }
