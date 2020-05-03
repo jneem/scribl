@@ -9,7 +9,7 @@ use crate::data::{AppState, SaveFileData};
 #[derive(Debug, Default)]
 pub struct Delegate;
 
-fn save_file<S: serde::Serialize>(path: &Path, data: &S) -> std::io::Result<()> {
+fn save_file<S: serde::Serialize>(path: &Path, data: &S) -> anyhow::Result<()> {
     let tmp_file_name = format!(
         "{}.savefile",
         path.file_name()
@@ -23,7 +23,7 @@ fn save_file<S: serde::Serialize>(path: &Path, data: &S) -> std::io::Result<()> 
     }
 
     let tmp_file = File::create(&tmp_path)?;
-    serde_json::to_writer(tmp_file, data).unwrap(); // FIXME: unwrap
+    serde_json::to_writer(tmp_file, data)?;
     fs::rename(tmp_path, path)?;
 
     Ok(())
@@ -42,8 +42,11 @@ impl AppDelegate<AppState> for Delegate {
             druid::commands::SAVE_FILE => {
                 let path = if let Ok(info) = cmd.get_object::<FileInfo>() {
                     info.path().to_owned()
+                } else if let Some(path) = data.save_path.as_ref() {
+                    path.to_owned()
                 } else {
-                    data.save_path.as_ref().expect("no save path").to_owned()
+                    log::error!("no save path, not saving");
+                    return false;
                 };
 
                 // Note that we use the SAVE_FILE command for both saving and
@@ -76,7 +79,12 @@ impl AppDelegate<AppState> for Delegate {
                 false
             }
             druid::commands::OPEN_FILE => {
-                let info = cmd.get_object::<FileInfo>().expect("no file info");
+                let info = if let Ok(info) = cmd.get_object::<FileInfo>() {
+                    info
+                } else {
+                    log::error!("no open file info, not opening");
+                    return false;
+                };
                 match SaveFileData::load_from(info.path()) {
                     Ok(save_data) => {
                         *data = AppState::from_save_file(save_data);

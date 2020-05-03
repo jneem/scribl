@@ -25,4 +25,5 @@ rnnoise-c = "0.1.0"
 phase_vocoder = { git = "https://github.com/jneem/phase_vocoder.git" }
 clap = "2.33.0"
 pkg-version = "1.0.0"
+env_logger = "0.7.1"
 

@@ -31,8 +31,10 @@ const MINOR: u32 = pkg_version::pkg_version_minor!();
 const PATCH: u32 = pkg_version::pkg_version_patch!();
 
 fn main() {
+    env_logger::init();
+
     if let Err(e) = gstreamer::init() {
-        println!("failed to init gstreamer: {}", e);
+        log::error!("failed to init gstreamer: {}", e);
         return;
     }
 
@@ -56,7 +58,7 @@ fn main() {
         match crate::data::SaveFileData::load_from(path) {
             Ok(save_file) => AppState::from_save_file(save_file),
             Err(e) => {
-                eprintln!("Error opening save file: {}", e);
+                log::error!("Error opening save file: {}", e);
                 return;
             }
         }
