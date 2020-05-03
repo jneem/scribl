@@ -278,11 +278,13 @@ impl AppState {
             self.action = CurrentAction::Recording(time_factor);
             self.take_time_snapshot();
             if time_factor > 0.0 {
-                self.audio.borrow_mut().start_playing(
+                if let Err(e) = self.audio.borrow_mut().start_playing(
                     self.scribble.audio_snippets.clone(),
                     self.time,
                     time_factor,
-                );
+                ) {
+                    log::error!("failed to start playing audio: {}", e);
+                }
             }
         } else {
             panic!("wasn't waiting to record");
@@ -335,9 +337,13 @@ impl AppState {
         assert_eq!(self.action, CurrentAction::Idle);
         self.action = CurrentAction::Playing;
         self.take_time_snapshot();
-        self.audio
-            .borrow_mut()
-            .start_playing(self.scribble.audio_snippets.clone(), self.time, 1.0);
+        if let Err(e) = self.audio.borrow_mut().start_playing(
+            self.scribble.audio_snippets.clone(),
+            self.time,
+            1.0,
+        ) {
+            log::error!("failed to start playing audio: {}", e);
+        }
     }
 
     pub fn stop_playing(&mut self) {
@@ -352,7 +358,9 @@ impl AppState {
         assert_eq!(self.action, CurrentAction::Idle);
         self.action = CurrentAction::RecordingAudio(self.time);
         self.take_time_snapshot();
-        self.audio.borrow_mut().start_recording();
+        if let Err(e) = self.audio.borrow_mut().start_recording() {
+            log::error!("failed to start recording audio: {}", e);
+        }
     }
 
     /// Stops recording audio, returning the audio snippet that we just recorded.
@@ -379,11 +387,13 @@ impl AppState {
             }
             CurrentAction::Idle => {
                 self.action = CurrentAction::Scanning(velocity);
-                self.audio.borrow_mut().start_playing(
+                if let Err(e) = self.audio.borrow_mut().start_playing(
                     self.scribble.audio_snippets.clone(),
                     self.time,
                     velocity,
-                );
+                ) {
+                    log::error!("failed to play audio: {}", e);
+                }
             }
             _ => {
                 log::warn!("not scanning, because I'm busy doing {:?}", self.action);
