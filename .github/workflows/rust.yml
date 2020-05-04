@@ -13,6 +13,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - run: sudo apt-get update
     - run: sudo apt-get install libasound2-dev
     - name: Build
       run: cargo build --verbose
