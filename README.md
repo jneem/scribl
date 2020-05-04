@@ -15,7 +15,7 @@ change, and so future versions of Scribble won't be able to open current save fi
 
  Scribble is written in the [`rust`](www.rust-lang.org) programming language. In order to install
  it, you'll need to first [install a `rust` compiler](https://www.rust-lang.org/tools/install).
- You might need install some [`gstreamer`] plugins (at least `vp9enc` and `webmmux`),
+ You might need install some [`gstreamer`](gstreamer.freedesktop.org) plugins (at least `vp9enc` and `webmmux`),
  because Scribble uses gstreamer for encoding videos. (If you're on linux, it should be enough
  to install a package with a name similar to `gstreamer1.0-plugins-good`.)
 
