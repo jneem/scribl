@@ -1,4 +1,5 @@
 # Scribble: simple instructional videos
+![Build](https://github.com/jneem/scribble/workflows/Rust/badge.svg)
 
 Scribble is a program for creating simple instructional videos. There are plenty of fancy programs
 out there for making beautiful animations -- this is not one of them. It only aims to be an
