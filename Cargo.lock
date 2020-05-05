@@ -1249,15 +1249,6 @@ dependencies = [
 
 [[package]]
 name = "piet"
-version = "0.0.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc12ec839fb1931dadee762476260c068fd989d60c366dc6a0228a242c857f82"
-dependencies = [
- "kurbo",
-]
-
-[[package]]
-name = "piet"
 version = "0.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29420eccb68d6b9ad2f8dd87caf9c3bcd3bbd056bfe67871c48b6efab9316b79"
@@ -1267,23 +1258,12 @@ dependencies = [
 
 [[package]]
 name = "piet-cairo"
-version = "0.0.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcc6ff3b4e078df5b4904b6e19efedca4142b896383ffcc53660825eb9d8191e"
-dependencies = [
- "cairo-rs",
- "piet 0.0.11",
- "unicode-segmentation",
-]
-
-[[package]]
-name = "piet-cairo"
 version = "0.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "868fd3fc61bae866e7b7478fc5cef8f16539c8253a40efa6da5ed19d123db080"
 dependencies = [
  "cairo-rs",
- "piet 0.0.12",
+ "piet",
  "unicode-segmentation",
  "xi-unicode",
 ]
@@ -1300,8 +1280,8 @@ dependencies = [
  "direct3d11",
  "directwrite",
  "dxgi",
- "piet 0.0.12",
- "piet-cairo 0.0.12",
+ "piet",
+ "piet-cairo",
  "piet-direct2d",
  "piet-web",
 ]
@@ -1312,7 +1292,7 @@ version = "0.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ef59b37f94f032f98f62c9701b42b0ef98cf667edeb1cfca3206523854850d2"
 dependencies = [
- "piet 0.0.12",
+ "piet",
  "winapi",
  "wio",
 ]
@@ -1324,7 +1304,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a63b986af9dc8ebfd8267cde277b0ae62af322ba877466422f450cabf1678e22"
 dependencies = [
  "js-sys",
- "piet 0.0.12",
+ "piet",
  "unicode-segmentation",
  "wasm-bindgen",
  "web-sys",
@@ -1476,9 +1456,9 @@ dependencies = [
 
 [[package]]
 name = "rnnoise-c"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "613568384469d75144d37dd2dece1cc3536b31d255a494cd0699620ad6b210ce"
+checksum = "efc70be6fcaade41dbfdf04c541fae348a2ed3d07e59dd6f5d493cb69bf4adb6"
 dependencies = [
  "rnnoise-sys",
 ]
@@ -1539,7 +1519,6 @@ name = "scribble"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cairo-rs",
  "clap",
  "cpal",
  "druid",
@@ -1550,7 +1529,6 @@ dependencies = [
  "gstreamer-video",
  "log",
  "phase_vocoder",
- "piet-cairo 0.0.11",
  "pkg-version",
  "rnnoise-c",
  "scribble_curves",

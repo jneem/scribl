@@ -1,6 +1,5 @@
 use anyhow::anyhow;
-use cairo::{Context, Format, ImageSurface};
-use druid::piet::{CairoRenderContext, RenderContext};
+use druid::piet::{Device, ImageFormat, RenderContext};
 use druid::{Affine, Data};
 use gst::prelude::*;
 use gstreamer as gst;
@@ -79,7 +78,7 @@ fn create_pipeline(
     )?;
 
     let video_info =
-        gst_video::VideoInfo::new(gst_video::VideoFormat::Bgra, WIDTH as u32, HEIGHT as u32)
+        gst_video::VideoInfo::new(gst_video::VideoFormat::Rgba, WIDTH as u32, HEIGHT as u32)
             .fps(gst::Fraction::new(FPS as i32, 1))
             .build()?;
 
@@ -99,6 +98,7 @@ fn create_pipeline(
 
     // This will be called every time the video source requests data.
     let mut frame_counter = 0;
+    let mut device = Device::new().map_err(|_| anyhow!("couldn't open Device"))?;
     let mut need_data_inner = move |src: &gst_app::AppSrc| -> anyhow::Result<()> {
         // We track encoding progress by the fraction of video frames that we've rendered.  This
         // isn't perfect (what with gstreamer's buffering, etc.), but it's probably good enough.
@@ -113,11 +113,12 @@ fn create_pipeline(
         let time = Time::from_video_frame(frame_counter, FPS);
 
         // Create a cairo surface and render to it.
-        let mut surface = ImageSurface::create(Format::ARgb32, WIDTH as i32, HEIGHT as i32)
-            .map_err(|_| anyhow!("failed to create a surface"))?;
+
+        let mut bitmap = device
+            .bitmap_target(WIDTH as usize, HEIGHT as usize, 1.0)
+            .map_err(|_| anyhow!("couldn't create bitmap"))?;
         {
-            let mut cr = Context::new(&surface);
-            let mut ctx = CairoRenderContext::new(&mut cr);
+            let mut ctx = bitmap.render_context();
             ctx.clear(druid::Color::WHITE);
             ctx.with_save(|ctx| {
                 // FIXME: if/when we support other aspect ratios, this will need to be changed too.
@@ -131,7 +132,6 @@ fn create_pipeline(
             .map_err(|_| anyhow!("error saving ctx"))?;
             ctx.finish()
                 .map_err(|_| anyhow!("error finishing render"))?;
-            surface.flush();
         }
 
         // Create a gst buffer and copy the cairo surface over to it. (TODO: it would be nice to render
@@ -146,7 +146,12 @@ fn create_pipeline(
             gst_buffer_ref.set_pts(time.as_gst_clock_time());
 
             let mut data = gst_buffer_ref.map_writable()?;
-            data.as_mut_slice().copy_from_slice(&surface.get_data()?);
+            // Note that piet-cairo currently only supports RgbaPremul. It shouldn't
+            // make a difference, because we start with an opaque background.
+            let pixels = bitmap
+                .into_raw_pixels(ImageFormat::RgbaPremul)
+                .map_err(|_| anyhow!("couldn't get pixels"))?;
+            data.as_mut_slice().copy_from_slice(&pixels[..]);
         }
 
         // Ignore the error, since appsrc is supposed to handle it.
