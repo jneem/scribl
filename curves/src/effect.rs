@@ -3,6 +3,8 @@
 //! (Or at least, it does in principle. There's only one effect right now.)
 
 use druid::Data;
+use serde::de::{Deserializer, SeqAccess, Visitor};
+use serde::ser::{SerializeSeq, Serializer};
 use serde::{Deserialize, Serialize};
 
 use crate::time::Diff;
@@ -20,13 +22,15 @@ pub struct FadeEffect {
     pub fade: Diff,
 }
 
-#[derive(Clone, Data, Debug, Eq, Serialize, Deserialize, PartialEq)]
+// TODO: how do we deserialize an "open" enum? We'd like to be able to read files
+// with unrecognized effects.
+#[derive(Clone, Data, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Effect {
     Fade(FadeEffect),
 }
 
 /// A collection of effects.
-#[derive(Clone, Data, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Data, Debug, Default, Eq, PartialEq)]
 pub struct Effects {
     fade: Option<FadeEffect>,
 }
@@ -40,5 +44,48 @@ impl Effects {
 
     pub fn fade(&self) -> Option<&FadeEffect> {
         self.fade.as_ref()
+    }
+}
+
+// We serialize effects as a sequence, so that we can implement more effects
+// without breaking the file format.
+impl Serialize for Effects {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        let mut seq = ser.serialize_seq(None)?;
+
+        if let Some(fade) = &self.fade {
+            seq.serialize_element(fade)?;
+        }
+
+        seq.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Effects {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Effects, D::Error> {
+        de.deserialize_seq(EffectsVisitor)
+    }
+}
+
+struct EffectsVisitor;
+
+impl<'de> Visitor<'de> for EffectsVisitor {
+    type Value = Effects;
+    fn expecting(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        fmt.write_str("a list of effects")
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut access: A) -> Result<Effects, A::Error> {
+        let mut ret = Effects::default();
+
+        if let Some(effect) = access.next_element()? {
+            match effect {
+                Effect::Fade(fade) => {
+                    ret.fade = Some(fade);
+                }
+            }
+        }
+
+        Ok(ret)
     }
 }

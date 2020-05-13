@@ -33,7 +33,7 @@ impl AppDelegate<AppState> for Delegate {
     fn command(
         &mut self,
         ctx: &mut DelegateCtx,
-        target: &Target,
+        target: Target,
         cmd: &Command,
         data: &mut AppState,
         _env: &Env,
@@ -75,7 +75,7 @@ impl AppDelegate<AppState> for Delegate {
                         }
                     }
                 }
-                ctx.submit_command(cmd::REBUILD_MENUS, *target);
+                ctx.submit_command(cmd::REBUILD_MENUS, target);
                 false
             }
             druid::commands::OPEN_FILE => {
@@ -93,13 +93,13 @@ impl AppDelegate<AppState> for Delegate {
                         log::error!("error loading: '{}'", e);
                     }
                 }
-                ctx.submit_command(cmd::REBUILD_MENUS, *target);
+                ctx.submit_command(cmd::REBUILD_MENUS, target);
                 false
             }
             cmd::REBUILD_MENUS => {
                 ctx.submit_command(
                     Command::new(druid::commands::SET_MENU, crate::menus::make_menu(data)),
-                    *target,
+                    target,
                 );
                 false
             }

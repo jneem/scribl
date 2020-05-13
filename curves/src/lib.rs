@@ -1,10 +1,10 @@
-use druid::kurbo::{BezPath, ParamCurve, PathEl, PathSeg, Point};
-use druid::piet::{LineCap, LineJoin, StrokeStyle};
-use druid::{Color, Data, RenderContext};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use druid::kurbo::PathEl;
+use druid::{Data, RenderContext};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+pub mod curve;
 pub mod effect;
 pub mod lerp;
 pub mod simplify;
@@ -12,251 +12,14 @@ pub mod smooth;
 pub mod span_cursor;
 pub mod time;
 
+pub use crate::curve::{Curve, LineStyle, SegmentData};
 pub use crate::effect::{Effect, Effects, FadeEffect};
 pub use crate::lerp::Lerp;
 pub use crate::time::{Diff, Time};
 
-mod serde_path {
-    use super::*;
-
-    pub fn serialize<S: Serializer>(path: &BezPath, ser: S) -> Result<S::Ok, S::Error> {
-        ser.serialize_str(&path.to_svg())
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<BezPath, D::Error> {
-        let s = String::deserialize(de)?;
-        // TODO: once serde support appears in kurbo, drop this
-        Ok(BezPath::from_svg(&s).unwrap())
-    }
-}
-
-mod serde_color {
-    use super::*;
-
-    pub fn serialize<S: Serializer>(c: &Color, ser: S) -> Result<S::Ok, S::Error> {
-        ser.serialize_u32(c.as_rgba_u32())
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<Color, D::Error> {
-        Ok(Color::from_rgba32_u32(u32::deserialize(de)?))
-    }
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct LineStyle {
-    #[serde(with = "serde_color")]
-    pub color: Color,
-    pub thickness: f64,
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct SegmentData {
-    pub style: LineStyle,
-    pub effects: Effects,
-}
-
-impl From<LineStyle> for SegmentData {
-    fn from(style: LineStyle) -> SegmentData {
-        SegmentData {
-            style,
-            effects: Effects::default(),
-        }
-    }
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct Curve {
-    #[serde(with = "serde_path")]
-    pub path: BezPath,
-    pub times: Vec<Time>,
-
-    // The path can consist of many different "segments" (continuous parts between
-    // pen lifts). This contains the first index of each segment, which will always
-    // point to a `MoveTo`.
-    seg_boundaries: Vec<usize>,
-
-    // This has the same length as `seg_boundaries`.
-    seg_data: Vec<SegmentData>,
-}
-
 /// Snippets are identified by unique ids.
 #[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SnippetId(u64);
-
-impl Curve {
-    pub fn new() -> Curve {
-        Curve {
-            path: BezPath::new(),
-            times: Vec::new(),
-            seg_boundaries: Vec::new(),
-            seg_data: Vec::new(),
-        }
-    }
-
-    pub fn line_to(&mut self, p: Point, time: Time) {
-        self.path.line_to(p);
-        self.times.push(time);
-    }
-
-    pub fn move_to(&mut self, p: Point, time: Time, style: LineStyle, effects: Effects) {
-        let seg_data = SegmentData { style, effects };
-        self.seg_boundaries.push(self.path.elements().len());
-        self.seg_data.push(seg_data);
-        self.path.move_to(p);
-        self.times.push(time);
-    }
-
-    pub fn append_segment(&mut self, p: BezPath, t: Vec<Time>, data: SegmentData) {
-        assert_eq!(p.elements().len(), t.len());
-        if t.is_empty() {
-            return;
-        }
-        if let Some(&last_time) = self.times.last() {
-            assert!(last_time <= t[0]);
-        }
-
-        self.seg_boundaries.push(self.times.len());
-        self.seg_data.push(data);
-        self.times.extend_from_slice(&t[..]);
-        // FIXME: this is inefficient, particularly when there are many segments.
-        let mut elts = self.path.elements().to_owned();
-        elts.extend_from_slice(p.elements());
-        self.path = BezPath::from_vec(elts);
-    }
-
-    pub fn segments<'a>(&'a self) -> impl Iterator<Item = Segment<'a>> + 'a {
-        self.seg_boundaries
-            .iter()
-            .enumerate()
-            .map(move |(idx, &seg_start_idx)| {
-                let seg_end_idx = self
-                    .seg_boundaries
-                    .get(idx + 1)
-                    .cloned()
-                    .unwrap_or(self.times.len());
-                Segment {
-                    style: self.seg_data[idx].style.clone(),
-                    effects: &self.seg_data[idx].effects,
-                    elements: &self.path.elements()[seg_start_idx..seg_end_idx],
-                    times: &self.times[seg_start_idx..seg_end_idx],
-                }
-            })
-    }
-
-    // TODO: test this. Maybe add a check_consistent function to check the invariants of `Curve`
-    pub fn smoothed(&self, distance_threshold: f64, angle_threshold: f64) -> Curve {
-        let mut ret = Curve::new();
-        let mut path = Vec::new();
-        if self.times.is_empty() {
-            return ret;
-        }
-
-        for seg in self.segments() {
-            let points: Vec<Point> = seg
-                .elements
-                .iter()
-                .map(|el| match el {
-                    PathEl::MoveTo(p) => *p,
-                    PathEl::LineTo(p) => *p,
-                    _ => panic!("can only smooth polylines"),
-                })
-                .collect();
-
-            let point_indices = crate::simplify::simplify(&points, distance_threshold);
-            let times: Vec<Time> = point_indices.iter().map(|&i| seg.times[i]).collect();
-            let points: Vec<Point> = point_indices.iter().map(|&i| points[i]).collect();
-            let curve = crate::smooth::smooth(&points, 0.4, angle_threshold);
-
-            let seg_data = SegmentData {
-                style: seg.style.clone(),
-                effects: seg.effects.to_owned(),
-            };
-            ret.times.extend_from_slice(&times);
-            ret.seg_data.push(seg_data);
-            ret.seg_boundaries.push(path.len());
-            path.extend_from_slice(curve.elements());
-        }
-
-        ret.path = BezPath::from_vec(path);
-        ret
-    }
-
-    pub fn render(&self, ctx: &mut impl RenderContext, time: Time) {
-        let stroke_style = StrokeStyle {
-            line_join: Some(LineJoin::Round),
-            line_cap: Some(LineCap::Round),
-            ..StrokeStyle::new()
-        };
-
-        for seg in self.segments() {
-            if let Some(last) = seg.times.last() {
-                if *last <= time {
-                    let color = if let Some(fade) = seg.effects.fade() {
-                        if time >= *last + fade.pause + fade.fade {
-                            // The curve has faded out; no need to draw it at all
-                            continue;
-                        } else if time >= *last + fade.pause {
-                            let ratio = (time - (*last + fade.pause)).as_micros() as f64
-                                / fade.fade.as_micros() as f64;
-                            seg.style.color.with_alpha(1.0 - ratio)
-                        } else {
-                            seg.style.color
-                        }
-                    } else {
-                        seg.style.color
-                    };
-                    ctx.stroke_styled(&seg.elements, &color, seg.style.thickness, &stroke_style);
-                } else {
-                    // For the last segment, we construct a new segment whose end time is interpolated
-                    // up until the current time.
-                    // Note: we're doing some unnecessary cloning, just for the convenience of being able
-                    // to use BezPath::get_seg.
-                    let c = BezPath::from_vec(seg.elements.to_owned());
-                    let t_idx = seg.times.binary_search(&time).unwrap_or_else(|i| i);
-
-                    if t_idx == 0 {
-                        // If we only contain the first element of the curve, it's a MoveTo and doesn't
-                        // need to be drawn anyway.
-                        break;
-                    }
-
-                    // We already checked that time > seg.times.last().
-                    assert!(t_idx < seg.times.len());
-                    assert_eq!(seg.times.len(), seg.elements.len());
-                    let last_seg = c.get_seg(t_idx).unwrap();
-                    // The indexing is ok, because we already checked t_idx > 0.
-                    let prev_t = seg.times[t_idx - 1].as_micros() as f64;
-                    let next_t = seg.times[t_idx].as_micros() as f64;
-                    let t_ratio = if prev_t == next_t {
-                        1.0
-                    } else {
-                        (time.as_micros() as f64 - prev_t) / (next_t - prev_t)
-                    };
-                    let last_seg = last_seg.subsegment(0.0..t_ratio);
-
-                    let mut c: BezPath = c.iter().take(t_idx).collect();
-                    match last_seg {
-                        PathSeg::Cubic(x) => c.curve_to(x.p1, x.p2, x.p3),
-                        PathSeg::Quad(x) => c.quad_to(x.p1, x.p2),
-                        PathSeg::Line(x) => c.line_to(x.p1),
-                    }
-
-                    ctx.stroke_styled(&c, &seg.style.color, seg.style.thickness, &stroke_style);
-
-                    // We've already rendered the segment spanning the ending time, so we're done.
-                    break;
-                }
-            }
-        }
-    }
-}
-
-pub struct Segment<'a> {
-    pub elements: &'a [PathEl],
-    pub times: &'a [Time],
-    pub style: LineStyle,
-    pub effects: &'a Effects,
-}
 
 #[derive(Deserialize, Serialize, Data, Debug, Clone)]
 pub struct SnippetData {
@@ -451,38 +214,5 @@ impl SnippetsData {
             let snip = &self.snippets[&id];
             snip.render(ctx, new_time);
         }
-    }
-}
-
-#[cfg(test)]
-pub mod tests {
-    use super::*;
-
-    #[test]
-    fn segments() {
-        let mut c = Curve::new();
-        let style = LineStyle {
-            color: Color::WHITE,
-            thickness: 1.0,
-        };
-        c.move_to(
-            Point::new(0.0, 0.0),
-            Time::from_micros(1),
-            style.clone(),
-            Effects::default(),
-        );
-        c.line_to(Point::new(1.0, 1.0), Time::from_micros(2));
-        c.line_to(Point::new(2.0, 2.0), Time::from_micros(3));
-
-        c.move_to(
-            Point::new(4.0, 0.0),
-            Time::from_micros(6),
-            style.clone(),
-            Effects::default(),
-        );
-        c.line_to(Point::new(1.0, 1.0), Time::from_micros(7));
-        c.line_to(Point::new(2.0, 2.0), Time::from_micros(8));
-
-        assert_eq!(c.segments().count(), 2);
     }
 }

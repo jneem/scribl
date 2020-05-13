@@ -14,6 +14,8 @@ use scribble_curves::{time, SnippetsData, Time};
 use crate::audio::{AudioSnippetsData, Cursor, SAMPLE_RATE};
 
 const FPS: f64 = 30.0;
+// Note that the aspect ratio here needs to match the aspect ratio
+// of the drawing, which is currently fixed at 4:3 in widgets/drawing_pane.rs.
 const WIDTH: i32 = 800;
 const HEIGHT: i32 = 600;
 
@@ -121,8 +123,8 @@ fn create_pipeline(
             let mut ctx = bitmap.render_context();
             ctx.clear(druid::Color::WHITE);
             ctx.with_save(|ctx| {
-                // FIXME: if/when we support other aspect ratios, this will need to be changed too.
-                ctx.transform(Affine::scale(WIDTH as f64 / 1600.0));
+                // scribble's internal coordinates are always with respect to a drawing width of 1.0.
+                ctx.transform(Affine::scale(WIDTH as f64));
                 for (_, snip) in anim.snippets() {
                     snip.render(ctx, time);
                 }

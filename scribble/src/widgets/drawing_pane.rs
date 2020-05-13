@@ -8,11 +8,13 @@ use scribble_curves::SnippetsCursor;
 use crate::cmd;
 use crate::data::{AppState, CurrentAction};
 
-// Width/height of the drawing in image coordinates.
-pub const DRAWING_WIDTH: u64 = 1600;
-pub const DRAWING_HEIGHT: u64 = 1200;
+// The drawing coordinates are chosen so that the width of the image is always
+// 1.0. For now we also fix the height, but eventually we will support other aspect
+// ratios.
+pub const DRAWING_WIDTH: f64 = 1.0;
+pub const DRAWING_HEIGHT: f64 = 0.75;
 
-const ASPECT_RATIO: f64 = (DRAWING_WIDTH as f64) / (DRAWING_HEIGHT as f64);
+const ASPECT_RATIO: f64 = DRAWING_WIDTH / DRAWING_HEIGHT;
 const PAPER_COLOR: Color = Color::rgb8(0xff, 0xff, 0xff);
 const PAPER_BDY_COLOR: Color = Color::rgb8(0x00, 0x00, 0x00);
 const PAPER_BDY_THICKNESS: f64 = 1.0;
@@ -25,13 +27,13 @@ pub struct DrawingPane {
 impl DrawingPane {
     fn to_image_coords(&self) -> Affine {
         let top_left = Vec2::new(self.paper_rect.x0, self.paper_rect.y0);
-        let size_ratio = (DRAWING_WIDTH as f64) / self.paper_rect.width();
+        let size_ratio = DRAWING_WIDTH / self.paper_rect.width();
         Affine::scale(size_ratio) * Affine::translate(-top_left)
     }
 
     fn from_image_coords(&self) -> Affine {
         let top_left = Vec2::new(self.paper_rect.x0, self.paper_rect.y0);
-        let size_ratio = (DRAWING_WIDTH as f64) / self.paper_rect.width();
+        let size_ratio = DRAWING_WIDTH / self.paper_rect.width();
         Affine::translate(top_left) * Affine::scale(1.0 / size_ratio)
     }
 }

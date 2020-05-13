@@ -177,7 +177,7 @@ impl Default for AppState {
             time: time::ZERO,
             fade_enabled: false,
             mouse_down: false,
-            line_thickness: 5.0,
+            line_thickness: 0.004,
             audio: Arc::new(RefCell::new(AudioState::init())),
             palette: crate::widgets::PaletteData::default(),
             encoding_status: None,
@@ -299,7 +299,7 @@ impl AppState {
             thickness: self.line_thickness,
         };
         let seg_data = SegmentData { effects, style };
-        let (path, times) = seg.to_curve(1.0, std::f64::consts::PI / 4.0);
+        let (path, times) = seg.to_curve(0.0005, std::f64::consts::PI / 4.0);
         if let Some(curve) = self.scribble.new_curve.as_ref() {
             let mut curve_clone = curve.as_ref().clone();
             curve_clone.append_segment(path, times, seg_data);
