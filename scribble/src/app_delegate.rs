@@ -65,6 +65,7 @@ impl AppDelegate<AppState> for Delegate {
                 match SaveFileData::load_from(info.path()) {
                     Ok(save_data) => {
                         *data = AppState::from_save_file(save_data);
+                        data.save_path = Some(info.path().to_owned());
                     }
                     Err(e) => {
                         log::error!("error loading: '{}'", e);
