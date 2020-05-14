@@ -22,20 +22,24 @@ fn file_menu(data: &AppState) -> MenuDesc<AppState> {
             commands::SHOW_OPEN_PANEL,
             FileDialogOptions::new().allowed_types(vec![SCRIBBLE_FILE_TYPE]),
         ),
-    );
+    )
+    .hotkey(SysMods::Cmd, "o");
 
-    let save = if has_path {
-        platform_menus::win::file::save()
+    let save_as_command = Command::new(
+        commands::SHOW_SAVE_PANEL,
+        FileDialogOptions::new().allowed_types(vec![SCRIBBLE_FILE_TYPE]),
+    );
+    let save_command = if has_path {
+        commands::SAVE_FILE.into()
     } else {
-        platform_menus::win::file::save().disabled()
+        save_as_command.clone()
     };
+    let save = MenuItem::new(LocalizedString::new("common-menu-file-save"), save_command)
+        .hotkey(SysMods::Cmd, "s");
 
     let save_as = MenuItem::new(
         LocalizedString::new("common-menu-file-save-as"),
-        Command::new(
-            commands::SHOW_SAVE_PANEL,
-            FileDialogOptions::new().allowed_types(vec![SCRIBBLE_FILE_TYPE]),
-        ),
+        save_as_command,
     );
 
     // Note that we're reusing the SHOW_SAVE_PANEL command for exporting. There doesn't appear to
