@@ -18,7 +18,6 @@ use crate::FRAME_TIME;
 
 pub struct Root {
     timer_id: TimerToken,
-    timeline_id: WidgetId,
 
     // While we're encoding a file, this receives status updates from the encoder. Each update
     // is a number between 0.0 and 1.0 (where 1.0 means finished).
@@ -126,7 +125,6 @@ impl Root {
             inner: Box::new(Align::centered(column)),
             encoder_progress: None,
             timer_id: TimerToken::INVALID,
-            timeline_id,
         }
     }
 }
@@ -433,15 +431,7 @@ impl Widget<AppState> for Root {
                     // The issue with that is that `lifecycle` doesn't get to mutate the data.
 
                     // Update the current time, if necessary.
-                    let old_time = data.time();
                     data.update_time();
-                    if data.time() != old_time {
-                        ctx.submit_command(
-                            Command::new(cmd::SCROLL_TO_TIME, data.time()),
-                            self.timeline_id,
-                        );
-                    }
-
                     self.timer_id = ctx.request_timer(FRAME_TIME);
                     ctx.set_handled();
                 }

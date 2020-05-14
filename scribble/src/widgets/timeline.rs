@@ -185,43 +185,35 @@ struct TimelineScrollController;
 impl<W: Widget<AppState>> Controller<AppState, Scroll<AppState, W>> for TimelineScrollController {
     // TODO: we should be able to do this using `update` instead of relying on a command
     // The problem is that `UpdateCtx` has no `size()`.
-    fn event(
+    fn update(
         &mut self,
         child: &mut Scroll<AppState, W>,
-        ctx: &mut EventCtx,
-        ev: &Event,
-        data: &mut AppState,
+        ctx: &mut UpdateCtx,
+        old_data: &AppState,
+        data: &AppState,
         env: &Env,
     ) {
-        match ev {
-            Event::Command(c) => {
-                match c.selector {
-                    crate::cmd::SCROLL_TO_TIME => {
-                        let size = ctx.size();
-                        let time = *c.get_object::<Time>().expect("API violation");
-                        let min_vis_time = x_pix(child.offset().x);
-                        let max_vis_time = x_pix(child.offset().x + size.width);
+        if data.time() != old_data.time() {
+            // Scroll the cursor to the new time.
+            let time = data.time();
+            let size = ctx.size();
+            let min_vis_time = x_pix(child.offset().x);
+            let max_vis_time = x_pix(child.offset().x + size.width);
 
-                        // Scroll this much past the cursor, so it isn't right at the edge.
-                        let padding = Diff::from_micros(1_000_000).min(width_pix(size.width / 4.0));
+            // Scroll this much past the cursor, so it isn't right at the edge.
+            let padding = Diff::from_micros(1_000_000).min(width_pix(size.width / 4.0));
 
-                        let delta_x = if time + padding > max_vis_time {
-                            pix_width(time - max_vis_time + padding)
-                        } else if time - padding < min_vis_time {
-                            pix_width(time - min_vis_time - padding)
-                        } else {
-                            0.0
-                        };
+            let delta_x = if time + padding > max_vis_time {
+                pix_width(time - max_vis_time + padding)
+            } else if time - padding < min_vis_time {
+                pix_width(time - min_vis_time - padding)
+            } else {
+                0.0
+            };
 
-                        child.scroll(Vec2 { x: delta_x, y: 0.0 }, size);
-                        ctx.set_handled();
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
+            child.scroll(Vec2 { x: delta_x, y: 0.0 }, size);
         }
-        child.event(ctx, ev, data, env);
+        child.update(ctx, old_data, data, env);
     }
 }
 
