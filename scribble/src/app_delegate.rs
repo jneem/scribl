@@ -1,33 +1,10 @@
 use druid::{AppDelegate, Command, DelegateCtx, Env, FileInfo, Target, WindowId};
-use std::fs;
-use std::fs::File;
-use std::path::Path;
 
 use crate::cmd;
 use crate::data::{AppState, SaveFileData};
 
 #[derive(Debug, Default)]
 pub struct Delegate;
-
-fn save_file<S: serde::Serialize>(path: &Path, data: &S) -> anyhow::Result<()> {
-    let tmp_file_name = format!(
-        "{}.savefile",
-        path.file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("untitled")
-    );
-    let tmp_path = path.with_file_name(tmp_file_name);
-
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    let tmp_file = File::create(&tmp_path)?;
-    serde_json::to_writer(tmp_file, data)?;
-    fs::rename(tmp_path, path)?;
-
-    Ok(())
-}
 
 impl AppDelegate<AppState> for Delegate {
     fn command(
@@ -63,14 +40,14 @@ impl AppDelegate<AppState> for Delegate {
                     }
                     Some("scb") => {
                         data.save_path = Some(path.clone());
-                        if let Err(e) = save_file(&path, &data.scribble.to_save_file()) {
+                        if let Err(e) = data.scribble.to_save_file().save_to(&path) {
                             log::error!("error saving: '{}'", e);
                         }
                     }
                     _ => {
                         log::error!("unknown extension! Trying to save anyway");
                         data.save_path = Some(path.clone());
-                        if let Err(e) = save_file(&path, &data.scribble.to_save_file()) {
+                        if let Err(e) = data.scribble.to_save_file().save_to(&path) {
                             log::error!("error saving: '{}'", e);
                         }
                     }

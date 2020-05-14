@@ -55,9 +55,17 @@ impl SegmentInProgress {
     }
 }
 
+/// Our save file format is simply to serialize this struct as json, compressed
+/// with brotli.
+///
+/// In particular, it's very important that the serializion format of this struct
+/// doesn't change unexpectedly.
 #[derive(Deserialize, Serialize)]
 pub struct SaveFileData {
+    /// This is currently always set to zero, but it's here in case we need to make
+    /// changes.
     pub version: u64,
+
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,
 }
@@ -65,12 +73,39 @@ pub struct SaveFileData {
 impl SaveFileData {
     pub fn load_from<P: AsRef<Path>>(path: P) -> anyhow::Result<SaveFileData> {
         let file = File::open(path.as_ref())?;
-        let ret = serde_json::from_reader(file)?;
+        let decompress = brotli::Decompressor::new(file, 4096);
+        let ret = serde_json::from_reader(decompress)?;
         Ok(ret)
+    }
+
+    pub fn save_to<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
+        let path = path.as_ref();
+        let tmp_file_name = format!(
+            "{}.savefile",
+            path.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("untitled")
+        );
+        let tmp_path = path.with_file_name(tmp_file_name);
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let tmp_file = File::create(&tmp_path)?;
+        let mut compress_params = brotli::enc::backward_references::BrotliEncoderParams::default();
+        compress_params.quality = 7;
+        compress_params.magic_number = true;
+        let compress =
+            brotli::enc::writer::CompressorWriter::with_params(tmp_file, 4096, &compress_params);
+        serde_json::to_writer(compress, self)?;
+        std::fs::rename(tmp_path, path)?;
+
+        Ok(())
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, Debug, Data)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Data)]
 pub enum MaybeSnippetId {
     Draw(SnippetId),
     Audio(AudioSnippetId),
