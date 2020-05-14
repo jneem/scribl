@@ -205,7 +205,6 @@ impl Default for AppState {
             new_segment: None,
             action: CurrentAction::Idle,
             recording_speed: RecordingSpeed::Slow,
-            // TODO: make sure undo works after loading.
             undo: Arc::new(RefCell::new(UndoStack::new(ScribbleState::default()))),
 
             time_snapshot: (Instant::now(), time::ZERO),
