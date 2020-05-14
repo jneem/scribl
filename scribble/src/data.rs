@@ -56,7 +56,7 @@ impl SegmentInProgress {
 }
 
 /// Our save file format is simply to serialize this struct as json, compressed
-/// with brotli.
+/// with gzip.
 ///
 /// In particular, it's very important that the serializion format of this struct
 /// doesn't change unexpectedly.
@@ -73,7 +73,7 @@ pub struct SaveFileData {
 impl SaveFileData {
     pub fn load_from<P: AsRef<Path>>(path: P) -> anyhow::Result<SaveFileData> {
         let file = File::open(path.as_ref())?;
-        let decompress = brotli::Decompressor::new(file, 4096);
+        let decompress = flate2::read::GzDecoder::new(file);
         let ret = serde_json::from_reader(decompress)?;
         Ok(ret)
     }
@@ -93,11 +93,7 @@ impl SaveFileData {
         }
 
         let tmp_file = File::create(&tmp_path)?;
-        let mut compress_params = brotli::enc::backward_references::BrotliEncoderParams::default();
-        compress_params.quality = 7;
-        compress_params.magic_number = true;
-        let compress =
-            brotli::enc::writer::CompressorWriter::with_params(tmp_file, 4096, &compress_params);
+        let compress = flate2::write::GzEncoder::new(tmp_file, flate2::Compression::new(7));
         serde_json::to_writer(compress, self)?;
         std::fs::rename(tmp_path, path)?;
 
