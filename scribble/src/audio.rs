@@ -7,6 +7,8 @@ use cpal::traits::{EventLoopTrait, HostTrait};
 use cpal::{EventLoop, StreamData, UnknownTypeInputBuffer, UnknownTypeOutputBuffer};
 use druid::Data;
 use phase_vocoder::PhaseVocoder;
+use serde::de::Deserializer;
+use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
@@ -32,12 +34,17 @@ pub struct AudioState {
 pub const SAMPLE_RATE: u32 = 48000;
 
 /// Each audio snippet is uniquelty identified by one of these ids.
+// This is serialized as part of saving files, so its serialization format needs to remain
+// stable.
 #[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
 pub struct AudioSnippetId(u64);
 
 /// A buffer of audio data, starting at a particular time.
 ///
 /// The actual data is beind a pointer, so this is cheap to clone.
+// This is serialized as part of saving files, so its serialization format needs to remain
+// stable.
 #[derive(Deserialize, Serialize, Clone, Data)]
 pub struct AudioSnippetData {
     buf: Arc<Vec<i16>>,
@@ -46,7 +53,7 @@ pub struct AudioSnippetData {
 
 /// A collection of [`AudioSnippetData`](struct.AudioSnippetData.html), each one
 /// identified by an [`AudioSnippetId`](struct.AudioSnippetId.html).
-#[derive(Deserialize, Serialize, Clone, Data, Default)]
+#[derive(Clone, Data, Default)]
 pub struct AudioSnippetsData {
     last_id: u64,
     snippets: Arc<BTreeMap<AudioSnippetId, AudioSnippetData>>,
@@ -580,6 +587,29 @@ fn process_audio(mut buf: Vec<i16>) -> Vec<i16> {
         state.process_frame_mut(in_chunk, out_chunk);
     }
     out_buf.into_iter().map(|x| x as i16).collect()
+}
+
+// Here is the serialization for audio. Note that the serialization format needs to remain
+// stable, because it is used for file saving.
+//
+// Specifically, we serialize the audio state as a map id -> snippet data. Any other fields
+// on `AudioSnippetsData` are ignored, and must be reconstituted from the snippet map on
+// deserialization.
+impl Serialize for AudioSnippetsData {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        self.snippets.serialize(ser)
+    }
+}
+
+impl<'de> Deserialize<'de> for AudioSnippetsData {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<AudioSnippetsData, D::Error> {
+        let snips: BTreeMap<AudioSnippetId, AudioSnippetData> = Deserialize::deserialize(de)?;
+        let max_id = snips.keys().max().unwrap_or(&AudioSnippetId(0)).0;
+        Ok(AudioSnippetsData {
+            snippets: Arc::new(snips),
+            last_id: max_id,
+        })
+    }
 }
 
 #[cfg(test)]

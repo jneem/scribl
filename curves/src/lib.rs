@@ -1,6 +1,6 @@
 use druid::kurbo::PathEl;
 use druid::{Data, RenderContext};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -19,6 +19,7 @@ pub use crate::time::{Diff, Time};
 
 /// Snippets are identified by unique ids.
 #[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
 pub struct SnippetId(u64);
 
 #[derive(Deserialize, Serialize, Data, Debug, Clone)]
@@ -31,7 +32,7 @@ pub struct SnippetData {
     pub end: Option<Time>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Data, Default)]
+#[derive(Clone, Data, Default)]
 pub struct SnippetsData {
     last_id: u64,
     snippets: Arc<BTreeMap<SnippetId, SnippetData>>,
@@ -214,5 +215,24 @@ impl SnippetsData {
             let snip = &self.snippets[&id];
             snip.render(ctx, new_time);
         }
+    }
+}
+
+// The serialization of SnippetsData is part of our save file format, and so it needs
+// to remain stable. Here, we serialize SnippetsData as an id -> SnippetData map.
+impl Serialize for SnippetsData {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        self.snippets.serialize(ser)
+    }
+}
+
+impl<'de> Deserialize<'de> for SnippetsData {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<SnippetsData, D::Error> {
+        let map: BTreeMap<SnippetId, SnippetData> = Deserialize::deserialize(de)?;
+        let max_id = map.keys().max().unwrap_or(&SnippetId(0)).0;
+        Ok(SnippetsData {
+            last_id: max_id,
+            snippets: Arc::new(map),
+        })
     }
 }

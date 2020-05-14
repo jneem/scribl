@@ -1,6 +1,7 @@
 use druid::kurbo::{BezPath, Point};
 
 /// Turns a polyline into a (mostly) smooth curve through the same points.
+/// The returned curve will consist only of cubic segments.
 ///
 /// Points are dividing into "smooth" or "non-smooth" points depending on the angle between the
 /// incoming and outgoing edges: if the angle is less than `angle_threshold` radians,
@@ -20,7 +21,9 @@ pub fn smooth(points: &[Point], tangent_factor: f64, angle_threshold: f64) -> Be
         return ret;
     } else if points.len() == 2 {
         ret.move_to(points[0]);
-        ret.line_to(points[1]);
+        // A line_to would sort of make more sense here, but it's convenient elsewhere if we
+        // enforce that the returned curve only consists of cubic segments.
+        ret.curve_to(points[0], points[1], points[1]);
         return ret;
     }
 
