@@ -254,18 +254,26 @@ impl AppState {
 
     /// Updates `self.time` according to the current wall clock time.
     pub fn update_time(&mut self) {
+        self.time = self.accurate_time();
+    }
+
+    /// The current logical time.
+    pub fn time(&self) -> Time {
+        self.time
+    }
+
+    /// Our most accurate estimate for the current time.
+    ///
+    /// [`time`](AppData::time) returns the time at the last frame. This function checks
+    /// the elapsed time since the last frame and interpolates the time based on that.
+    pub fn accurate_time(&self) -> Time {
         let wall_micros_elapsed = Instant::now()
             .duration_since(self.time_snapshot.0)
             .as_micros();
         let logical_time_elapsed = time::Diff::from_micros(
             (wall_micros_elapsed as f64 * self.action.time_factor()) as i64,
         );
-        self.time = self.time_snapshot.1 + logical_time_elapsed;
-    }
-
-    /// The current logical time.
-    pub fn time(&self) -> Time {
-        self.time
+        self.time_snapshot.1 + logical_time_elapsed
     }
 
     // Remembers the current time, for calculating time changes later. This should probably be

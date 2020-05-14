@@ -53,9 +53,7 @@ impl Widget<AppState> for DrawingPane {
         match event {
             Event::MouseMove(ev) => {
                 if state.mouse_down && state.action.is_recording() {
-                    // TODO: get the time with higher resolution by measuring the time elapsed
-                    // since the last tick
-                    let time = state.time();
+                    let time = state.accurate_time();
                     state.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
                     ctx.request_paint();
                 }
@@ -65,9 +63,7 @@ impl Widget<AppState> for DrawingPane {
                     state.start_actually_recording();
                 }
                 if state.action.is_recording() {
-                    // TODO: get the time with higher resolution by measuring the time elapsed
-                    // since the last tick
-                    let time = state.time();
+                    let time = state.accurate_time();
                     state.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
 
                     state.mouse_down = true;
