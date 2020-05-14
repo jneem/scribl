@@ -54,7 +54,7 @@ impl Serialize for Effects {
         let mut seq = ser.serialize_seq(None)?;
 
         if let Some(fade) = &self.fade {
-            seq.serialize_element(fade)?;
+            seq.serialize_element(&Effect::Fade(fade.clone()))?;
         }
 
         seq.end()
