@@ -24,7 +24,7 @@ change, and so future versions of Scribble won't be able to open current save fi
 
 # How to run
 
-Scribble is written in the [`rust`](www.rust-lang.org) programming language. In order to install
+Scribble is written in the [`rust`](https://www.rust-lang.org) programming language. In order to install
 it, you'll need to first [install a `rust` compiler](https://www.rust-lang.org/tools/install).
 Then you'll need to install some dependencies (because although rust manages rust-written dependencies
 very easily, scribble also depends on some software written in C). If you're running linux,
@@ -36,7 +36,7 @@ you'll need to install (if you don't have them already) development packages for
 - alsa
 - atk
 
-You might need install some [`gstreamer`](gstreamer.freedesktop.org) plugins (at least `vp9enc` and `webmmux`),
+You might need install some [`gstreamer`](https://gstreamer.freedesktop.org) plugins (at least `vp9enc` and `webmmux`),
 because Scribble uses gstreamer for encoding videos. (If you're on linux, it should be enough
 to install a package with a name similar to `gstreamer1.0-plugins-good`.)
 
