@@ -6,6 +6,16 @@ out there for making beautiful animations -- this is not one of them. It only ai
 improvement (both in terms of output quality and creation effort) over the venerable 
 doc-cam + microphone method for creating video lectures.
 
+# A sample
+
+Here's a short video created with scribble:
+
+[![Sample video](https://img.youtube.com/vi/MB7anfjTe9I/hqdefault.jpg)](https://youtu.be/MB7anfjTe9I)
+
+Here's a screenshot of its user interface:
+
+![Screenshot](https://raw.githubusercontent.com/jneem/scribble/master/scribble/sample/screenshot.png)
+
 # This is ALPHA software.
 
 It is likely to crash and eat your hard work. Even if it doesn't the file format is subject to
