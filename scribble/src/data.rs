@@ -71,14 +71,17 @@ pub struct SaveFileData {
 }
 
 impl SaveFileData {
-    pub fn load_from<P: AsRef<Path>>(path: P) -> anyhow::Result<SaveFileData> {
+    pub fn load_from_path<P: AsRef<Path>>(path: P) -> anyhow::Result<SaveFileData> {
         let file = File::open(path.as_ref())?;
-        let decompress = flate2::read::GzDecoder::new(file);
-        let ret = serde_json::from_reader(decompress)?;
-        Ok(ret)
+        SaveFileData::load_from(file)
     }
 
-    pub fn save_to<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
+    pub fn load_from<R: std::io::Read>(read: R) -> anyhow::Result<SaveFileData> {
+        let decompress = flate2::read::GzDecoder::new(read);
+        Ok(serde_json::from_reader(decompress)?)
+    }
+
+    pub fn save_to_path<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
         let path = path.as_ref();
         let tmp_file_name = format!(
             "{}.savefile",
@@ -93,10 +96,15 @@ impl SaveFileData {
         }
 
         let tmp_file = File::create(&tmp_path)?;
-        let compress = flate2::write::GzEncoder::new(tmp_file, flate2::Compression::new(7));
-        serde_json::to_writer(compress, self)?;
+        self.save_to(tmp_file)?;
         std::fs::rename(tmp_path, path)?;
 
+        Ok(())
+    }
+
+    pub fn save_to<W: std::io::Write>(&self, write: W) -> anyhow::Result<()> {
+        let compress = flate2::write::GzEncoder::new(write, flate2::Compression::new(7));
+        serde_json::to_writer(compress, self)?;
         Ok(())
     }
 }
@@ -621,5 +629,34 @@ impl RecordingSpeed {
             RecordingSpeed::Slow => 1.0 / 3.0,
             RecordingSpeed::Normal => 1.0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn save_load() {
+        // TODO: this file is a bit too big. It makes the tests slow.
+        let data = include_bytes!("../sample/test.scb");
+
+        // Check that we can read our sample file.
+        let save_data = SaveFileData::load_from(&data[..]).unwrap();
+
+        let mut written = Vec::new();
+        save_data.save_to(&mut written).unwrap();
+
+        // We don't check that save -> load is the identity, because it's too
+        // fragile (e.g., compression settings could change). We also don't check
+        // that load -> save is the identity (for now), because implementing
+        // PartialEq is a pain.
+        let read_again = SaveFileData::load_from(&written[..]).unwrap();
+
+        // We do check that if something was written using the current version
+        // of scribble, then save -> load is the identity.
+        let mut written_again = Vec::new();
+        read_again.save_to(&mut written_again).unwrap();
+        assert_eq!(written, written_again);
     }
 }

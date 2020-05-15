@@ -55,7 +55,7 @@ fn main() {
         .get_matches();
 
     let initial_state = if let Some(path) = matches.value_of("FILE") {
-        match crate::data::SaveFileData::load_from(path) {
+        match crate::data::SaveFileData::load_from_path(path) {
             Ok(save_file) => AppState::from_save_file(save_file),
             Err(e) => {
                 log::error!("Error opening save file: {}", e);

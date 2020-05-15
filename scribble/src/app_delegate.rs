@@ -40,14 +40,14 @@ impl AppDelegate<AppState> for Delegate {
                     }
                     Some("scb") => {
                         data.save_path = Some(path.clone());
-                        if let Err(e) = data.scribble.to_save_file().save_to(&path) {
+                        if let Err(e) = data.scribble.to_save_file().save_to_path(&path) {
                             log::error!("error saving: '{}'", e);
                         }
                     }
                     _ => {
                         log::error!("unknown extension! Trying to save anyway");
                         data.save_path = Some(path.clone());
-                        if let Err(e) = data.scribble.to_save_file().save_to(&path) {
+                        if let Err(e) = data.scribble.to_save_file().save_to_path(&path) {
                             log::error!("error saving: '{}'", e);
                         }
                     }
@@ -62,7 +62,7 @@ impl AppDelegate<AppState> for Delegate {
                     log::error!("no open file info, not opening");
                     return false;
                 };
-                match SaveFileData::load_from(info.path()) {
+                match SaveFileData::load_from_path(info.path()) {
                     Ok(save_data) => {
                         *data = AppState::from_save_file(save_data);
                         data.save_path = Some(info.path().to_owned());
