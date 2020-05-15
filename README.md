@@ -20,15 +20,25 @@ Here's a screenshot of its user interface:
 
 It is likely to crash and eat your hard work. Even if it doesn't the file format is subject to
 change, and so future versions of Scribble won't be able to open current save files.
- *Do not* use this for anything important!
+*Do not* use this for anything important!
 
- # How to run
+# How to run
 
- Scribble is written in the [`rust`](www.rust-lang.org) programming language. In order to install
- it, you'll need to first [install a `rust` compiler](https://www.rust-lang.org/tools/install).
- You might need install some [`gstreamer`](gstreamer.freedesktop.org) plugins (at least `vp9enc` and `webmmux`),
- because Scribble uses gstreamer for encoding videos. (If you're on linux, it should be enough
- to install a package with a name similar to `gstreamer1.0-plugins-good`.)
+Scribble is written in the [`rust`](www.rust-lang.org) programming language. In order to install
+it, you'll need to first [install a `rust` compiler](https://www.rust-lang.org/tools/install).
+Then you'll need to install some dependencies (because although rust manages rust-written dependencies
+very easily, scribble also depends on some software written in C). If you're running linux,
+you'll need to install (if you don't have them already) development packages for
 
- Once your rust compiler and gstreamer plugins are ready, you should be able to run Scribble
- by cloning this git repository, opening it in a terminal, and typing `cargo run --release`.
+- GTK+-3
+- pango
+- gstreamer
+- alsa
+- atk
+
+You might need install some [`gstreamer`](gstreamer.freedesktop.org) plugins (at least `vp9enc` and `webmmux`),
+because Scribble uses gstreamer for encoding videos. (If you're on linux, it should be enough
+to install a package with a name similar to `gstreamer1.0-plugins-good`.)
+
+Once your rust compiler and gstreamer plugins are ready, you should be able to run Scribble
+by cloning this git repository, opening it in a terminal, and typing `cargo run --release`.
