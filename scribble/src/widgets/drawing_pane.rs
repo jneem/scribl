@@ -52,7 +52,7 @@ impl Widget<AppState> for DrawingPane {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, state: &mut AppState, _env: &Env) {
         match event {
             Event::MouseMove(ev) => {
-                if state.mouse_down && state.action.is_recording() {
+                if ctx.is_active() && state.action.is_recording() {
                     let time = state.accurate_time();
                     state.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
                     ctx.request_paint();
@@ -66,13 +66,13 @@ impl Widget<AppState> for DrawingPane {
                     let time = state.accurate_time();
                     state.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
 
-                    state.mouse_down = true;
+                    ctx.set_active(true);
                     ctx.request_paint();
                 }
             }
             Event::MouseUp(ev) => {
                 if ev.button.is_left() && state.action.is_recording() {
-                    state.mouse_down = false;
+                    ctx.set_active(false);
                     if let Some(seg) = state.finish_cur_segment() {
                         ctx.submit_command(Command::new(cmd::APPEND_NEW_SEGMENT, seg), None);
                     }

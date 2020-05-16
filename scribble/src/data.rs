@@ -186,10 +186,6 @@ pub struct AppState {
     /// When true, the "fade out" toggle button is pressed down.
     pub fade_enabled: bool,
 
-    // This is a bit of an odd one out, since it's specifically for input handling in the
-    // drawing-pane widget. If there get to be more of these, maybe they should get split out.
-    pub mouse_down: bool,
-
     pub line_thickness: f64,
 
     pub audio: Arc<RefCell<AudioState>>,
@@ -214,7 +210,6 @@ impl Default for AppState {
             time_snapshot: (Instant::now(), time::ZERO),
             time: time::ZERO,
             fade_enabled: false,
-            mouse_down: false,
             line_thickness: 0.004,
             audio: Arc::new(RefCell::new(AudioState::init())),
             palette: crate::widgets::PaletteData::default(),
