@@ -75,10 +75,12 @@ impl AppDelegate<AppState> for Delegate {
                 false
             }
             cmd::REBUILD_MENUS => {
-                ctx.submit_command(
-                    Command::new(druid::commands::SET_MENU, crate::menus::make_menu(data)),
-                    target,
-                );
+                if let Target::Window(id) = target {
+                    ctx.set_menu(crate::menus::make_menu(data), id);
+                } else {
+                    log::error!("REBUILD_MENUS without a window id (target {:?})", target);
+                }
+
                 false
             }
             _ => true,
