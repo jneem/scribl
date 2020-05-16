@@ -5,13 +5,13 @@
 
 use cpal::traits::{EventLoopTrait, HostTrait};
 use cpal::{EventLoop, StreamData, UnknownTypeInputBuffer, UnknownTypeOutputBuffer};
+use druid::im::OrdMap;
 use druid::Data;
 use phase_vocoder::PhaseVocoder;
 use serde::de::Deserializer;
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use std::ops::{Deref, DerefMut};
+use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -56,7 +56,7 @@ pub struct AudioSnippetData {
 #[derive(Clone, Data, Default)]
 pub struct AudioSnippetsData {
     last_id: u64,
-    snippets: Arc<BTreeMap<AudioSnippetId, AudioSnippetData>>,
+    snippets: OrdMap<AudioSnippetId, AudioSnippetData>,
 }
 
 // Represents a single snippet within the cursor.
@@ -215,8 +215,8 @@ impl Cursor {
         let mut cursors = Vec::new();
         let cur_idx = time.as_audio_idx(sample_rate);
 
-        for (&id, snip) in snippets.snippets.iter() {
-            cursors.push(CursorSnippet::new(id, snip, sample_rate));
+        for (id, snip) in snippets.snippets.iter() {
+            cursors.push(CursorSnippet::new(*id, snip, sample_rate));
         }
         // TODO: explain
         if forwards {
@@ -431,17 +431,13 @@ impl AudioSnippetsData {
         let mut ret = self.clone();
         ret.last_id += 1;
         let id = AudioSnippetId(ret.last_id);
-        let mut map = ret.snippets.deref().clone();
-        map.insert(id, snip);
-        ret.snippets = Arc::new(map);
+        ret.snippets.insert(id, snip);
         ret
     }
 
     pub fn without_snippet(&self, id: AudioSnippetId) -> AudioSnippetsData {
         let mut ret = self.clone();
-        let mut map = ret.snippets.deref().clone();
-        map.remove(&id);
-        ret.snippets = Arc::new(map);
+        ret.snippets.remove(&id);
         ret
     }
 
@@ -603,10 +599,10 @@ impl Serialize for AudioSnippetsData {
 
 impl<'de> Deserialize<'de> for AudioSnippetsData {
     fn deserialize<D: Deserializer<'de>>(de: D) -> Result<AudioSnippetsData, D::Error> {
-        let snips: BTreeMap<AudioSnippetId, AudioSnippetData> = Deserialize::deserialize(de)?;
+        let snips: OrdMap<AudioSnippetId, AudioSnippetData> = Deserialize::deserialize(de)?;
         let max_id = snips.keys().max().unwrap_or(&AudioSnippetId(0)).0;
         Ok(AudioSnippetsData {
-            snippets: Arc::new(snips),
+            snippets: snips,
             last_id: max_id,
         })
     }

@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 scribble_curves = { path = "../curves/" }
-druid = { git = "https://github.com/xi-editor/druid.git" }
+druid = { git = "https://github.com/xi-editor/druid.git", features = ["im"] }
 log = "0.4.8"
 cpal = "0.11.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
