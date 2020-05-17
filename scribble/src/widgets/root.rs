@@ -9,7 +9,9 @@ use scribble_curves::{SnippetData, SnippetId, Time};
 
 use crate::audio::{AudioSnippetData, AudioSnippetId};
 use crate::cmd;
-use crate::data::{AppState, CurrentAction, MaybeSnippetId, RecordingSpeed, SegmentInProgress};
+use crate::editor_state::{
+    CurrentAction, EditorState, MaybeSnippetId, RecordingSpeed, SegmentInProgress,
+};
 use crate::encode::EncodingStatus;
 use crate::widgets::{
     icons, make_status_bar, make_timeline, DrawingPane, LabelledContainer, Palette, ToggleButton,
@@ -23,14 +25,14 @@ pub struct Root {
     // is a number between 0.0 and 1.0 (where 1.0 means finished).
     encoder_progress: Option<Receiver<EncodingStatus>>,
 
-    inner: Box<dyn Widget<AppState>>,
+    inner: Box<dyn Widget<EditorState>>,
 }
 
-fn make_draw_button_group() -> impl Widget<AppState> {
-    let rec_button: ToggleButton<AppState> = ToggleButton::new(
+fn make_draw_button_group() -> impl Widget<EditorState> {
+    let rec_button: ToggleButton<EditorState> = ToggleButton::new(
         &icons::VIDEO,
         20.0,
-        |state: &AppState| state.action.rec_toggle(),
+        |state: &EditorState| state.action.rec_toggle(),
         |ctx, _, _| ctx.submit_command(cmd::DRAW, None),
         |ctx, _, _| ctx.submit_command(cmd::STOP, None),
     );
@@ -50,12 +52,12 @@ fn make_draw_button_group() -> impl Widget<AppState> {
         |_, data, _| *data = true,
         |_, data, _| *data = false,
     )
-    .lens(AppState::fade_enabled);
+    .lens(EditorState::fade_enabled);
 
     let draw_button_group = Flex::row()
         .with_child(rec_button)
         .with_spacer(10.0)
-        .with_child(rec_speed_group.lens(AppState::recording_speed))
+        .with_child(rec_speed_group.lens(EditorState::recording_speed))
         .with_spacer(10.0)
         .with_child(rec_fade_button)
         .padding(5.0);
@@ -70,17 +72,17 @@ fn make_draw_button_group() -> impl Widget<AppState> {
 impl Root {
     pub fn new() -> Root {
         let drawing = DrawingPane::default();
-        let rec_audio_button: ToggleButton<AppState> = ToggleButton::new(
+        let rec_audio_button: ToggleButton<EditorState> = ToggleButton::new(
             &icons::MICROPHONE,
             20.0,
-            |state: &AppState| state.action.rec_audio_toggle(),
+            |state: &EditorState| state.action.rec_audio_toggle(),
             |ctx, _, _| ctx.submit_command(cmd::TALK, None),
             |ctx, _, _| ctx.submit_command(cmd::STOP, None),
         );
         let play_button = ToggleButton::new(
             &icons::PLAY,
             20.0,
-            |state: &AppState| state.action.play_toggle(),
+            |state: &EditorState| state.action.play_toggle(),
             |ctx, _, _| ctx.submit_command(cmd::PLAY, None),
             |ctx, _, _| ctx.submit_command(cmd::STOP, None),
         );
@@ -105,7 +107,7 @@ impl Root {
             .with_child(audio_button_group)
             .with_child(watch_button_group)
             .with_flex_spacer(1.0)
-            .with_child(palette.lens(AppState::palette));
+            .with_child(palette.lens(EditorState::palette));
         let timeline_id = WidgetId::next();
         let timeline = make_timeline().with_id(timeline_id);
         /*
@@ -134,7 +136,7 @@ impl Root {
         &mut self,
         ctx: &mut EventCtx,
         ev: &KeyEvent,
-        data: &mut AppState,
+        data: &mut EditorState,
         _env: &Env,
     ) {
         // If they push another key while holding down the arrow, cancel the scanning.
@@ -175,7 +177,7 @@ impl Root {
         &mut self,
         ctx: &mut EventCtx,
         ev: &KeyEvent,
-        data: &mut AppState,
+        data: &mut EditorState,
         _env: &Env,
     ) {
         match ev.key_code {
@@ -193,16 +195,16 @@ impl Root {
         &mut self,
         ctx: &mut EventCtx,
         cmd: &Command,
-        data: &mut AppState,
+        data: &mut EditorState,
         _env: &Env,
     ) -> bool {
         let ret = match cmd.selector {
             cmd::ADD_SNIPPET => {
                 let snip = cmd.get_object::<SnippetData>().expect("no snippet");
-                let (new_snippets, new_id) = data.scribble.snippets.with_new_snippet(snip.clone());
-                data.scribble.snippets = new_snippets;
-                data.scribble.selected_snippet = new_id.into();
-                data.undo.borrow_mut().push(&data.scribble);
+                let (new_snippets, new_id) = data.snippets.with_new_snippet(snip.clone());
+                data.snippets = new_snippets;
+                data.selected_snippet = new_id.into();
+                data.push_undo_state();
                 true
             }
             cmd::DELETE_SNIPPET => {
@@ -210,26 +212,26 @@ impl Root {
                     .get_object::<SnippetId>()
                     .ok()
                     .cloned()
-                    .or(data.scribble.selected_snippet.as_draw())
+                    .or(data.selected_snippet.as_draw())
                 {
-                    let new_snippets = data.scribble.snippets.without_snippet(id);
-                    data.scribble.snippets = new_snippets;
-                    if data.scribble.selected_snippet == id.into() {
-                        data.scribble.selected_snippet = MaybeSnippetId::None;
+                    let new_snippets = data.snippets.without_snippet(id);
+                    data.snippets = new_snippets;
+                    if data.selected_snippet == id.into() {
+                        data.selected_snippet = MaybeSnippetId::None;
                     }
-                    data.undo.borrow_mut().push(&data.scribble);
+                    data.push_undo_state();
                 } else if let Some(id) = cmd
                     .get_object::<AudioSnippetId>()
                     .ok()
                     .cloned()
-                    .or(data.scribble.selected_snippet.as_audio())
+                    .or(data.selected_snippet.as_audio())
                 {
-                    let new_snippets = data.scribble.audio_snippets.without_snippet(id);
-                    data.scribble.audio_snippets = new_snippets;
-                    if data.scribble.selected_snippet == id.into() {
-                        data.scribble.selected_snippet = MaybeSnippetId::None;
+                    let new_snippets = data.audio_snippets.without_snippet(id);
+                    data.audio_snippets = new_snippets;
+                    if data.selected_snippet == id.into() {
+                        data.selected_snippet = MaybeSnippetId::None;
                     }
-                    data.undo.borrow_mut().push(&data.scribble);
+                    data.push_undo_state();
                 } else {
                     log::error!("No snippet id to delete");
                 }
@@ -239,15 +241,14 @@ impl Root {
                 let snip = cmd
                     .get_object::<AudioSnippetData>()
                     .expect("no audio snippet");
-                data.scribble.audio_snippets =
-                    data.scribble.audio_snippets.with_new_snippet(snip.clone());
-                data.undo.borrow_mut().push(&data.scribble);
+                data.audio_snippets = data.audio_snippets.with_new_snippet(snip.clone());
+                data.push_undo_state();
                 true
             }
             cmd::APPEND_NEW_SEGMENT => {
                 let seg = cmd.get_object::<SegmentInProgress>().expect("no segment");
                 data.add_segment_to_snippet(seg.clone());
-                data.undo.borrow_mut().push_transient(&data.scribble);
+                data.push_transient_undo_state();
                 true
             }
             cmd::CHOOSE_COLOR => {
@@ -274,67 +275,41 @@ impl Root {
             }
             cmd::SET_MARK => {
                 let time = *cmd.get_object::<Time>().unwrap_or(&data.time());
-                data.scribble.mark = Some(time);
-                data.undo.borrow_mut().push(&data.scribble);
+                data.mark = Some(time);
+                data.push_undo_state();
                 true
             }
             cmd::TRUNCATE_SNIPPET => {
-                if let Some(id) = data.scribble.selected_snippet.as_draw() {
-                    data.scribble.snippets = data
-                        .scribble
-                        .snippets
-                        .with_truncated_snippet(id, data.time());
-                    data.undo.borrow_mut().push(&data.scribble);
+                if let Some(id) = data.selected_snippet.as_draw() {
+                    data.snippets = data.snippets.with_truncated_snippet(id, data.time());
+                    data.push_undo_state();
                 } else {
                     log::error!("cannot truncate, nothing selected");
                 }
                 true
             }
             cmd::LERP_SNIPPET => {
-                if let (Some(mark_time), Some(id)) =
-                    (data.scribble.mark, data.scribble.selected_snippet.as_draw())
-                {
-                    data.scribble.snippets =
-                        data.scribble
-                            .snippets
-                            .with_new_lerp(id, data.time(), mark_time);
-                    data.undo.borrow_mut().push(&data.scribble);
+                if let (Some(mark_time), Some(id)) = (data.mark, data.selected_snippet.as_draw()) {
+                    data.snippets = data.snippets.with_new_lerp(id, data.time(), mark_time);
+                    data.push_undo_state();
                     ctx.submit_command(Command::new(cmd::WARP_TIME_TO, mark_time), None);
                 } else {
                     log::error!(
                         "cannot lerp, mark time {:?}, selected {:?}",
-                        data.scribble.mark,
-                        data.scribble.selected_snippet
+                        data.mark,
+                        data.selected_snippet
                     );
                 }
                 true
             }
             druid::commands::UNDO => {
-                let undone_state = data.undo.borrow_mut().undo();
-                if let Some(undone_state) = undone_state {
-                    data.scribble = undone_state;
-                    ctx.request_paint();
-
-                    // This is a bit of a special-case hack. If there get to be
-                    // more of these, it might be worth storing some
-                    // metadata in the undo state.
-                    //
-                    // In case the undo resets us to a mid-recording state, we
-                    // ensure that the state is waiting-to-record (i.e.,
-                    // recording but paused).
-                    if let Some(ref new_curve) = data.scribble.new_curve {
-                        let time = *new_curve.times.last().unwrap();
-                        data.warp_time_to(time);
-                        data.ensure_recording();
-                    }
-                }
+                data.undo();
+                ctx.request_paint();
                 true
             }
             druid::commands::REDO => {
-                if let Some(redone_state) = data.undo.borrow_mut().redo() {
-                    data.scribble = redone_state;
-                    ctx.request_paint();
-                }
+                data.redo();
+                ctx.request_paint();
                 true
             }
             cmd::PLAY => {
@@ -396,8 +371,8 @@ impl Root {
     }
 }
 
-impl Widget<AppState> for Root {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut AppState, env: &Env) {
+impl Widget<EditorState> for Root {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut EditorState, env: &Env) {
         match event {
             Event::WindowConnected => {
                 ctx.request_focus();
@@ -442,11 +417,23 @@ impl Widget<AppState> for Root {
         }
     }
 
-    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &AppState, data: &AppState, env: &Env) {
+    fn update(
+        &mut self,
+        ctx: &mut UpdateCtx,
+        old_data: &EditorState,
+        data: &EditorState,
+        env: &Env,
+    ) {
         self.inner.update(ctx, old_data, data, env);
     }
 
-    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, data: &AppState, env: &Env) {
+    fn lifecycle(
+        &mut self,
+        ctx: &mut LifeCycleCtx,
+        event: &LifeCycle,
+        data: &EditorState,
+        env: &Env,
+    ) {
         self.inner.lifecycle(ctx, event, data, env);
     }
 
@@ -454,13 +441,13 @@ impl Widget<AppState> for Root {
         &mut self,
         ctx: &mut LayoutCtx,
         bc: &BoxConstraints,
-        data: &AppState,
+        data: &EditorState,
         env: &Env,
     ) -> Size {
         self.inner.layout(ctx, bc, data, env)
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx, data: &AppState, env: &Env) {
+    fn paint(&mut self, ctx: &mut PaintCtx, data: &EditorState, env: &Env) {
         self.inner.paint(ctx, data, env);
     }
 }

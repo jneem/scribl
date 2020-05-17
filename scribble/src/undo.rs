@@ -1,24 +1,28 @@
-// Our general undo philosophy follows the data split between `AppState` and
-// `ScribbleState`: the latter contains the state of the actual animation being
-// created, and the changes to that are the ones that we want to support
-// undoing. Therefore, our undo stack is essentially just a stack of
-// `ScribbleState`s, and we execute undoing and redoing by pushing and popping
-// these states. (This is less wasteful than it seems at first glance, because
-// most of the actual data in `ScribbleState` is behind shared pointers.)
-//
-// In this module, we don't see the application state at all, but it is still
-// relevant to the bigger undo picture, because an undo/redo command might want
-// to change the `AppState` in addition to restoring its `ScribbleState`. For
-// example, it might want to stop playback or pause recording.
-
 use std::collections::VecDeque;
+use std::sync::Arc;
 
-use crate::data::ScribbleState;
+use scribble_curves::{Curve, SnippetsData, Time};
+
+use crate::audio::AudioSnippetsData;
+use crate::editor_state::MaybeSnippetId;
 
 const MAX_UNDO_STACK: usize = 128;
 
+/// This is the part of the editor state that gets restored when we undo/redo.
+/// Note that undoing/redoing might also affect other parts of the editor state
+/// (for example, if we undo while drawing, we pause the clock).
+#[derive(Clone, Default)]
+pub struct UndoState {
+    pub new_curve: Option<Arc<Curve>>,
+    pub snippets: SnippetsData,
+    pub audio_snippets: AudioSnippetsData,
+    pub selected_snippet: MaybeSnippetId,
+    pub mark: Option<Time>,
+    pub time: Time,
+}
+
 struct UndoData {
-    scribble: ScribbleState,
+    state: UndoState,
 
     // If an undo state is transient, we delete it next time a non-transient
     // state is pushed. This is used for undoing in the middle of a snippet: we
@@ -43,10 +47,10 @@ impl std::fmt::Debug for UndoData {
 }
 
 impl UndoStack {
-    pub fn new(initial_state: ScribbleState) -> UndoStack {
+    pub fn new(initial_state: UndoState) -> UndoStack {
         let mut stack = VecDeque::new();
         stack.push_front(UndoData {
-            scribble: initial_state,
+            state: initial_state,
             transient: false,
         });
         UndoStack {
@@ -55,7 +59,7 @@ impl UndoStack {
         }
     }
 
-    fn do_push(&mut self, state: &ScribbleState, transient: bool) {
+    fn do_push(&mut self, state: UndoState, transient: bool) {
         // In case the current state is not the newest one, remove all the newer ones from the
         // stack.
         self.stack.drain(0..self.current_state);
@@ -70,37 +74,34 @@ impl UndoStack {
             self.stack.drain(..last_permanent);
         }
 
-        let new_state = UndoData {
-            scribble: state.clone(),
-            transient,
-        };
+        let new_state = UndoData { state, transient };
         self.stack.push_front(new_state);
         if self.stack.len() > MAX_UNDO_STACK {
             self.stack.pop_back();
         }
         self.current_state = 0;
     }
-    pub fn push(&mut self, state: &ScribbleState) {
+    pub fn push(&mut self, state: UndoState) {
         self.do_push(state, false);
     }
 
-    pub fn push_transient(&mut self, state: &ScribbleState) {
+    pub fn push_transient(&mut self, state: UndoState) {
         self.do_push(state, true);
     }
 
-    pub fn undo(&mut self) -> Option<ScribbleState> {
+    pub fn undo(&mut self) -> Option<UndoState> {
         if self.current_state + 1 < self.stack.len() {
             self.current_state += 1;
-            Some(self.stack[self.current_state].scribble.clone())
+            Some(self.stack[self.current_state].state.clone())
         } else {
             None
         }
     }
 
-    pub fn redo(&mut self) -> Option<ScribbleState> {
+    pub fn redo(&mut self) -> Option<UndoState> {
         if self.current_state > 0 {
             self.current_state -= 1;
-            Some(self.stack[self.current_state].scribble.clone())
+            Some(self.stack[self.current_state].state.clone())
         } else {
             None
         }

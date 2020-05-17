@@ -6,7 +6,7 @@ use druid::{
 use scribble_curves::SnippetsCursor;
 
 use crate::cmd;
-use crate::data::{AppState, CurrentAction};
+use crate::editor_state::{CurrentAction, EditorState};
 
 // The drawing coordinates are chosen so that the width of the image is always
 // 1.0. For now we also fix the height, but eventually we will support other aspect
@@ -47,9 +47,8 @@ impl Default for DrawingPane {
     }
 }
 
-// TODO: can we do ScribbleState instead of AppState?
-impl Widget<AppState> for DrawingPane {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, state: &mut AppState, _env: &Env) {
+impl Widget<EditorState> for DrawingPane {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, state: &mut EditorState, _env: &Env) {
         match event {
             Event::MouseMove(ev) => {
                 if ctx.is_active() && state.action.is_recording() {
@@ -85,25 +84,37 @@ impl Widget<AppState> for DrawingPane {
         }
     }
 
-    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &AppState, data: &AppState, _env: &Env) {
+    fn update(
+        &mut self,
+        ctx: &mut UpdateCtx,
+        old_data: &EditorState,
+        data: &EditorState,
+        _env: &Env,
+    ) {
         if old_data.time() != data.time() {
             ctx.request_paint();
         }
 
-        if !old_data.scribble.snippets.same(&data.scribble.snippets) {
-            self.cursor = Some(data.scribble.snippets.create_cursor(data.time()));
+        if !old_data.snippets.same(&data.snippets) {
+            self.cursor = Some(data.snippets.create_cursor(data.time()));
             ctx.request_paint();
         }
     }
 
-    fn lifecycle(&mut self, _ctx: &mut LifeCycleCtx, _: &LifeCycle, _state: &AppState, _env: &Env) {
+    fn lifecycle(
+        &mut self,
+        _ctx: &mut LifeCycleCtx,
+        _: &LifeCycle,
+        _state: &EditorState,
+        _env: &Env,
+    ) {
     }
 
     fn layout(
         &mut self,
         _ctx: &mut LayoutCtx,
         bc: &BoxConstraints,
-        _data: &AppState,
+        _data: &EditorState,
         _env: &Env,
     ) -> Size {
         let size = bc.max();
@@ -119,7 +130,7 @@ impl Widget<AppState> for DrawingPane {
         size
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx, data: &AppState, _env: &Env) {
+    fn paint(&mut self, ctx: &mut PaintCtx, data: &EditorState, _env: &Env) {
         ctx.stroke(&self.paper_rect, &PAPER_BDY_COLOR, PAPER_BDY_THICKNESS);
         ctx.fill(&self.paper_rect, &PAPER_COLOR);
 
@@ -128,11 +139,11 @@ impl Widget<AppState> for DrawingPane {
             if let Some(path_in_progress) = data.new_snippet_as_curve() {
                 path_in_progress.render(ctx.render_ctx, data.time());
             }
-            if let Some(curve) = data.scribble.new_curve.as_ref() {
+            if let Some(curve) = data.new_curve.as_ref() {
                 curve.render(ctx.render_ctx, data.time());
             }
 
-            for (_, snip) in data.scribble.snippets.snippets() {
+            for (_, snip) in data.snippets.snippets() {
                 snip.render(ctx.render_ctx, data.time());
             }
         });

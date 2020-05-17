@@ -3,11 +3,11 @@ use druid::widget::prelude::*;
 use druid::widget::{Align, Either, Flex, Label, ProgressBar, WidgetExt};
 use druid::LensExt;
 
-use crate::data::AppState;
+use crate::editor_state::EditorState;
 use crate::encode::EncodingStatus;
 
-pub fn make_status_bar() -> impl Widget<AppState> {
-    let time_label = Label::new(|data: &AppState, _env: &Env| {
+pub fn make_status_bar() -> impl Widget<EditorState> {
+    let time_label = Label::new(|data: &EditorState, _env: &Env| {
         let usecs = data.time().as_micros();
         let mins = usecs / 60_000_000;
         let secs = (usecs / 1_000_000) % 60;
@@ -50,6 +50,6 @@ pub fn make_status_bar() -> impl Widget<AppState> {
     let row = Flex::row()
         .with_child(time_label)
         .with_flex_spacer(1.0)
-        .with_child(status_label.lens(AppState::encoding_status));
+        .with_child(status_label.lens(EditorState::encoding_status));
     Align::centered(row)
 }

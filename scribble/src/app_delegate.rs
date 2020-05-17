@@ -1,18 +1,19 @@
 use druid::{AppDelegate, Command, DelegateCtx, Env, FileInfo, Target, WindowId};
 
 use crate::cmd;
-use crate::data::{AppState, SaveFileData};
+use crate::editor_state::EditorState;
+use crate::save_state::SaveFileData;
 
 #[derive(Debug, Default)]
 pub struct Delegate;
 
-impl AppDelegate<AppState> for Delegate {
+impl AppDelegate<EditorState> for Delegate {
     fn command(
         &mut self,
         ctx: &mut DelegateCtx,
         target: Target,
         cmd: &Command,
-        data: &mut AppState,
+        data: &mut EditorState,
         _env: &Env,
     ) -> bool {
         match cmd.selector {
@@ -32,22 +33,22 @@ impl AppDelegate<AppState> for Delegate {
                 match path.extension().and_then(|e| e.to_str()) {
                     Some("mp4") => {
                         let export = cmd::ExportCmd {
-                            snippets: data.scribble.snippets.clone(),
-                            audio_snippets: data.scribble.audio_snippets.clone(),
+                            snippets: data.snippets.clone(),
+                            audio_snippets: data.audio_snippets.clone(),
                             filename: path.to_owned(),
                         };
                         ctx.submit_command(Command::new(cmd::EXPORT, export), None);
                     }
                     Some("scb") => {
                         data.save_path = Some(path.clone());
-                        if let Err(e) = data.scribble.to_save_file().save_to_path(&path) {
+                        if let Err(e) = data.to_save_file().save_to_path(&path) {
                             log::error!("error saving: '{}'", e);
                         }
                     }
                     _ => {
                         log::error!("unknown extension! Trying to save anyway");
                         data.save_path = Some(path.clone());
-                        if let Err(e) = data.scribble.to_save_file().save_to_path(&path) {
+                        if let Err(e) = data.to_save_file().save_to_path(&path) {
                             log::error!("error saving: '{}'", e);
                         }
                     }
@@ -64,7 +65,7 @@ impl AppDelegate<AppState> for Delegate {
                 };
                 match SaveFileData::load_from_path(info.path()) {
                     Ok(save_data) => {
-                        *data = AppState::from_save_file(save_data);
+                        *data = EditorState::from_save_file(save_data);
                         data.save_path = Some(info.path().to_owned());
                     }
                     Err(e) => {
@@ -90,7 +91,7 @@ impl AppDelegate<AppState> for Delegate {
     fn window_removed(
         &mut self,
         _id: WindowId,
-        _data: &mut AppState,
+        _data: &mut EditorState,
         _env: &Env,
         _ctx: &mut DelegateCtx,
     ) {

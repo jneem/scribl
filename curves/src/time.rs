@@ -5,13 +5,17 @@ use std::convert::TryFrom;
 /// The clock of a scribble.
 // This is measured in microseconds from the beginning. We enforce that the value is non-negative,
 // but arithmetic is more convenient with signed types.
-#[derive(Copy, Clone, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(
+    Copy, Clone, Data, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize,
+)]
 #[serde(transparent)]
 pub struct Time(i64);
 
 /// The difference between two [`Time`]s. Unlike `std::time::Duration`, this
 /// can be negative.
-#[derive(Copy, Clone, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(
+    Copy, Clone, Data, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize,
+)]
 #[serde(transparent)]
 pub struct Diff(i64);
 

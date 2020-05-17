@@ -5,15 +5,15 @@ use druid::{
 };
 
 use crate::cmd;
-use crate::data::CurrentAction;
+use crate::editor_state::CurrentAction;
 use crate::widgets::ToggleButtonState;
 
 const SCRIBBLE_FILE_TYPE: FileSpec = FileSpec::new("Scribble animation", &["scb"]);
 const EXPORT_FILE_TYPE: FileSpec = FileSpec::new("mp4 video", &["mp4"]);
 
-use crate::data::AppState;
+use crate::editor_state::EditorState;
 
-fn file_menu(data: &AppState) -> MenuDesc<AppState> {
+fn file_menu(data: &EditorState) -> MenuDesc<EditorState> {
     let has_path = data.save_path.is_some();
 
     let open = MenuItem::new(
@@ -62,7 +62,7 @@ fn file_menu(data: &AppState) -> MenuDesc<AppState> {
         .append(platform_menus::win::file::exit())
 }
 
-fn edit_menu(data: &AppState) -> MenuDesc<AppState> {
+fn edit_menu(data: &EditorState) -> MenuDesc<EditorState> {
     let undo = platform_menus::common::undo().disabled_if(|| !data.undo.borrow().can_undo());
     let redo = platform_menus::common::redo().disabled_if(|| !data.undo.borrow().can_redo());
 
@@ -111,21 +111,21 @@ fn edit_menu(data: &AppState) -> MenuDesc<AppState> {
         cmd::LERP_SNIPPET,
     )
     .hotkey(SysMods::None, KeyCode::KeyW)
-    .disabled_if(|| data.scribble.mark.is_none());
+    .disabled_if(|| data.mark.is_none());
 
     let trunc = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-truncate").with_placeholder("Truncate snippet"),
         cmd::TRUNCATE_SNIPPET,
     )
     .hotkey(SysMods::None, KeyCode::KeyT)
-    .disabled_if(|| data.scribble.selected_snippet.is_none());
+    .disabled_if(|| data.selected_snippet.is_none());
 
     let delete = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-delete").with_placeholder("Delete selected"),
         cmd::DELETE_SNIPPET,
     )
     .hotkey(SysMods::None, KeyCode::Delete)
-    .disabled_if(|| data.scribble.selected_snippet.is_none());
+    .disabled_if(|| data.selected_snippet.is_none());
 
     MenuDesc::new(LocalizedString::new("common-menu-edit-menu"))
         .append(undo)
@@ -142,7 +142,7 @@ fn edit_menu(data: &AppState) -> MenuDesc<AppState> {
         .append(delete)
 }
 
-pub fn make_menu(data: &AppState) -> MenuDesc<AppState> {
+pub fn make_menu(data: &EditorState) -> MenuDesc<EditorState> {
     MenuDesc::empty()
         .append(file_menu(data))
         .append(edit_menu(data))

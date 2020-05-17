@@ -6,9 +6,10 @@ use std::time::Duration;
 mod app_delegate;
 mod audio;
 mod cmd;
-mod data;
+mod editor_state;
 mod encode;
 mod menus;
+mod save_state;
 mod snippet_layout;
 mod undo;
 mod widgets;
@@ -23,7 +24,7 @@ const BUTTON_ICON_IDLE: Key<Color> = Key::new("scribble-radio-button-icon-idle")
 pub const FRAME_TIME: Duration = Duration::from_millis(16);
 pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("text_size_small");
 
-use data::AppState;
+use editor_state::EditorState;
 use widgets::Root;
 
 const MAJOR: u32 = pkg_version::pkg_version_major!();
@@ -55,15 +56,15 @@ fn main() {
         .get_matches();
 
     let initial_state = if let Some(path) = matches.value_of("FILE") {
-        match crate::data::SaveFileData::load_from_path(path) {
-            Ok(save_file) => AppState::from_save_file(save_file),
+        match crate::save_state::SaveFileData::load_from_path(path) {
+            Ok(save_file) => EditorState::from_save_file(save_file),
             Err(e) => {
                 log::error!("Error opening save file: {}", e);
                 return;
             }
         }
     } else {
-        AppState::default()
+        EditorState::default()
     };
 
     if let Some(output_path) = matches.value_of("export-to") {
@@ -93,10 +94,10 @@ fn main() {
         .expect("failed to launch");
 }
 
-fn encode(data: AppState, path: &str) {
+fn encode(data: EditorState, path: &str) {
     let export = cmd::ExportCmd {
-        snippets: data.scribble.snippets,
-        audio_snippets: data.scribble.audio_snippets,
+        snippets: data.snippets,
+        audio_snippets: data.audio_snippets,
         filename: path.into(),
     };
     let (tx, rx) = std::sync::mpsc::channel();

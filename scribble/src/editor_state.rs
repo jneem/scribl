@@ -1,9 +1,7 @@
 use druid::kurbo::BezPath;
 use druid::{Data, Lens, Point};
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -13,7 +11,8 @@ use scribble_curves::{
 };
 
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData, AudioState};
-use crate::undo::UndoStack;
+use crate::save_state::SaveFileData;
+use crate::undo::{UndoStack, UndoState};
 use crate::widgets::ToggleButtonState;
 
 /// While drawing, this stores one continuous poly-line (from pen-down to
@@ -55,60 +54,7 @@ impl SegmentInProgress {
     }
 }
 
-/// Our save file format is simply to serialize this struct as json, compressed
-/// with gzip.
-///
-/// In particular, it's very important that the serializion format of this struct
-/// doesn't change unexpectedly.
-#[derive(Deserialize, Serialize)]
-pub struct SaveFileData {
-    /// This is currently always set to zero, but it's here in case we need to make
-    /// changes.
-    pub version: u64,
-
-    pub snippets: SnippetsData,
-    pub audio_snippets: AudioSnippetsData,
-}
-
-impl SaveFileData {
-    pub fn load_from_path<P: AsRef<Path>>(path: P) -> anyhow::Result<SaveFileData> {
-        let file = File::open(path.as_ref())?;
-        SaveFileData::load_from(file)
-    }
-
-    pub fn load_from<R: std::io::Read>(read: R) -> anyhow::Result<SaveFileData> {
-        let decompress = flate2::read::GzDecoder::new(read);
-        Ok(serde_json::from_reader(decompress)?)
-    }
-
-    pub fn save_to_path<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
-        let path = path.as_ref();
-        let tmp_file_name = format!(
-            "{}.savefile",
-            path.file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("untitled")
-        );
-        let tmp_path = path.with_file_name(tmp_file_name);
-
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        let tmp_file = File::create(&tmp_path)?;
-        self.save_to(tmp_file)?;
-        std::fs::rename(tmp_path, path)?;
-
-        Ok(())
-    }
-
-    pub fn save_to<W: std::io::Write>(&self, write: W) -> anyhow::Result<()> {
-        let compress = flate2::write::GzEncoder::new(write, flate2::Compression::new(7));
-        serde_json::to_writer(compress, self)?;
-        Ok(())
-    }
-}
-
+/// A snippet id, an audio snippet id, or neither.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Data)]
 pub enum MaybeSnippetId {
     Draw(SnippetId),
@@ -150,25 +96,30 @@ impl From<AudioSnippetId> for MaybeSnippetId {
     }
 }
 
-/// This data contains the state of the drawing.
+impl Default for MaybeSnippetId {
+    fn default() -> MaybeSnippetId {
+        MaybeSnippetId::None
+    }
+}
+
+/// This data contains the state of an editor window.
 #[derive(Clone, Data, Lens)]
-pub struct ScribbleState {
+pub struct EditorState {
+    pub new_segment: Option<SegmentInProgress>,
     pub new_curve: Option<Arc<Curve>>,
+
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,
     pub selected_snippet: MaybeSnippetId,
 
     pub mark: Option<Time>,
-}
 
-/// This data contains the state of the entire app.
-#[derive(Clone, Data, Lens)]
-pub struct AppState {
-    pub scribble: ScribbleState,
-    pub new_segment: Option<SegmentInProgress>,
     pub action: CurrentAction,
     pub recording_speed: RecordingSpeed,
 
+    // TODO: there doesn't seem to be a lens(ignore) attribute?
+    #[lens(name = "ignore_undo")]
+    #[data(ignore)]
     pub undo: Arc<RefCell<UndoStack>>,
 
     #[lens(name = "time_lens")]
@@ -198,14 +149,19 @@ pub struct AppState {
     pub save_path: Option<PathBuf>,
 }
 
-impl Default for AppState {
-    fn default() -> AppState {
-        AppState {
-            scribble: ScribbleState::default(),
+impl Default for EditorState {
+    fn default() -> EditorState {
+        EditorState {
             new_segment: None,
+            new_curve: None,
+            snippets: SnippetsData::default(),
+            audio_snippets: AudioSnippetsData::default(),
+            selected_snippet: MaybeSnippetId::None,
+            mark: None,
+
             action: CurrentAction::Idle,
             recording_speed: RecordingSpeed::Slow,
-            undo: Arc::new(RefCell::new(UndoStack::new(ScribbleState::default()))),
+            undo: Arc::new(RefCell::new(UndoStack::new(UndoState::default()))),
 
             time_snapshot: (Instant::now(), time::ZERO),
             time: time::ZERO,
@@ -220,26 +176,7 @@ impl Default for AppState {
     }
 }
 
-impl Default for ScribbleState {
-    fn default() -> ScribbleState {
-        ScribbleState {
-            new_curve: None,
-            snippets: SnippetsData::default(),
-            audio_snippets: AudioSnippetsData::default(),
-            selected_snippet: MaybeSnippetId::None,
-            mark: None,
-        }
-    }
-}
-
-impl AppState {
-    pub fn from_save_file(data: SaveFileData) -> AppState {
-        AppState {
-            scribble: ScribbleState::from_save_file(data),
-            ..Default::default()
-        }
-    }
-
+impl EditorState {
     fn selected_effects(&self) -> Effects {
         let mut ret = Effects::default();
         if self.fade_enabled {
@@ -283,7 +220,7 @@ impl AppState {
     }
 
     pub fn start_recording(&mut self, time_factor: f64) {
-        assert!(self.scribble.new_curve.is_none());
+        assert!(self.new_curve.is_none());
         assert!(self.new_segment.is_none());
         assert_eq!(self.action, CurrentAction::Idle);
 
@@ -320,7 +257,7 @@ impl AppState {
             self.take_time_snapshot();
             if time_factor > 0.0 {
                 if let Err(e) = self.audio.borrow_mut().start_playing(
-                    self.scribble.audio_snippets.clone(),
+                    self.audio_snippets.clone(),
                     self.time,
                     time_factor,
                 ) {
@@ -341,14 +278,17 @@ impl AppState {
         };
         let seg_data = SegmentData { effects, style };
         let (path, times) = seg.to_curve(0.0005, std::f64::consts::PI / 4.0);
-        if let Some(curve) = self.scribble.new_curve.as_ref() {
+
+        // TODO(performance): this is quadratic for long snippets with lots of segments, because
+        // we clone it every time the pen lifts.
+        if let Some(curve) = self.new_curve.as_ref() {
             let mut curve_clone = curve.as_ref().clone();
             curve_clone.append_segment(path, times, seg_data);
-            self.scribble.new_curve = Some(Arc::new(curve_clone));
+            self.new_curve = Some(Arc::new(curve_clone));
         } else {
             let mut curve = Curve::new();
             curve.append_segment(path, times, seg_data);
-            self.scribble.new_curve = Some(Arc::new(curve));
+            self.new_curve = Some(Arc::new(curve));
         }
     }
 
@@ -368,8 +308,7 @@ impl AppState {
         }
         self.action = CurrentAction::Idle;
         self.take_time_snapshot();
-        self.scribble
-            .new_curve
+        self.new_curve
             .take()
             .map(|arc_curve| SnippetData::new(arc_curve.as_ref().clone()))
     }
@@ -378,11 +317,11 @@ impl AppState {
         assert_eq!(self.action, CurrentAction::Idle);
         self.action = CurrentAction::Playing;
         self.take_time_snapshot();
-        if let Err(e) = self.audio.borrow_mut().start_playing(
-            self.scribble.audio_snippets.clone(),
-            self.time,
-            1.0,
-        ) {
+        if let Err(e) =
+            self.audio
+                .borrow_mut()
+                .start_playing(self.audio_snippets.clone(), self.time, 1.0)
+        {
             log::error!("failed to start playing audio: {}", e);
         }
     }
@@ -429,7 +368,7 @@ impl AppState {
             CurrentAction::Idle => {
                 self.action = CurrentAction::Scanning(velocity);
                 if let Err(e) = self.audio.borrow_mut().start_playing(
-                    self.scribble.audio_snippets.clone(),
+                    self.audio_snippets.clone(),
                     self.time,
                     velocity,
                 ) {
@@ -503,11 +442,9 @@ impl AppState {
             None
         }
     }
-}
 
-impl ScribbleState {
-    pub fn from_save_file(data: SaveFileData) -> ScribbleState {
-        ScribbleState {
+    pub fn from_save_file(data: SaveFileData) -> EditorState {
+        EditorState {
             snippets: data.snippets,
             audio_snippets: data.audio_snippets,
             ..Default::default()
@@ -519,6 +456,57 @@ impl ScribbleState {
             version: 0,
             snippets: self.snippets.clone(),
             audio_snippets: self.audio_snippets.clone(),
+        }
+    }
+
+    fn undo_state(&self) -> UndoState {
+        UndoState {
+            new_curve: self.new_curve.clone(),
+            snippets: self.snippets.clone(),
+            audio_snippets: self.audio_snippets.clone(),
+            selected_snippet: self.selected_snippet.clone(),
+            mark: self.mark,
+            time: self.time,
+        }
+    }
+
+    pub fn push_undo_state(&mut self) {
+        self.undo.borrow_mut().push(self.undo_state());
+    }
+
+    pub fn push_transient_undo_state(&mut self) {
+        self.undo.borrow_mut().push_transient(self.undo_state());
+    }
+
+    fn restore_undo_state(&mut self, undo: UndoState) {
+        self.new_curve = undo.new_curve;
+        self.snippets = undo.snippets;
+        self.audio_snippets = undo.audio_snippets;
+        self.selected_snippet = undo.selected_snippet;
+        self.mark = undo.mark;
+        self.warp_time_to(undo.time);
+
+        // This is a bit of a special-case hack. If there get to be more of
+        // these, it might be worth storing some metadata in the undo state.
+        //
+        // In case the undo resets us to a mid-recording state, we ensure that
+        // the state is waiting-to-record (i.e., recording but paused).
+        if self.new_curve.is_some() {
+            self.ensure_recording();
+        }
+    }
+
+    pub fn undo(&mut self) {
+        let state = self.undo.borrow_mut().undo();
+        if let Some(state) = state {
+            self.restore_undo_state(state);
+        }
+    }
+
+    pub fn redo(&mut self) {
+        let state = self.undo.borrow_mut().redo();
+        if let Some(state) = state {
+            self.restore_undo_state(state);
         }
     }
 }
@@ -624,34 +612,5 @@ impl RecordingSpeed {
             RecordingSpeed::Slow => 1.0 / 3.0,
             RecordingSpeed::Normal => 1.0,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn save_load() {
-        // TODO: this file is a bit too big. It makes the tests slow.
-        let data = include_bytes!("../sample/test.scb");
-
-        // Check that we can read our sample file.
-        let save_data = SaveFileData::load_from(&data[..]).unwrap();
-
-        let mut written = Vec::new();
-        save_data.save_to(&mut written).unwrap();
-
-        // We don't check that save -> load is the identity, because it's too
-        // fragile (e.g., compression settings could change). We also don't check
-        // that load -> save is the identity (for now), because implementing
-        // PartialEq is a pain.
-        let read_again = SaveFileData::load_from(&written[..]).unwrap();
-
-        // We do check that if something was written using the current version
-        // of scribble, then save -> load is the identity.
-        let mut written_again = Vec::new();
-        read_again.save_to(&mut written_again).unwrap();
-        assert_eq!(written, written_again);
     }
 }
