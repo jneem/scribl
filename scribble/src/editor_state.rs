@@ -331,7 +331,6 @@ impl EditorState {
         self.action = CurrentAction::Idle;
         self.take_time_snapshot();
         self.audio.borrow_mut().stop_playing();
-        dbg!("stopped playing");
     }
 
     pub fn start_recording_audio(&mut self) {
@@ -479,6 +478,8 @@ impl EditorState {
     }
 
     fn restore_undo_state(&mut self, undo: UndoState) {
+        let mid_recording = self.new_curve.is_some();
+
         self.new_curve = undo.new_curve;
         self.snippets = undo.snippets;
         self.audio_snippets = undo.audio_snippets;
@@ -491,7 +492,18 @@ impl EditorState {
         //
         // In case the undo resets us to a mid-recording state, we ensure that
         // the state is waiting-to-record (i.e., recording but paused).
-        if self.new_curve.is_some() {
+        if mid_recording {
+            if let Some(new_curve) = self.new_curve.as_ref() {
+                if let Some(&time) = new_curve.times.last() {
+                    // This is even more of a special-case hack: the end of the
+                    // last-drawn curve is likely to be after undo.time (because
+                    // undo.time is the time of the beginning of the frame in
+                    // which the last curve was drawn). Set the time to be the
+                    // end of the last-drawn curve, otherwise they might try to
+                    // draw the next segment before the last one finishes.
+                    self.warp_time_to(time);
+                }
+            }
             self.ensure_recording();
         }
     }
