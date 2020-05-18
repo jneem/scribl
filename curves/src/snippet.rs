@@ -221,3 +221,17 @@ impl<'de> Deserialize<'de> for SnippetsData {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serde_snippet() {
+        let curve = crate::curve::tests::basic_curve();
+        let snip = SnippetData::new(curve);
+        let written = serde_cbor::to_vec(&snip).unwrap();
+        let read: SnippetData = serde_cbor::from_slice(&written[..]).unwrap();
+        assert_eq!(snip.lerp, read.lerp);
+    }
+}

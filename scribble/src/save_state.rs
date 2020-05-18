@@ -28,8 +28,7 @@ impl SaveFileData {
     }
 
     pub fn load_from<R: std::io::Read>(read: R) -> anyhow::Result<SaveFileData> {
-        let decompress = flate2::read::GzDecoder::new(read);
-        Ok(serde_json::from_reader(decompress)?)
+        Ok(serde_cbor::from_reader(read)?)
     }
 
     pub fn save_to_path<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
@@ -54,8 +53,7 @@ impl SaveFileData {
     }
 
     pub fn save_to<W: std::io::Write>(&self, write: W) -> anyhow::Result<()> {
-        let compress = flate2::write::GzEncoder::new(write, flate2::Compression::new(7));
-        serde_json::to_writer(compress, self)?;
+        serde_cbor::to_writer(write, self)?;
         Ok(())
     }
 }
@@ -66,8 +64,7 @@ mod tests {
 
     #[test]
     fn save_load() {
-        // TODO: this file is a bit too big. It makes the tests slow.
-        let data = include_bytes!("../sample/test.scb");
+        let data = include_bytes!("../sample/intro.scb");
 
         // Check that we can read our sample file.
         let save_data = SaveFileData::load_from(&data[..]).unwrap();

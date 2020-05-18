@@ -281,7 +281,7 @@ impl<'a> Deserialize<'a> for Curve {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct SavedSegment {
     elements: Vec<(i32, i32)>,
     times: Vec<u64>,
@@ -311,7 +311,17 @@ pub struct Segment<'a> {
 // We do manual serialization for curves (and segments), mainly to ensure that
 // the file format stays stable.
 fn serialize_path_els<S: Serializer>(path: &[PathEl], ser: S) -> Result<S::Ok, S::Error> {
-    let mut seq = ser.serialize_seq(Some(path.len()))?;
+    // We serialize as a list of tuples. Each moveto gives one; each curveto gives three.
+    let len: usize = path
+        .iter()
+        .map(|el| match el {
+            PathEl::MoveTo(_) => 1,
+            PathEl::CurveTo(..) => 3,
+            _ => 0,
+        })
+        .sum();
+
+    let mut seq = ser.serialize_seq(Some(len))?;
 
     let mut point = |p: &Point| -> Result<(), S::Error> {
         let x = (p.x * 10_000.0)
@@ -347,8 +357,7 @@ fn serialize_path_els<S: Serializer>(path: &[PathEl], ser: S) -> Result<S::Ok, S
 pub mod tests {
     use super::*;
 
-    #[test]
-    fn segments() {
+    pub fn basic_curve() -> Curve {
         let mut c = Curve::new();
         let style = LineStyle {
             color: Color::WHITE,
@@ -372,6 +381,12 @@ pub mod tests {
         c.line_to(Point::new(1.0, 1.0), Time::from_micros(7));
         c.line_to(Point::new(2.0, 2.0), Time::from_micros(8));
 
+        c.smoothed(0.01, 2.0)
+    }
+
+    #[test]
+    fn segments() {
+        let c = basic_curve();
         assert_eq!(c.segments().count(), 2);
     }
 
@@ -403,5 +418,15 @@ pub mod tests {
         assert_eq!(deserialized.times, c.times);
         assert_eq!(deserialized.seg_boundaries, c.seg_boundaries);
         assert_eq!(deserialized.seg_data, c.seg_data);
+    }
+
+    #[test]
+    fn serde_two_segments() {
+        let c = basic_curve();
+        let written = serde_cbor::to_vec(&c).unwrap();
+        let read: Curve = serde_cbor::from_slice(&written[..]).unwrap();
+        assert_eq!(read.times, c.times);
+        assert_eq!(read.seg_boundaries, c.seg_boundaries);
+        assert_eq!(read.seg_data, c.seg_data);
     }
 }

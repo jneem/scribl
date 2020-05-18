@@ -11,10 +11,13 @@ use crate::widgets::ToggleButtonState;
 const SCRIBBLE_FILE_TYPE: FileSpec = FileSpec::new("Scribble animation", &["scb"]);
 const EXPORT_FILE_TYPE: FileSpec = FileSpec::new("mp4 video", &["mp4"]);
 
+use crate::app_state::AppState;
 use crate::editor_state::EditorState;
 
-fn file_menu(data: &EditorState) -> MenuDesc<EditorState> {
+fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
     let has_path = data.save_path.is_some();
+
+    let new = platform_menus::win::file::new();
 
     let open = MenuItem::new(
         LocalizedString::new("common-menu-file-open"),
@@ -53,16 +56,23 @@ fn file_menu(data: &EditorState) -> MenuDesc<EditorState> {
     )
     .hotkey(SysMods::Cmd, "e");
 
+    let close = MenuItem::new(
+        LocalizedString::new("common-menu-file-close"),
+        commands::CLOSE_WINDOW,
+    )
+    .hotkey(SysMods::Cmd, "q");
+
     MenuDesc::new(LocalizedString::new("common-menu-file-menu"))
+        .append(new)
         .append(open)
         .append(save)
         .append(save_as)
         .append(export)
         .append_separator()
-        .append(platform_menus::win::file::exit())
+        .append(close)
 }
 
-fn edit_menu(data: &EditorState) -> MenuDesc<EditorState> {
+fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
     let undo = platform_menus::common::undo().disabled_if(|| !data.undo.borrow().can_undo());
     let redo = platform_menus::common::redo().disabled_if(|| !data.undo.borrow().can_redo());
 
@@ -142,7 +152,7 @@ fn edit_menu(data: &EditorState) -> MenuDesc<EditorState> {
         .append(delete)
 }
 
-pub fn make_menu(data: &EditorState) -> MenuDesc<EditorState> {
+pub fn make_menu(data: &EditorState) -> MenuDesc<AppState> {
     MenuDesc::empty()
         .append(file_menu(data))
         .append(edit_menu(data))

@@ -51,7 +51,8 @@ impl Effects {
 // without breaking the file format.
 impl Serialize for Effects {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
-        let mut seq = ser.serialize_seq(None)?;
+        let len = if self.fade.is_some() { 1 } else { 0 };
+        let mut seq = ser.serialize_seq(Some(len))?;
 
         if let Some(fade) = &self.fade {
             seq.serialize_element(&Effect::Fade(fade.clone()))?;
@@ -87,5 +88,27 @@ impl<'de> Visitor<'de> for EffectsVisitor {
         }
 
         Ok(ret)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serde() {
+        let empty = Effects::default();
+        let written = serde_cbor::to_vec(&empty).unwrap();
+        let read = serde_cbor::from_slice(&written[..]).unwrap();
+        assert_eq!(empty, read);
+
+        let mut fade = Effects::default();
+        fade.add(Effect::Fade(FadeEffect {
+            pause: Diff::from_micros(100),
+            fade: Diff::from_micros(100),
+        }));
+        let written = serde_cbor::to_vec(&fade).unwrap();
+        let read = serde_cbor::from_slice(&written[..]).unwrap();
+        assert_eq!(fade, read);
     }
 }

@@ -1,9 +1,10 @@
 use clap::{App, Arg};
 use druid::theme;
-use druid::{AppLauncher, Color, Key, LocalizedString, WindowDesc};
+use druid::{AppLauncher, Color, Key};
 use std::time::Duration;
 
 mod app_delegate;
+mod app_state;
 mod audio;
 mod cmd;
 mod editor_state;
@@ -24,8 +25,8 @@ const BUTTON_ICON_IDLE: Key<Color> = Key::new("scribble-radio-button-icon-idle")
 pub const FRAME_TIME: Duration = Duration::from_millis(16);
 pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("text_size_small");
 
+use app_state::AppState;
 use editor_state::EditorState;
-use widgets::Editor;
 
 const MAJOR: u32 = pkg_version::pkg_version_major!();
 const MINOR: u32 = pkg_version::pkg_version_minor!();
@@ -55,7 +56,7 @@ fn main() {
         )
         .get_matches();
 
-    let initial_state = if let Some(path) = matches.value_of("FILE") {
+    let initial_editor = if let Some(path) = matches.value_of("FILE") {
         match crate::save_state::SaveFileData::load_from_path(path) {
             Ok(save_file) => EditorState::from_save_file(save_file),
             Err(e) => {
@@ -68,16 +69,14 @@ fn main() {
     };
 
     if let Some(output_path) = matches.value_of("export-to") {
-        encode(initial_state, output_path);
+        encode(initial_editor, output_path);
         return;
     }
 
-    let main_window = WindowDesc::new(|| Editor::new())
-        .title(LocalizedString::new("Scribble"))
-        .menu(menus::make_menu(&initial_state))
-        .window_size((400.0, 400.0));
+    let mut initial_state = AppState::default();
+    let editor_window_desc = initial_state.add_editor(initial_editor);
 
-    AppLauncher::with_window(main_window)
+    AppLauncher::with_window(editor_window_desc)
         .delegate(app_delegate::Delegate::default())
         .configure_env(|e, _| {
             e.set(theme::BUTTON_LIGHT, Color::rgb8(0x70, 0x70, 0x70));

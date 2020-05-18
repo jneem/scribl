@@ -9,18 +9,3 @@ members = [
 # we get audio buffer underflows.
 [profile.dev.package.phase_vocoder]
 opt-level = 3
-
-# These three packages (flate2 and its deps) are critical for
-# the performance of saving and loading.
-[profile.dev.package.flate2]
-opt-level = 3
-debug-assertions = false
-
-[profile.dev.package.miniz_oxide]
-opt-level = 3
-debug-assertions = false
-
-[profile.dev.package.adler32]
-opt-level = 3
-debug-assertions = false
-
