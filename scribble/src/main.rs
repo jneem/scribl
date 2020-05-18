@@ -25,7 +25,7 @@ pub const FRAME_TIME: Duration = Duration::from_millis(16);
 pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("text_size_small");
 
 use editor_state::EditorState;
-use widgets::Root;
+use widgets::Editor;
 
 const MAJOR: u32 = pkg_version::pkg_version_major!();
 const MINOR: u32 = pkg_version::pkg_version_minor!();
@@ -72,7 +72,7 @@ fn main() {
         return;
     }
 
-    let main_window = WindowDesc::new(|| Root::new())
+    let main_window = WindowDesc::new(|| Editor::new())
         .title(LocalizedString::new("Scribble"))
         .menu(menus::make_menu(&initial_state))
         .window_size((400.0, 400.0));
