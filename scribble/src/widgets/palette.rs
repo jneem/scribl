@@ -186,10 +186,12 @@ impl Widget<PaletteData> for Palette {
         let actual_child_height =
             (size.height - (PALETTE_ELT_PADDING * (rows - 1) as f64)) / rows as f64;
         let actual_child_size = Size::new(actual_child_width, actual_child_height);
+        let child_constraints =
+            BoxConstraints::tight(Size::new(actual_child_width, actual_child_height));
         for (i, c) in self.children.iter_mut().enumerate() {
             // We don't really need to layout the children, but if we don't call layout
             // on them then druid will constantly think that they need to be re-layouted.
-            let _ = c.layout(ctx, bc, &data.colors[i], env);
+            let _ = c.layout(ctx, &child_constraints, &data.colors[i], env);
             let i = i as u32;
             let row = i % PALETTE_ROWS;
             let col = i / PALETTE_ROWS;
