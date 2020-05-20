@@ -22,14 +22,15 @@ const TIMELINE_BG_COLOR: Color = Color::rgb8(0x66, 0x66, 0x66);
 const CURSOR_COLOR: Color = Color::rgb8(0x10, 0x10, 0xaa);
 const CURSOR_THICKNESS: f64 = 3.0;
 
-const DRAW_SNIPPET_COLOR: Color = Color::rgb8(0x99, 0x99, 0x22);
-const DRAW_SNIPPET_SELECTED_COLOR: Color = Color::rgb8(0x77, 0x77, 0x11);
-const AUDIO_SNIPPET_COLOR: Color = Color::rgb8(0x55, 0x55, 0xBB);
-const AUDIO_SNIPPET_SELECTED_COLOR: Color = Color::rgb8(0x44, 0x44, 0xAA);
-const SNIPPET_STROKE_COLOR: Color = Color::rgb8(0x22, 0x22, 0x22);
-const SNIPPET_HOVER_STROKE_COLOR: Color = Color::rgb8(0, 0, 0);
-const SNIPPET_STROKE_THICKNESS: f64 = 1.0;
-const SNIPPET_WAVEFORM_COLOR: Color = Color::rgb8(0x33, 0x33, 0x99);
+const DRAW_SNIPPET_COLOR: Color = Color::rgb8(0xC7, 0xE3, 0xC7);
+const DRAW_SNIPPET_SELECTED_COLOR: Color = Color::rgb8(0xC7, 0xE3, 0xC7);
+const AUDIO_SNIPPET_COLOR: Color = Color::rgb8(0xC7, 0xDF, 0xE3);
+const AUDIO_SNIPPET_SELECTED_COLOR: Color = Color::rgb8(0xC7, 0xDF, 0xE3);
+const SNIPPET_STROKE_COLOR: Color = Color::rgb8(0x00, 0x00, 0x00);
+const SNIPPET_HOVER_STROKE_COLOR: Color = Color::rgb8(0xDE, 0xE0, 0x9F);
+const SNIPPET_SELECTED_STROKE_COLOR: Color = Color::rgb8(0xff, 0xcf, 0x80);
+const SNIPPET_STROKE_THICKNESS: f64 = 2.0;
+const SNIPPET_WAVEFORM_COLOR: Color = Color::rgb8(0x47, 0x82, 0x8D);
 
 const MARK_COLOR: Color = Color::rgb8(0x33, 0x33, 0x99);
 
@@ -54,18 +55,33 @@ fn x_pix(p: f64) -> Time {
 }
 
 /// The id of a snippet (either a drawing snippet or an audio snippet).
+// TODO: do we need both this and MaybeSnippetId?
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 enum Id {
     Drawing(SnippetId),
     Audio(AudioSnippetId),
 }
 
+impl Id {
+    fn to_maybe_id(&self) -> crate::editor_state::MaybeSnippetId {
+        use crate::editor_state::MaybeSnippetId;
+        match self {
+            Id::Drawing(id) => MaybeSnippetId::Draw(*id),
+            Id::Audio(id) => MaybeSnippetId::Audio(*id),
+        }
+    }
+}
+
 /// The cached "waveform" of an audio snippet.
-#[derive(Clone, Data)]
 struct AudioWaveform {
     // The shape of the waveform. This is rendered with respect to a height
     // going from -1 to 1.
     wave: BezPath,
+}
+
+/// The cached "waveform" of a drawing snippet.
+struct DrawingWaveform {
+    segments: Vec<(Time, Time, Color)>,
 }
 
 /// The data of a snippet (either a drawing snippet or an audio snippet).
@@ -109,6 +125,25 @@ impl AudioWaveform {
         }
         path.close_path();
         AudioWaveform { wave: path }
+    }
+}
+
+impl DrawingWaveform {
+    fn from_snippet(data: &SnippetData) -> DrawingWaveform {
+        let mut segs = Vec::new();
+        for seg in data.curve.segments() {
+            if seg.times.is_empty() {
+                continue;
+            }
+            let first_time = *seg.times.first().unwrap();
+            let last_time = *seg.times.last().unwrap();
+            segs.push((
+                data.lerp.unlerp_clamped(first_time),
+                data.lerp.unlerp_clamped(last_time),
+                seg.style.color,
+            ));
+        }
+        DrawingWaveform { segments: segs }
     }
 }
 
@@ -237,10 +272,17 @@ impl TimelineInner {
         self.snippet_offsets.clear();
         self.children.clear();
         for (&id, &offset) in &draw_offsets.positions {
+            let snip = snippets.snippet(id);
             let id = Id::Drawing(id);
             self.snippet_offsets.insert(id, offset);
-            self.children
-                .insert(id, WidgetPod::new(TimelineSnippet { id, wave: None }));
+            self.children.insert(
+                id,
+                WidgetPod::new(TimelineSnippet {
+                    id,
+                    wave: None,
+                    segs: Some(DrawingWaveform::from_snippet(&snip)),
+                }),
+            );
         }
         for (&id, &offset) in &audio_offsets.positions {
             let audio_data = audio.snippet(id);
@@ -251,6 +293,7 @@ impl TimelineInner {
                 WidgetPod::new(TimelineSnippet {
                     id,
                     wave: Some(AudioWaveform::from_audio(audio_data.clone())),
+                    segs: None,
                 }),
             );
         }
@@ -263,6 +306,8 @@ struct TimelineSnippet {
     id: Id,
     // If the snippet is an audio snippet, a precalculated waveform.
     wave: Option<AudioWaveform>,
+    // If the segment is a drawing snippet, a precalculated waveform.
+    segs: Option<DrawingWaveform>,
 }
 
 impl TimelineSnippet {
@@ -320,21 +365,13 @@ impl TimelineSnippet {
                 });
             }
             Snip::Drawing(data) => {
-                // Draw the span of the edited region.
-                let end = data.end_time().unwrap_or(Time::from_micros(std::i64::MAX));
-                let last_draw_time = data.last_draw_time().min(end);
-                let draw_width = pix_width(last_draw_time - data.start_time());
-                let color = Color::rgb8(0, 0, 0);
-                ctx.stroke(
-                    Line::new((0.0, height / 2.0), (draw_width, height / 2.0)),
-                    &color,
-                    1.0,
-                );
-                ctx.stroke(
-                    Line::new((draw_width, height * 0.25), (draw_width, height * 0.75)),
-                    &color,
-                    1.0,
-                );
+                let segs = self.segs.as_ref().expect("drawing widget should have cached segment extents");
+                for &(start, end, ref color) in &segs.segments {
+                    let start_x = pix_width(start - data.start_time());
+                    let end_x = pix_width(end - data.start_time());
+                    let rect = Rect::from_points((start_x, 0.0), (end_x, height));
+                    ctx.fill(&rect, color);
+                }
 
                 // Draw the lerp lines.
                 for t in snip.inner_lerp_times() {
@@ -423,6 +460,7 @@ impl Widget<EditorState> for TimelineSnippet {
         let width = self.width(data);
         let height = SNIPPET_HEIGHT;
         let radius = env.get(theme::BUTTON_BORDER_RADIUS);
+        let is_selected = data.selected_snippet == self.id.to_maybe_id();
 
         // Logically, untruncated snippets have infinite width. But druid
         // doesn't support drawing rectangles of infinite width, so we truncate
@@ -431,14 +469,25 @@ impl Widget<EditorState> for TimelineSnippet {
             .region()
             .to_rect()
             .inflate(radius + 1.0, std::f64::INFINITY);
+        let stroke_thick = if is_selected || ctx.is_hot() {
+            SNIPPET_STROKE_THICKNESS
+        } else {
+            0.0
+        };
         let rect = Rect::from_origin_size(Point::ZERO, (width, height))
-            .inset(-SNIPPET_STROKE_THICKNESS / 2.0)
+            .inset(-SNIPPET_STROKE_THICKNESS)
             .intersect(bounding_rect)
             .to_rounded_rect(env.get(theme::BUTTON_BORDER_RADIUS));
-        let stroke_color = if ctx.is_hot() {
-            &SNIPPET_STROKE_COLOR
-        } else {
+        let inner_rect = Rect::from_origin_size(Point::ZERO, (width, height))
+            .inset(-SNIPPET_STROKE_THICKNESS - stroke_thick / 2.0)
+            .intersect(bounding_rect)
+            .to_rounded_rect(env.get(theme::BUTTON_BORDER_RADIUS));
+        let stroke_color = if is_selected {
+            &SNIPPET_SELECTED_STROKE_COLOR
+        } else if ctx.is_hot() {
             &SNIPPET_HOVER_STROKE_COLOR
+        } else {
+            &SNIPPET_STROKE_COLOR
         };
         let fill_color = self.fill_color(data);
 
@@ -446,7 +495,10 @@ impl Widget<EditorState> for TimelineSnippet {
             let clip = ctx.region().to_rect();
             ctx.clip(clip);
             ctx.fill(&rect, &fill_color);
-            ctx.stroke(&rect, stroke_color, SNIPPET_STROKE_THICKNESS);
+            if stroke_thick > 0.0 {
+                ctx.stroke(&rect, stroke_color, stroke_thick);
+            }
+            ctx.clip(&inner_rect);
             self.render_interior(ctx, &snippet, width, height);
         });
     }
