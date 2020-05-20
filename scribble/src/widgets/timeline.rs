@@ -185,8 +185,6 @@ struct TimelineScrollController;
 impl<W: Widget<EditorState>> Controller<EditorState, Scroll<EditorState, W>>
     for TimelineScrollController
 {
-    // TODO: we should be able to do this using `update` instead of relying on a command
-    // The problem is that `UpdateCtx` has no `size()`.
     fn update(
         &mut self,
         child: &mut Scroll<EditorState, W>,
