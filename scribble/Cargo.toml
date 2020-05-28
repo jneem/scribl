@@ -20,6 +20,7 @@ gstreamer-audio = "0.15.3"
 thiserror = "1.0.14"
 rnnoise-c = "0.2.0"
 phase_vocoder = { git = "https://github.com/jneem/phase_vocoder.git" }
+lufs = { git = "https://github.com/jneem/lufs.git" }
 clap = "2.33.0"
 pkg-version = "1.0.0"
 env_logger = "0.7.1"

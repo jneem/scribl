@@ -348,7 +348,13 @@ impl EditorState {
             self.action = CurrentAction::Idle;
             self.take_time_snapshot();
             let buf = self.audio.borrow_mut().stop_recording();
-            AudioSnippetData::new(buf, rec_start)
+            let mut ret = AudioSnippetData::new(buf, rec_start);
+
+            // By default, we normalize to loudness -24. For some reason (possibly to do with
+            // incorrectness in the lufs crate), this seems like a good value for avoiding
+            // clipping.
+            ret.set_multiplier(-24.0);
+            ret
         } else {
             panic!("not recording");
         }

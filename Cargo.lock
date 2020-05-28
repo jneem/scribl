@@ -1094,6 +1094,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "lufs"
+version = "0.1.0"
+source = "git+https://github.com/jneem/lufs.git#2351dd73c2bc86b601a9798b067c96bfb1110af5"
+
+[[package]]
 name = "malloc_buf"
 version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1635,6 +1640,7 @@ dependencies = [
  "gstreamer-audio",
  "gstreamer-video",
  "log",
+ "lufs",
  "phase_vocoder",
  "pkg-version",
  "rnnoise-c",

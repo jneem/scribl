@@ -94,9 +94,12 @@ enum Snip {
 impl AudioWaveform {
     fn from_audio(data: AudioSnippetData) -> AudioWaveform {
         // Converts a PCM sample to a y coordinate. This could use some more
-        // thought and/or testing. Audio samples seem to rarely get anywhere near
-        // i16::MAX, so we inflate them a little.
-        let audio_height = |x: f64| -> f64 { (x / std::i16::MAX as f64 * 1.5).max(-1.0).min(1.0) };
+        // thought and/or testing. Like, should we be taking a logarithm somewhere?
+        let audio_height = |x: f64| -> f64 {
+            (x * (data.multiplier() as f64) / std::i16::MAX as f64)
+                .max(-1.0)
+                .min(1.0)
+        };
 
         let width = pix_width(data.end_time() - data.start_time());
         let pix_per_sample = 5;
@@ -365,7 +368,10 @@ impl TimelineSnippet {
                 });
             }
             Snip::Drawing(data) => {
-                let segs = self.segs.as_ref().expect("drawing widget should have cached segment extents");
+                let segs = self
+                    .segs
+                    .as_ref()
+                    .expect("drawing widget should have cached segment extents");
                 for &(start, end, ref color) in &segs.segments {
                     let start_x = pix_width(start - data.start_time());
                     let end_x = pix_width(end - data.start_time());

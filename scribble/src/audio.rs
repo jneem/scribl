@@ -48,6 +48,7 @@ pub struct AudioSnippetId(u64);
 #[derive(Deserialize, Serialize, Clone, Data)]
 pub struct AudioSnippetData {
     buf: Arc<Vec<i16>>,
+    multiplier: f32,
     start_time: Time,
 }
 
@@ -270,12 +271,13 @@ impl Cursor {
         // TODO: we do a lot of rounding here. Maybe we should work with floats internally?
         for c in &mut self.active_cursors {
             let in_buf = c.get_buf(data, self.cur_idx, input_amount);
+            let multiplier = data.snippet(c.id).multiplier;
 
             // TODO: we could be more efficient here, because we're potentially copying a bunch of
             // zeros from in_buf, whereas we could simply skip to the non-zero section. But it's
             // unlikely to be very expensive, whereas getting the indexing right is fiddly...
             for (idx, out_sample) in buf.iter_mut().enumerate() {
-                *out_sample += in_buf[idx];
+                *out_sample += ((in_buf[idx] as f32) * multiplier) as i16;
             }
         }
         if self.forwards {
@@ -408,6 +410,7 @@ impl AudioSnippetData {
     pub fn new(buf: Vec<i16>, start_time: Time) -> AudioSnippetData {
         AudioSnippetData {
             buf: Arc::new(buf),
+            multiplier: 1.0,
             start_time,
         }
     }
@@ -423,6 +426,16 @@ impl AudioSnippetData {
     pub fn end_time(&self) -> Time {
         let length = time::Diff::from_audio_idx(self.buf().len() as i64, SAMPLE_RATE);
         self.start_time() + length
+    }
+
+    /// Normalize this audio signal to have a target loudness.
+    pub fn set_multiplier(&mut self, target_lufs: f32) {
+        let orig_lufs = lufs::loudness(self.buf.iter().map(|&x| (x as f32) / (i16::MAX as f32)));
+        self.multiplier = lufs::multiplier(orig_lufs, target_lufs)
+    }
+
+    pub fn multiplier(&self) -> f32 {
+        self.multiplier
     }
 }
 
@@ -508,7 +521,7 @@ fn audio_thread(
                     }
 
                     {
-                        // We do the cheaper part (mixing from the various buffers) into our single buffer
+                        // We do the cheaper part (mixing from the various buffers into our single buffer)
                         // in a smaller scope, to avoid holding the lock.
                         let mut output_data = output.lock().unwrap();
                         let output_data = output_data.deref_mut();
