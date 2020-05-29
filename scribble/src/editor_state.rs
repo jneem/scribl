@@ -137,7 +137,7 @@ pub struct EditorState {
     /// When true, the "fade out" toggle button is pressed down.
     pub fade_enabled: bool,
 
-    pub line_thickness: f64,
+    pub pen_size: PenSize,
 
     pub audio: Arc<RefCell<AudioState>>,
 
@@ -166,7 +166,7 @@ impl Default for EditorState {
             time_snapshot: (Instant::now(), time::ZERO),
             time: time::ZERO,
             fade_enabled: false,
-            line_thickness: 0.004,
+            pen_size: PenSize::Medium,
             audio: Arc::new(RefCell::new(AudioState::init())),
             palette: crate::widgets::PaletteData::default(),
             encoding_status: None,
@@ -274,7 +274,7 @@ impl EditorState {
         let effects = self.selected_effects();
         let style = LineStyle {
             color: self.palette.selected_color().clone(),
-            thickness: self.line_thickness,
+            thickness: self.pen_size.size_fraction(),
         };
         let seg_data = SegmentData { effects, style };
         let (path, times) = seg.to_curve(0.0005, std::f64::consts::PI / 4.0);
@@ -434,7 +434,7 @@ impl EditorState {
                 if i == 0 {
                     let style = LineStyle {
                         color: self.palette.selected_color().clone(),
-                        thickness: self.line_thickness,
+                        thickness: self.pen_size.size_fraction(),
                     };
                     let effects = self.selected_effects();
                     ret.move_to(*p, *t, style, effects);
@@ -629,6 +629,24 @@ impl RecordingSpeed {
             RecordingSpeed::Slower => 1.0 / 8.0,
             RecordingSpeed::Slow => 1.0 / 3.0,
             RecordingSpeed::Normal => 1.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Data, PartialEq, Eq)]
+pub enum PenSize {
+    Small,
+    Medium,
+    Big,
+}
+
+impl PenSize {
+    /// Returns the diameter of the pen, as a fraction of the width of the drawing.
+    pub fn size_fraction(&self) -> f64 {
+        match self {
+            PenSize::Small => 0.002,
+            PenSize::Medium => 0.004,
+            PenSize::Big => 0.012,
         }
     }
 }

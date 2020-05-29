@@ -11,7 +11,7 @@ use scribble_curves::{SnippetData, SnippetId, Time};
 use crate::audio::{AudioSnippetData, AudioSnippetId};
 use crate::cmd;
 use crate::editor_state::{
-    CurrentAction, EditorState, MaybeSnippetId, RecordingSpeed, SegmentInProgress,
+    CurrentAction, EditorState, MaybeSnippetId, PenSize, RecordingSpeed, SegmentInProgress,
 };
 use crate::encode::EncodingStatus;
 use crate::save_state::SaveFileData;
@@ -98,10 +98,21 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
         .rounded(5.0)
         .lens(EditorState::palette);
 
+    let pen_size_group = crate::widgets::radio_icon::make_radio_icon_group(
+        24.0,
+        vec![
+            (&icons::BIG_CIRCLE, PenSize::Big, "BIG PEN!".into()),
+            (&icons::MEDIUM_CIRCLE, PenSize::Medium, "Medium pen".into()),
+            (&icons::SMALL_CIRCLE, PenSize::Small, "Small pen".into()),
+        ],
+    );
+
     let draw_button_group = Flex::row()
         .with_child(rec_button)
         .with_spacer(10.0)
         .with_child(rec_speed_group.lens(EditorState::recording_speed))
+        .with_spacer(10.0)
+        .with_child(pen_size_group.lens(EditorState::pen_size))
         .with_spacer(10.0)
         .with_child(palette)
         .with_spacer(10.0)
