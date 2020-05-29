@@ -5,9 +5,8 @@ use std::sync::Arc;
 
 use crate::cmd;
 
-const PALETTE_ELT_MIN_SIZE: f64 = 32.0;
-const PALETTE_ELT_PADDING: f64 = 4.0;
-const PALETTE_ROWS: u32 = 1;
+// The padding between and around the color swatches.
+const PALETTE_ELT_PADDING: f64 = 2.0;
 
 #[derive(Clone, Data, Lens)]
 pub struct PaletteData {
@@ -49,11 +48,11 @@ impl PaletteData {
     }
 }
 
-#[derive(Default)]
 pub struct Palette {
     // The idiomatic thing to do would be to wrap the children in lenses, but the combinators
     // are hard to use for this since Vec doesn't implement Data.
     children: Vec<WidgetPod<Color, PaletteElement>>,
+    height: f64,
 }
 
 pub struct PaletteElement {
@@ -118,6 +117,14 @@ impl Widget<Color> for PaletteElement {
 }
 
 impl Palette {
+    /// Creates a new palette in which the color swatches have height `color_height`.
+    pub fn new(color_height: f64) -> Palette {
+        Palette {
+            children: Vec::new(),
+            height: color_height,
+        }
+    }
+
     fn resize(&mut self, colors: &[Color]) {
         self.children.resize_with(colors.len(), || {
             WidgetPod::new(PaletteElement {
@@ -173,36 +180,22 @@ impl Widget<PaletteData> for Palette {
         data: &PaletteData,
         env: &Env,
     ) -> Size {
-        let rows = PALETTE_ROWS;
-        // The (+ rows / 2) part means the columns round up. (and it works even if rows == 1)
-        let cols = ((data.colors.len() as u32) + rows / 2) / PALETTE_ROWS;
-        let min_height =
-            PALETTE_ELT_MIN_SIZE * rows as f64 + PALETTE_ELT_PADDING * (rows - 1) as f64;
-        let min_width =
-            PALETTE_ELT_MIN_SIZE * cols as f64 + PALETTE_ELT_PADDING * (cols - 1) as f64;
-        let size = bc.constrain(Size::new(min_width, min_height));
-
-        let actual_child_width =
-            (size.width - (PALETTE_ELT_PADDING * (cols - 1) as f64)) / cols as f64;
-        let actual_child_height =
-            (size.height - (PALETTE_ELT_PADDING * (rows - 1) as f64)) / rows as f64;
-        let actual_child_size = Size::new(actual_child_width, actual_child_height);
-        let child_constraints =
-            BoxConstraints::tight(Size::new(actual_child_width, actual_child_height));
+        let height = self.height + PALETTE_ELT_PADDING * 2.0;
+        let width =
+            (self.height + PALETTE_ELT_PADDING) * self.children.len() as f64 + PALETTE_ELT_PADDING;
+        let size = bc.constrain(Size::new(width, height));
+        let child_constraints = BoxConstraints::tight(Size::new(self.height, self.height));
         for (i, c) in self.children.iter_mut().enumerate() {
             // We don't really need to layout the children, but if we don't call layout
             // on them then druid will constantly think that they need to be re-layouted.
             let _ = c.layout(ctx, &child_constraints, &data.colors[i], env);
-            let i = i as u32;
-            let row = i % PALETTE_ROWS;
-            let col = i / PALETTE_ROWS;
-            let x = actual_child_width * col as f64 + PALETTE_ELT_PADDING * col as f64;
-            let y = actual_child_height * row as f64 + PALETTE_ELT_PADDING * row as f64;
+            let x = (self.height + PALETTE_ELT_PADDING) * i as f64 + PALETTE_ELT_PADDING;
+            let y = PALETTE_ELT_PADDING;
             c.set_layout_rect(
                 ctx,
                 &data.colors[i as usize],
                 env,
-                Rect::from_origin_size((x, y), actual_child_size),
+                Rect::from_origin_size((x, y), (self.height, self.height)),
             );
         }
 

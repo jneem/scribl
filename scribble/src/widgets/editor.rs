@@ -1,7 +1,8 @@
 use druid::widget::{Align, Flex};
 use druid::{
-    BoxConstraints, Color, Command, Env, Event, EventCtx, FileInfo, KeyCode, KeyEvent, LayoutCtx,
-    LifeCycle, LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt, WidgetId,
+    theme, BoxConstraints, Color, Command, Env, Event, EventCtx, FileInfo, KeyCode, KeyEvent,
+    LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt,
+    WidgetId,
 };
 use std::sync::mpsc::{channel, Receiver};
 
@@ -34,7 +35,7 @@ pub struct Editor {
 fn make_draw_button_group() -> impl Widget<EditorState> {
     let rec_button = ToggleButton::new(
         &icons::VIDEO,
-        20.0,
+        24.0,
         |state: &EditorState| state.action.rec_toggle(),
         |ctx, _, _| ctx.submit_command(cmd::DRAW, None),
         |ctx, _, _| ctx.submit_command(cmd::STOP, None),
@@ -49,7 +50,7 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
     });
 
     let rec_speed_group = crate::widgets::radio_icon::make_radio_icon_group(
-        20.0,
+        24.0,
         vec![
             (
                 &icons::PAUSE,
@@ -76,7 +77,7 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
 
     let rec_fade_button = ToggleButton::new(
         &icons::FADE_OUT,
-        20.0,
+        24.0,
         |&b: &bool| b.into(),
         |_, data, _| *data = true,
         |_, data, _| *data = false,
@@ -91,10 +92,18 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
     })
     .lens(EditorState::fade_enabled);
 
+    let palette = Palette::new(24.0)
+        .border(theme::BORDER_LIGHT, crate::BUTTON_GROUP_BORDER_WIDTH)
+        // TODO: Get from the theme
+        .rounded(5.0)
+        .lens(EditorState::palette);
+
     let draw_button_group = Flex::row()
         .with_child(rec_button)
         .with_spacer(10.0)
         .with_child(rec_speed_group.lens(EditorState::recording_speed))
+        .with_spacer(10.0)
+        .with_child(palette)
         .with_spacer(10.0)
         .with_child(rec_fade_button)
         .padding(5.0);
@@ -111,7 +120,7 @@ impl Editor {
         let drawing = DrawingPane::default();
         let rec_audio_button = ToggleButton::new(
             &icons::MICROPHONE,
-            20.0,
+            24.0,
             |state: &EditorState| state.action.rec_audio_toggle(),
             |ctx, _, _| ctx.submit_command(cmd::TALK, None),
             |ctx, _, _| ctx.submit_command(cmd::STOP, None),
@@ -127,7 +136,7 @@ impl Editor {
 
         let play_button = ToggleButton::new(
             &icons::PLAY,
-            20.0,
+            24.0,
             |state: &EditorState| state.action.play_toggle(),
             |ctx, _, _| ctx.submit_command(cmd::PLAY, None),
             |ctx, _, _| ctx.submit_command(cmd::STOP, None),
@@ -141,7 +150,6 @@ impl Editor {
             .to_owned()
         });
 
-        let palette = Palette::default();
         let draw_button_group = make_draw_button_group();
 
         let audio_button_group = Flex::row().with_child(rec_audio_button).padding(5.0);
@@ -160,8 +168,7 @@ impl Editor {
             .with_child(draw_button_group)
             .with_child(audio_button_group)
             .with_child(watch_button_group)
-            .with_flex_spacer(1.0)
-            .with_child(palette.lens(EditorState::palette));
+            .with_flex_spacer(1.0);
         let timeline_id = WidgetId::next();
         let timeline = make_timeline().with_id(timeline_id);
         /*

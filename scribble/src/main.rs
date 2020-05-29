@@ -22,6 +22,7 @@ const BUTTON_ICON_DISABLED: Key<Color> = Key::new("scribble-radio-button-icon-di
 const BUTTON_ICON_SELECTED: Key<Color> = Key::new("scribble-radio-button-icon-selected");
 const BUTTON_ICON_HOT: Key<Color> = Key::new("scribble-radio-button-icon-hot");
 const BUTTON_ICON_IDLE: Key<Color> = Key::new("scribble-radio-button-icon-idle");
+const BUTTON_GROUP_BORDER_WIDTH: Key<f64> = Key::new("scribble-button-group-border-width");
 pub const FRAME_TIME: Duration = Duration::from_millis(16);
 pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("text_size_small");
 
@@ -97,6 +98,7 @@ fn main() {
             e.set(BUTTON_ICON_HOT, UI_LIGHT_GREEN);
             e.set(BUTTON_ICON_IDLE, Color::rgb8(0x70, 0x70, 0x70));
             e.set(BUTTON_ICON_PADDING, 2.0);
+            e.set(BUTTON_GROUP_BORDER_WIDTH, 1.0);
             e.set(TEXT_SIZE_SMALL, 10.0);
         })
         .launch(initial_state)

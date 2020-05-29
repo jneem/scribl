@@ -349,8 +349,8 @@ impl TimelineSnippet {
 
     fn stroke_color(&self) -> Color {
         match self.id {
-            Id::Drawing(id) => DRAW_SNIPPET_SELECTED_COLOR,
-            Id::Audio(id) => AUDIO_SNIPPET_SELECTED_COLOR,
+            Id::Drawing(_) => DRAW_SNIPPET_SELECTED_COLOR,
+            Id::Audio(_) => AUDIO_SNIPPET_SELECTED_COLOR,
         }
     }
 
