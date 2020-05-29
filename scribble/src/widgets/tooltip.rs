@@ -34,10 +34,9 @@ impl<T: Data, W: Widget<T> + 'static> TooltipExt<T, W> for W {
     }
 }
 
-// TODO: allow dynamic tooltip text (i.e., depending on the data)
 const TOOLTIP_DELAY: Duration = Duration::from_millis(500);
 const TOOLTIP_DELAY_CHECK: Duration = Duration::from_millis(480);
-const TOOLTIP_COLOR: Color = Color::rgb8(255, 214, 0);
+const TOOLTIP_COLOR: Color = crate::UI_LIGHT_YELLOW;
 const TOOLTIP_STROKE_WIDTH: f64 = 1.0;
 const TOOLTIP_STROKE_COLOR: Color = Color::rgb8(0, 0, 0);
 const TOOLTIP_TEXT_COLOR: Color = Color::rgb8(0, 0, 0);

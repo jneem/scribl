@@ -17,17 +17,19 @@ pub struct PaletteData {
 
 impl Default for PaletteData {
     fn default() -> PaletteData {
+        // The utexas color palette defined here: https://brand.utexas.edu/identity/color/
         let colors = vec![
-            Color::rgb8(51, 63, 72),
             Color::rgb8(191, 87, 0),
+            Color::rgb8(51, 63, 72),
             Color::rgb8(248, 151, 31),
             Color::rgb8(255, 214, 0),
             Color::rgb8(166, 205, 87),
             Color::rgb8(87, 157, 66),
             Color::rgb8(0, 169, 183),
             Color::rgb8(0, 95, 134),
-            Color::rgb8(156, 173, 183),
-            Color::rgb8(214, 210, 196),
+            // These are too light to be useful.
+            //Color::rgb8(156, 173, 183),
+            //Color::rgb8(214, 210, 196),
         ];
         let selected = colors[0].clone();
         PaletteData {
@@ -102,16 +104,15 @@ impl Widget<Color> for PaletteElement {
         let rect = Rect::from_origin_size(Point::ORIGIN, ctx.size());
 
         ctx.fill(&rect, &self.color);
-        if is_selected {
-            ctx.stroke(&rect, &Color::BLACK, 1.0);
 
-            // Draw a dot in the middle of the element, with the inverted color.
-            let inv_color = !self.color.as_rgba_u32() | 0xFF;
-            let inv_color = Color::from_rgba32_u32(inv_color);
-            let dot = Circle::new(rect.center(), rect.width() / 6.0);
+        // Draw a dot in the middle of a selected element, with the inverted color.
+        let inv_color = !self.color.as_rgba_u32() | 0xFF;
+        let inv_color = Color::from_rgba32_u32(inv_color);
+        let dot = Circle::new(rect.center(), rect.width() / 6.0);
+        if is_selected {
             ctx.fill(dot, &inv_color);
         } else if ctx.is_hot() {
-            ctx.stroke(&rect, &Color::WHITE, 1.0);
+            ctx.stroke(dot, &inv_color, 1.0);
         }
     }
 }

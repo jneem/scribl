@@ -22,15 +22,13 @@ const TIMELINE_BG_COLOR: Color = Color::rgb8(0x66, 0x66, 0x66);
 const CURSOR_COLOR: Color = Color::rgb8(0x10, 0x10, 0xaa);
 const CURSOR_THICKNESS: f64 = 3.0;
 
-const DRAW_SNIPPET_COLOR: Color = Color::rgb8(0xC7, 0xE3, 0xC7);
-const DRAW_SNIPPET_SELECTED_COLOR: Color = Color::rgb8(0xC7, 0xE3, 0xC7);
-const AUDIO_SNIPPET_COLOR: Color = Color::rgb8(0xC7, 0xDF, 0xE3);
-const AUDIO_SNIPPET_SELECTED_COLOR: Color = Color::rgb8(0xC7, 0xDF, 0xE3);
+const DRAW_SNIPPET_COLOR: Color = crate::UI_BEIGE;
+const DRAW_SNIPPET_SELECTED_COLOR: Color = crate::UI_LIGHT_STEEL_BLUE;
+const AUDIO_SNIPPET_COLOR: Color = crate::UI_LIGHT_YELLOW;
+const AUDIO_SNIPPET_SELECTED_COLOR: Color = crate::UI_LIGHT_GREEN;
 const SNIPPET_STROKE_COLOR: Color = Color::rgb8(0x00, 0x00, 0x00);
-const SNIPPET_HOVER_STROKE_COLOR: Color = Color::rgb8(0xDE, 0xE0, 0x9F);
-const SNIPPET_SELECTED_STROKE_COLOR: Color = Color::rgb8(0xff, 0xcf, 0x80);
 const SNIPPET_STROKE_THICKNESS: f64 = 2.0;
-const SNIPPET_WAVEFORM_COLOR: Color = Color::rgb8(0x47, 0x82, 0x8D);
+const SNIPPET_WAVEFORM_COLOR: Color = crate::UI_DARK_BLUE;
 
 const MARK_COLOR: Color = Color::rgb8(0x33, 0x33, 0x99);
 
@@ -349,6 +347,13 @@ impl TimelineSnippet {
         }
     }
 
+    fn stroke_color(&self) -> Color {
+        match self.id {
+            Id::Drawing(id) => DRAW_SNIPPET_SELECTED_COLOR,
+            Id::Audio(id) => AUDIO_SNIPPET_SELECTED_COLOR,
+        }
+    }
+
     /// Draws the "interior" of the snippet (i.e., everything but the bounding rect).
     fn render_interior(&self, ctx: &mut PaintCtx, snip: &Snip, _width: f64, height: f64) {
         match snip {
@@ -475,7 +480,7 @@ impl Widget<EditorState> for TimelineSnippet {
             .region()
             .to_rect()
             .inflate(radius + 1.0, std::f64::INFINITY);
-        let stroke_thick = if is_selected || ctx.is_hot() {
+        let stroke_thick = if ctx.is_hot() && !is_selected {
             SNIPPET_STROKE_THICKNESS
         } else {
             0.0
@@ -488,13 +493,7 @@ impl Widget<EditorState> for TimelineSnippet {
             .inset(-SNIPPET_STROKE_THICKNESS - stroke_thick / 2.0)
             .intersect(bounding_rect)
             .to_rounded_rect(env.get(theme::BUTTON_BORDER_RADIUS));
-        let stroke_color = if is_selected {
-            &SNIPPET_SELECTED_STROKE_COLOR
-        } else if ctx.is_hot() {
-            &SNIPPET_HOVER_STROKE_COLOR
-        } else {
-            &SNIPPET_STROKE_COLOR
-        };
+        let stroke_color = self.stroke_color();
         let fill_color = self.fill_color(data);
 
         ctx.with_save(|ctx| {
@@ -502,7 +501,7 @@ impl Widget<EditorState> for TimelineSnippet {
             ctx.clip(clip);
             ctx.fill(&rect, &fill_color);
             if stroke_thick > 0.0 {
-                ctx.stroke(&rect, stroke_color, stroke_thick);
+                ctx.stroke(&inner_rect, &stroke_color, stroke_thick);
             }
             ctx.clip(&inner_rect);
             self.render_interior(ctx, &snippet, width, height);

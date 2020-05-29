@@ -32,6 +32,16 @@ const MAJOR: u32 = pkg_version::pkg_version_major!();
 const MINOR: u32 = pkg_version::pkg_version_minor!();
 const PATCH: u32 = pkg_version::pkg_version_patch!();
 
+// These colors are lightened versions of the utexas secondary color palette. We use them
+// for coloring the UI elements.
+pub const UI_LIGHT_YELLOW: Color = Color::rgb8(255, 239, 153);
+pub const UI_LIGHT_GREEN: Color = Color::rgb8(211, 230, 172);
+pub const UI_DARK_GREEN: Color = Color::rgb8(87, 157, 66);
+pub const UI_LIGHT_BLUE: Color = Color::rgb8(87, 242, 255);
+pub const UI_DARK_BLUE: Color = Color::rgb8(0, 95, 134);
+pub const UI_BEIGE: Color = Color::rgb8(214, 210, 196);
+pub const UI_LIGHT_STEEL_BLUE: Color = Color::rgb8(156, 173, 183);
+
 fn main() {
     env_logger::init();
 
@@ -83,8 +93,8 @@ fn main() {
             e.set(BUTTON_BACKGROUND_DISABLED, Color::rgb8(0x55, 0x55, 0x55));
             e.set(BUTTON_FOREGROUND_DISABLED, Color::rgb8(0x33, 0x33, 0x33));
             e.set(BUTTON_ICON_DISABLED, Color::rgb8(0x33, 0x33, 0x33));
-            e.set(BUTTON_ICON_SELECTED, Color::rgb8(45, 214, 51));
-            e.set(BUTTON_ICON_HOT, Color::rgb8(197, 237, 198));
+            e.set(BUTTON_ICON_SELECTED, UI_DARK_GREEN);
+            e.set(BUTTON_ICON_HOT, UI_LIGHT_GREEN);
             e.set(BUTTON_ICON_IDLE, Color::rgb8(0x70, 0x70, 0x70));
             e.set(BUTTON_ICON_PADDING, 2.0);
             e.set(TEXT_SIZE_SMALL, 10.0);
