@@ -139,8 +139,8 @@ impl DrawingWaveform {
             let first_time = *seg.times.first().unwrap();
             let last_time = *seg.times.last().unwrap();
             segs.push((
-                data.lerp.unlerp_clamped(first_time),
-                data.lerp.unlerp_clamped(last_time),
+                data.lerp.lerp_clamped(first_time),
+                data.lerp.lerp_clamped(last_time),
                 seg.style.color,
             ));
         }
