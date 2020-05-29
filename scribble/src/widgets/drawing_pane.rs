@@ -136,15 +136,14 @@ impl Widget<EditorState> for DrawingPane {
 
         ctx.with_save(|ctx| {
             ctx.transform(self.from_image_coords());
-            if let Some(path_in_progress) = data.new_snippet_as_curve() {
-                path_in_progress.render(ctx.render_ctx, data.time());
+            for (_, snip) in data.snippets.snippets() {
+                snip.render(ctx.render_ctx, data.time());
             }
             if let Some(curve) = data.new_curve.as_ref() {
                 curve.render(ctx.render_ctx, data.time());
             }
-
-            for (_, snip) in data.snippets.snippets() {
-                snip.render(ctx.render_ctx, data.time());
+            if let Some(path_in_progress) = data.new_snippet_as_curve() {
+                path_in_progress.render(ctx.render_ctx, data.time());
             }
         });
     }
