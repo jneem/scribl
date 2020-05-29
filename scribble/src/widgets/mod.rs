@@ -7,6 +7,7 @@ pub mod radio_icon;
 mod status;
 mod timeline;
 mod toggle_button;
+pub mod tooltip;
 
 pub use drawing_pane::DrawingPane;
 pub use editor::Editor;

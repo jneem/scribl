@@ -14,8 +14,10 @@ use crate::editor_state::{
 };
 use crate::encode::EncodingStatus;
 use crate::save_state::SaveFileData;
+use crate::widgets::tooltip::{TooltipExt, TooltipHost};
 use crate::widgets::{
     icons, make_status_bar, make_timeline, DrawingPane, LabelledContainer, Palette, ToggleButton,
+    ToggleButtonState,
 };
 use crate::FRAME_TIME;
 
@@ -30,22 +32,48 @@ pub struct Editor {
 }
 
 fn make_draw_button_group() -> impl Widget<EditorState> {
-    let rec_button: ToggleButton<EditorState> = ToggleButton::new(
+    let rec_button = ToggleButton::new(
         &icons::VIDEO,
         20.0,
         |state: &EditorState| state.action.rec_toggle(),
         |ctx, _, _| ctx.submit_command(cmd::DRAW, None),
         |ctx, _, _| ctx.submit_command(cmd::STOP, None),
-    );
+    )
+    .tooltip(|state: &EditorState, _env: &Env| {
+        if state.action.rec_toggle() == ToggleButtonState::ToggledOn {
+            "Stop recording"
+        } else {
+            "Record a drawing"
+        }
+        .to_owned()
+    });
+
     let rec_speed_group = crate::widgets::radio_icon::make_radio_icon_group(
         20.0,
         vec![
-            (&icons::PAUSE, RecordingSpeed::Paused),
-            (&icons::SNAIL, RecordingSpeed::Slower),
-            (&icons::TURTLE, RecordingSpeed::Slow),
-            (&icons::RABBIT, RecordingSpeed::Normal),
+            (
+                &icons::PAUSE,
+                RecordingSpeed::Paused,
+                "Draw a static image".into(),
+            ),
+            (
+                &icons::SNAIL,
+                RecordingSpeed::Slower,
+                "Draw in super-slow motion".into(),
+            ),
+            (
+                &icons::TURTLE,
+                RecordingSpeed::Slow,
+                "Draw in slow motion".into(),
+            ),
+            (
+                &icons::RABBIT,
+                RecordingSpeed::Normal,
+                "Draw in real time".into(),
+            ),
         ],
     );
+
     let rec_fade_button = ToggleButton::new(
         &icons::FADE_OUT,
         20.0,
@@ -53,6 +81,14 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
         |_, data, _| *data = true,
         |_, data, _| *data = false,
     )
+    .tooltip(|state: &bool, _env: &Env| {
+        if *state {
+            "Disable fade effect"
+        } else {
+            "Enable fade effect"
+        }
+        .to_owned()
+    })
     .lens(EditorState::fade_enabled);
 
     let draw_button_group = Flex::row()
@@ -73,20 +109,37 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
 impl Editor {
     pub fn new() -> Editor {
         let drawing = DrawingPane::default();
-        let rec_audio_button: ToggleButton<EditorState> = ToggleButton::new(
+        let rec_audio_button = ToggleButton::new(
             &icons::MICROPHONE,
             20.0,
             |state: &EditorState| state.action.rec_audio_toggle(),
             |ctx, _, _| ctx.submit_command(cmd::TALK, None),
             |ctx, _, _| ctx.submit_command(cmd::STOP, None),
-        );
+        )
+        .tooltip(|state: &EditorState, _env: &Env| {
+            if state.action.rec_audio_toggle() == ToggleButtonState::ToggledOn {
+                "Stop recording"
+            } else {
+                "Start recording audio"
+            }
+            .to_owned()
+        });
+
         let play_button = ToggleButton::new(
             &icons::PLAY,
             20.0,
             |state: &EditorState| state.action.play_toggle(),
             |ctx, _, _| ctx.submit_command(cmd::PLAY, None),
             |ctx, _, _| ctx.submit_command(cmd::STOP, None),
-        );
+        )
+        .tooltip(|state: &EditorState, _env: &Env| {
+            if state.action.play_toggle() == ToggleButtonState::ToggledOn {
+                "Pause playback"
+            } else {
+                "Play back the animation"
+            }
+            .to_owned()
+        });
 
         let palette = Palette::default();
         let draw_button_group = make_draw_button_group();
@@ -125,7 +178,7 @@ impl Editor {
             .with_child(make_status_bar());
 
         Editor {
-            inner: Box::new(Align::centered(column)),
+            inner: Box::new(TooltipHost::new(Align::centered(column))),
             encoder_progress: None,
             timer_id: TimerToken::INVALID,
         }
@@ -472,10 +525,9 @@ impl Widget<EditorState> for Editor {
                     ctx.set_handled();
                 }
             }
-            _ => {
-                self.inner.event(ctx, event, data, env);
-            }
+            _ => {}
         }
+        self.inner.event(ctx, event, data, env);
     }
 
     fn update(

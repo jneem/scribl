@@ -1,9 +1,10 @@
 use druid::kurbo::{Affine, BezPath, Vec2};
 use druid::widget::prelude::*;
-use druid::widget::{Flex, WidgetExt};
+use druid::widget::{Flex, LabelText, WidgetExt};
 use druid::{theme, Data};
 
 use crate::widgets::icons::Icon;
+use crate::widgets::tooltip::TooltipExt;
 
 pub struct RadioIcon<T: Data> {
     icon_size: Size,
@@ -12,12 +13,12 @@ pub struct RadioIcon<T: Data> {
     variant: T,
 }
 
-pub fn make_radio_icon_group<'a, T: Data, I: IntoIterator<Item = (&'a Icon, T)>>(
+pub fn make_radio_icon_group<'a, T: Data, I: IntoIterator<Item = (&'a Icon, T, LabelText<T>)>>(
     height: f64,
     children: I,
 ) -> impl Widget<T> {
     let mut group = Flex::row();
-    for (icon, variant) in children {
+    for (icon, variant, text) in children {
         let icon_scale = height / icon.height as f64;
         let icon_width = icon.width as f64 * icon_scale;
         let child = RadioIcon {
@@ -25,7 +26,8 @@ pub fn make_radio_icon_group<'a, T: Data, I: IntoIterator<Item = (&'a Icon, T)>>
             icon_scale,
             icon_path: BezPath::from_svg(icon.path).unwrap(),
             variant,
-        };
+        }
+        .tooltip(text);
         group.add_child(child);
     }
     group
