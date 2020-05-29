@@ -26,9 +26,8 @@ impl Default for PaletteData {
             Color::rgb8(87, 157, 66),
             Color::rgb8(0, 169, 183),
             Color::rgb8(0, 95, 134),
-            // These are too light to be useful.
-            //Color::rgb8(156, 173, 183),
-            //Color::rgb8(214, 210, 196),
+            Color::rgb8(156, 173, 183),
+            Color::rgb8(214, 210, 196),
         ];
         let selected = colors[0].clone();
         PaletteData {
