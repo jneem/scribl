@@ -50,7 +50,7 @@ const BASELINE_GUESS_FACTOR: f64 = 0.7;
 const X_PADDING: f64 = 6.0;
 
 /// The argument is a string containing the tooltip text.
-const SHOW_TOOLTIP: Selector = Selector::new("scribble.show-tooltip");
+const SHOW_TOOLTIP: Selector<String> = Selector::new("scribble.show-tooltip");
 
 impl<T: Data, W: Widget<T>> Controller<T, W> for TooltipGuest<T> {
     fn event(&mut self, child: &mut W, ctx: &mut EventCtx, ev: &Event, data: &mut T, env: &Env) {
@@ -124,10 +124,11 @@ impl<T, W: Widget<T>> Widget<T> for TooltipHost<T, W> {
                     ctx.request_paint();
                 }
             }
-            Event::Command(c) if c.selector == SHOW_TOOLTIP => {
-                let string = c.get_object::<String>().unwrap();
-                self.cur_tooltip = Some((self.mouse_pos, string.clone()));
-                ctx.request_paint();
+            Event::Command(c) => {
+                if let Some(string) = c.get(SHOW_TOOLTIP) {
+                    self.cur_tooltip = Some((self.mouse_pos, string.clone()));
+                    ctx.request_paint();
+                }
             }
             _ => {}
         }

@@ -612,7 +612,7 @@ impl Widget<EditorState> for TimelineInner {
         ctx.fill(rect, &TIMELINE_BG_COLOR);
 
         for child in self.children.values_mut() {
-            child.paint_with_offset(ctx, data, env);
+            child.paint(ctx, data, env);
         }
 
         // Draw the cursor.

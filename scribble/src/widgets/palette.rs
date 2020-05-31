@@ -203,7 +203,7 @@ impl Widget<PaletteData> for Palette {
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &PaletteData, env: &Env) {
         for c in &mut self.children {
-            c.paint_with_offset(ctx, &data.selected_color(), env);
+            c.paint(ctx, &data.selected_color(), env);
         }
     }
 }

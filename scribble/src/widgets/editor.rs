@@ -1,18 +1,12 @@
 use druid::widget::{Align, Flex};
 use druid::{
-    theme, BoxConstraints, Color, Command, Env, Event, EventCtx, FileInfo, KeyCode, KeyEvent,
-    LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt,
-    WidgetId,
+    theme, BoxConstraints, Color, Command, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx,
+    LifeCycle, LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt, WidgetId,
 };
 use std::sync::mpsc::{channel, Receiver};
 
-use scribble_curves::{SnippetData, SnippetId, Time};
-
-use crate::audio::{AudioSnippetData, AudioSnippetId};
 use crate::cmd;
-use crate::editor_state::{
-    CurrentAction, EditorState, MaybeSnippetId, PenSize, RecordingSpeed, SegmentInProgress,
-};
+use crate::editor_state::{CurrentAction, EditorState, MaybeSnippetId, PenSize, RecordingSpeed};
 use crate::encode::EncodingStatus;
 use crate::save_state::SaveFileData;
 use crate::widgets::tooltip::{TooltipExt, TooltipHost};
@@ -270,230 +264,196 @@ impl Editor {
         data: &mut EditorState,
         _env: &Env,
     ) -> bool {
-        let ret = match cmd.selector {
-            cmd::ADD_SNIPPET => {
-                let snip = cmd.get_object::<SnippetData>().expect("no snippet");
-                let (new_snippets, new_id) = data.snippets.with_new_snippet(snip.clone());
+        // TODO: change to match when that is supported.
+        let ret = if cmd.is(cmd::ADD_SNIPPET) {
+            let snip = cmd.get_unchecked(cmd::ADD_SNIPPET);
+            let (new_snippets, new_id) = data.snippets.with_new_snippet(snip.clone());
+            data.snippets = new_snippets;
+            data.selected_snippet = new_id.into();
+            data.push_undo_state();
+            true
+        } else if cmd.is(cmd::DELETE_SNIPPET) {
+            let id = cmd.get_unchecked(cmd::DELETE_SNIPPET);
+            if let Some(id) = id.as_draw().or(data.selected_snippet.as_draw()) {
+                let new_snippets = data.snippets.without_snippet(id);
                 data.snippets = new_snippets;
-                data.selected_snippet = new_id.into();
+                if data.selected_snippet == id.into() {
+                    data.selected_snippet = MaybeSnippetId::None;
+                }
                 data.push_undo_state();
-                true
-            }
-            cmd::DELETE_SNIPPET => {
-                if let Some(id) = cmd
-                    .get_object::<SnippetId>()
-                    .ok()
-                    .cloned()
-                    .or(data.selected_snippet.as_draw())
-                {
-                    let new_snippets = data.snippets.without_snippet(id);
-                    data.snippets = new_snippets;
-                    if data.selected_snippet == id.into() {
-                        data.selected_snippet = MaybeSnippetId::None;
-                    }
-                    data.push_undo_state();
-                } else if let Some(id) = cmd
-                    .get_object::<AudioSnippetId>()
-                    .ok()
-                    .cloned()
-                    .or(data.selected_snippet.as_audio())
-                {
-                    let new_snippets = data.audio_snippets.without_snippet(id);
-                    data.audio_snippets = new_snippets;
-                    if data.selected_snippet == id.into() {
-                        data.selected_snippet = MaybeSnippetId::None;
-                    }
-                    data.push_undo_state();
-                } else {
-                    log::error!("No snippet id to delete");
+            } else if let Some(id) = id.as_audio().or(data.selected_snippet.as_audio()) {
+                let new_snippets = data.audio_snippets.without_snippet(id);
+                data.audio_snippets = new_snippets;
+                if data.selected_snippet == id.into() {
+                    data.selected_snippet = MaybeSnippetId::None;
                 }
-                true
-            }
-            cmd::ADD_AUDIO_SNIPPET => {
-                let snip = cmd
-                    .get_object::<AudioSnippetData>()
-                    .expect("no audio snippet");
-                data.audio_snippets = data.audio_snippets.with_new_snippet(snip.clone());
                 data.push_undo_state();
-                true
+            } else {
+                log::error!("No snippet id to delete");
             }
-            cmd::APPEND_NEW_SEGMENT => {
-                let seg = cmd.get_object::<SegmentInProgress>().expect("no segment");
-                data.add_segment_to_snippet(seg.clone());
-                data.push_transient_undo_state();
-                true
-            }
-            cmd::CHOOSE_COLOR => {
-                let color = cmd.get_object::<Color>().expect("API violation");
-                data.palette.select(color);
-                true
-            }
-            cmd::EXPORT => {
-                let export = cmd.get_object::<cmd::ExportCmd>().expect("API violation");
+            true
+        } else if cmd.is(cmd::ADD_AUDIO_SNIPPET) {
+            let snip = cmd.get_unchecked(cmd::ADD_AUDIO_SNIPPET);
+            data.audio_snippets = data.audio_snippets.with_new_snippet(snip.clone());
+            data.push_undo_state();
+            true
+        } else if cmd.is(cmd::APPEND_NEW_SEGMENT) {
+            let seg = cmd.get_unchecked(cmd::APPEND_NEW_SEGMENT);
+            data.add_segment_to_snippet(seg.clone());
+            data.push_transient_undo_state();
+            true
+        } else if cmd.is(cmd::CHOOSE_COLOR) {
+            let color = cmd.get_unchecked(cmd::CHOOSE_COLOR);
+            data.palette.select(color);
+            true
+        } else if cmd.is(cmd::EXPORT) {
+            let export = cmd.get_unchecked(cmd::EXPORT);
 
-                if self.encoder_progress.is_some() {
-                    log::warn!("already encoding, not doing another one");
-                } else {
-                    let (tx, rx) = channel();
-                    let export = export.clone();
-                    // Encoder progress will be read whenever the timer ticks, and when encoding
-                    // is done this will be set back to `None`.
-                    self.encoder_progress = Some(rx);
-                    data.encoding_status = None;
-                    std::thread::spawn(move || crate::encode::encode_blocking(export, tx));
-                }
-
-                true
+            if self.encoder_progress.is_some() {
+                log::warn!("already encoding, not doing another one");
+            } else {
+                let (tx, rx) = channel();
+                let export = export.clone();
+                // Encoder progress will be read whenever the timer ticks, and when encoding
+                // is done this will be set back to `None`.
+                self.encoder_progress = Some(rx);
+                data.encoding_status = None;
+                std::thread::spawn(move || crate::encode::encode_blocking(export, tx));
             }
-            cmd::SET_MARK => {
-                let time = *cmd.get_object::<Time>().unwrap_or(&data.time());
-                data.mark = Some(time);
+
+            true
+        } else if cmd.is(cmd::SET_MARK) {
+            let time = cmd.get_unchecked(cmd::SET_MARK).unwrap_or(data.time());
+            data.mark = Some(time);
+            data.push_undo_state();
+            true
+        } else if cmd.is(cmd::TRUNCATE_SNIPPET) {
+            if let Some(id) = data.selected_snippet.as_draw() {
+                data.snippets = data.snippets.with_truncated_snippet(id, data.time());
                 data.push_undo_state();
-                true
+            } else {
+                log::error!("cannot truncate, nothing selected");
             }
-            cmd::TRUNCATE_SNIPPET => {
-                if let Some(id) = data.selected_snippet.as_draw() {
-                    data.snippets = data.snippets.with_truncated_snippet(id, data.time());
-                    data.push_undo_state();
-                } else {
-                    log::error!("cannot truncate, nothing selected");
-                }
-                true
+            true
+        } else if cmd.is(cmd::LERP_SNIPPET) {
+            if let (Some(mark_time), Some(id)) = (data.mark, data.selected_snippet.as_draw()) {
+                data.snippets = data.snippets.with_new_lerp(id, data.time(), mark_time);
+                data.push_undo_state();
+                ctx.submit_command(Command::new(cmd::WARP_TIME_TO, mark_time), None);
+            } else {
+                log::error!(
+                    "cannot lerp, mark time {:?}, selected {:?}",
+                    data.mark,
+                    data.selected_snippet
+                );
             }
-            cmd::LERP_SNIPPET => {
-                if let (Some(mark_time), Some(id)) = (data.mark, data.selected_snippet.as_draw()) {
-                    data.snippets = data.snippets.with_new_lerp(id, data.time(), mark_time);
-                    data.push_undo_state();
-                    ctx.submit_command(Command::new(cmd::WARP_TIME_TO, mark_time), None);
-                } else {
-                    log::error!(
-                        "cannot lerp, mark time {:?}, selected {:?}",
-                        data.mark,
-                        data.selected_snippet
-                    );
-                }
-                true
+            true
+        } else if cmd.is(druid::commands::UNDO) {
+            data.undo();
+            ctx.request_paint();
+            true
+        } else if cmd.is(druid::commands::REDO) {
+            data.redo();
+            ctx.request_paint();
+            true
+        } else if cmd.is(cmd::PLAY) {
+            if data.action.is_idle() {
+                data.start_playing();
+            } else {
+                log::error!("can't play, current action is {:?}", data.action);
             }
-            druid::commands::UNDO => {
-                data.undo();
-                ctx.request_paint();
-                true
+            true
+        } else if cmd.is(cmd::DRAW) {
+            if data.action.is_idle() {
+                data.start_recording(data.recording_speed.factor());
+            } else {
+                log::error!("can't draw, current action is {:?}", data.action);
             }
-            druid::commands::REDO => {
-                data.redo();
-                ctx.request_paint();
-                true
+            true
+        } else if cmd.is(cmd::TALK) {
+            if data.action.is_idle() {
+                data.start_recording_audio();
+            } else {
+                log::error!("can't talk, current action is {:?}", data.action);
             }
-            cmd::PLAY => {
-                if data.action.is_idle() {
-                    data.start_playing();
-                } else {
-                    log::error!("can't play, current action is {:?}", data.action);
-                }
-                true
-            }
-            cmd::DRAW => {
-                if data.action.is_idle() {
-                    data.start_recording(data.recording_speed.factor());
-                } else {
-                    log::error!("can't draw, current action is {:?}", data.action);
-                }
-                true
-            }
-            cmd::TALK => {
-                if data.action.is_idle() {
-                    data.start_recording_audio();
-                } else {
-                    log::error!("can't talk, current action is {:?}", data.action);
-                }
-                true
-            }
-            cmd::STOP => {
-                match data.action {
-                    CurrentAction::Idle => {}
-                    CurrentAction::Scanning(_) => {}
-                    CurrentAction::Playing => data.stop_playing(),
-                    CurrentAction::WaitingToRecord(_) | CurrentAction::Recording(_) => {
-                        if let Some(new_snippet) = data.stop_recording() {
-                            ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
-                        }
-                    }
-                    CurrentAction::RecordingAudio(_) => {
-                        let snip = data.stop_recording_audio();
-                        ctx.submit_command(Command::new(cmd::ADD_AUDIO_SNIPPET, snip), None);
+            true
+        } else if cmd.is(cmd::STOP) {
+            match data.action {
+                CurrentAction::Idle => {}
+                CurrentAction::Scanning(_) => {}
+                CurrentAction::Playing => data.stop_playing(),
+                CurrentAction::WaitingToRecord(_) | CurrentAction::Recording(_) => {
+                    if let Some(new_snippet) = data.stop_recording() {
+                        ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
                     }
                 }
-                true
-            }
-            cmd::WARP_TIME_TO => {
-                if data.action.is_idle() {
-                    data.warp_time_to(*cmd.get_object::<Time>().expect("API violation"));
-                } else {
-                    log::warn!("not warping: state is {:?}", data.action)
+                CurrentAction::RecordingAudio(_) => {
+                    let snip = data.stop_recording_audio();
+                    ctx.submit_command(Command::new(cmd::ADD_AUDIO_SNIPPET, snip), None);
                 }
-                true
             }
-            druid::commands::SAVE_FILE => {
-                let path = if let Ok(info) = cmd.get_object::<FileInfo>() {
-                    info.path().to_owned()
-                } else if let Some(path) = data.save_path.as_ref() {
-                    path.to_owned()
-                } else {
-                    log::error!("no save path, not saving");
-                    return false;
-                };
+            true
+        } else if cmd.is(cmd::WARP_TIME_TO) {
+            if data.action.is_idle() {
+                data.warp_time_to(*cmd.get_unchecked(cmd::WARP_TIME_TO));
+            } else {
+                log::warn!("not warping: state is {:?}", data.action)
+            }
+            true
+        } else if cmd.is(druid::commands::SAVE_FILE) {
+            let path = if let Some(info) = cmd.get_unchecked(druid::commands::SAVE_FILE) {
+                info.path().to_owned()
+            } else if let Some(path) = data.save_path.as_ref() {
+                path.to_owned()
+            } else {
+                log::error!("no save path, not saving");
+                return false;
+            };
 
-                // Note that we use the SAVE_FILE command for both saving and
-                // exporting, and we decide which to do based on the file
-                // extension.
-                match path.extension().and_then(|e| e.to_str()) {
-                    Some("mp4") => {
-                        let export = cmd::ExportCmd {
-                            snippets: data.snippets.clone(),
-                            audio_snippets: data.audio_snippets.clone(),
-                            filename: path.to_owned(),
-                        };
-                        ctx.submit_command(Command::new(cmd::EXPORT, export), None);
-                    }
-                    Some("scb") => {
-                        data.save_path = Some(path.clone());
-                        if let Err(e) = data.to_save_file().save_to_path(&path) {
-                            log::error!("error saving: '{}'", e);
-                        }
-                    }
-                    _ => {
-                        log::error!("unknown extension! Trying to save anyway");
-                        data.save_path = Some(path.clone());
-                        if let Err(e) = data.to_save_file().save_to_path(&path) {
-                            log::error!("error saving: '{}'", e);
-                        }
+            // Note that we use the SAVE_FILE command for both saving and
+            // exporting, and we decide which to do based on the file
+            // extension.
+            match path.extension().and_then(|e| e.to_str()) {
+                Some("mp4") => {
+                    let export = cmd::ExportCmd {
+                        snippets: data.snippets.clone(),
+                        audio_snippets: data.audio_snippets.clone(),
+                        filename: path.to_owned(),
+                    };
+                    ctx.submit_command(Command::new(cmd::EXPORT, export), None);
+                }
+                Some("scb") => {
+                    data.save_path = Some(path.clone());
+                    if let Err(e) = data.to_save_file().save_to_path(&path) {
+                        log::error!("error saving: '{}'", e);
                     }
                 }
-                true
-            }
-            druid::commands::OPEN_FILE => {
-                let info = if let Ok(info) = cmd.get_object::<FileInfo>() {
-                    info
-                } else {
-                    log::error!("no open file info, not opening");
-                    return false;
-                };
-                match SaveFileData::load_from_path(info.path()) {
-                    Ok(save_data) => {
-                        *data = EditorState::from_save_file(save_data);
-                        data.save_path = Some(info.path().to_owned());
-                    }
-                    Err(e) => {
-                        log::error!("error loading: '{}'", e);
+                _ => {
+                    log::error!("unknown extension! Trying to save anyway");
+                    data.save_path = Some(path.clone());
+                    if let Err(e) = data.to_save_file().save_to_path(&path) {
+                        log::error!("error saving: '{}'", e);
                     }
                 }
-                true
             }
-            druid::commands::CLOSE_WINDOW => {
-                log::info!("close window command");
-                true
+            true
+        } else if cmd.is(druid::commands::OPEN_FILE) {
+            let info = cmd.get_unchecked(druid::commands::OPEN_FILE);
+            match SaveFileData::load_from_path(info.path()) {
+                Ok(save_data) => {
+                    *data = EditorState::from_save_file(save_data);
+                    data.save_path = Some(info.path().to_owned());
+                }
+                Err(e) => {
+                    log::error!("error loading: '{}'", e);
+                }
             }
-            _ => false,
+            true
+        } else if cmd.is(druid::commands::CLOSE_WINDOW) {
+            log::info!("close window command");
+            true
+        } else {
+            false
         };
         // This might be a little conservative, but there are lots of state
         // changes that cause the menus to change, so the easiest thing is just

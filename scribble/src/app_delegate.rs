@@ -15,13 +15,12 @@ impl AppDelegate<AppState> for Delegate {
         data: &mut AppState,
         _env: &Env,
     ) -> bool {
-        match cmd.selector {
-            druid::commands::NEW_FILE => {
-                let window_desc = data.add_editor(EditorState::default());
-                ctx.new_window(window_desc);
-                false
-            }
-            _ => true,
+        if cmd.is(druid::commands::NEW_FILE) {
+            let window_desc = data.add_editor(EditorState::default());
+            ctx.new_window(window_desc);
+            false
+        } else {
+            true
         }
     }
 

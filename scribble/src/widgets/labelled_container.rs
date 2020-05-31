@@ -122,7 +122,7 @@ impl<T: Data> Widget<T> for LabelledContainer<T> {
             ctx.clip(path);
             ctx.stroke(border_rect, &border_color, border_width);
         });
-        self.label.paint_with_offset(ctx, data, env);
-        self.inner.paint_with_offset(ctx, data, env);
+        self.label.paint(ctx, data, env);
+        self.inner.paint(ctx, data, env);
     }
 }

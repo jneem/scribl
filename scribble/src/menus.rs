@@ -5,7 +5,7 @@ use druid::{
 };
 
 use crate::cmd;
-use crate::editor_state::CurrentAction;
+use crate::editor_state::{CurrentAction, MaybeSnippetId};
 use crate::widgets::ToggleButtonState;
 
 const SCRIBBLE_FILE_TYPE: FileSpec = FileSpec::new("Scribble animation", &["scb"]);
@@ -33,7 +33,7 @@ fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
         FileDialogOptions::new().allowed_types(vec![SCRIBBLE_FILE_TYPE]),
     );
     let save_command = if has_path {
-        commands::SAVE_FILE.into()
+        Command::new(commands::SAVE_FILE, None)
     } else {
         save_as_command.clone()
     };
@@ -79,60 +79,70 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
     let draw = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-draw").with_placeholder("Draw"),
         cmd::DRAW,
-    )
-    .hotkey(SysMods::Cmd, "d")
-    .disabled_if(|| data.action.rec_toggle() != ToggleButtonState::ToggledOff);
+    );
+    let draw = if data.action.rec_toggle() == ToggleButtonState::ToggledOff {
+        draw.hotkey(SysMods::None, KeyCode::Space)
+    } else {
+        draw.disabled()
+    };
 
     let talk = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-talk").with_placeholder("Talk"),
         cmd::TALK,
-    )
-    .hotkey(SysMods::Cmd, "t")
-    .disabled_if(|| data.action.rec_audio_toggle() != ToggleButtonState::ToggledOff);
+    );
+    let talk = if data.action.rec_audio_toggle() == ToggleButtonState::ToggledOff {
+        talk.hotkey(SysMods::Shift, KeyCode::Space)
+    } else {
+        talk.disabled()
+    };
 
     let play = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-play").with_placeholder("Play"),
         cmd::PLAY,
-    )
-    .hotkey(SysMods::Cmd, "p")
-    .disabled_if(|| data.action.play_toggle() != ToggleButtonState::ToggledOff);
+    );
+    let play = if data.action.play_toggle() == ToggleButtonState::ToggledOff {
+        play.hotkey(SysMods::None, "p")
+    } else {
+        play.disabled()
+    };
 
     let stop = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-stop").with_placeholder("Stop"),
         cmd::STOP,
-    )
-    .hotkey(SysMods::None, KeyCode::Space)
-    .disabled_if(|| {
-        !matches!(data.action,
-            CurrentAction::Playing
-            | CurrentAction::Recording(_)
-            | CurrentAction::WaitingToRecord(_)
-            | CurrentAction::RecordingAudio(_))
-    });
+    );
+    // The stop hotkey matches the hotkey that was used to start the current action.
+    let stop = match data.action {
+        CurrentAction::Playing => stop.hotkey(SysMods::None, "p"),
+        CurrentAction::Recording(_) | CurrentAction::WaitingToRecord(_) => {
+            stop.hotkey(SysMods::None, KeyCode::Space)
+        }
+        CurrentAction::RecordingAudio(_) => stop.hotkey(SysMods::Shift, KeyCode::Space),
+        _ => stop.disabled(),
+    };
 
     let mark = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-mark").with_placeholder("Set mark"),
-        cmd::SET_MARK,
+        Command::new(cmd::SET_MARK, None),
     )
-    .hotkey(SysMods::None, KeyCode::KeyM);
+    .hotkey(SysMods::Cmd, KeyCode::KeyM);
 
     let warp = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-warp").with_placeholder("Warp snippet"),
         cmd::LERP_SNIPPET,
     )
-    .hotkey(SysMods::None, KeyCode::KeyW)
+    .hotkey(SysMods::Cmd, KeyCode::KeyW)
     .disabled_if(|| data.mark.is_none());
 
     let trunc = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-truncate").with_placeholder("Truncate snippet"),
         cmd::TRUNCATE_SNIPPET,
     )
-    .hotkey(SysMods::None, KeyCode::KeyT)
+    .hotkey(SysMods::Cmd, KeyCode::KeyT)
     .disabled_if(|| data.selected_snippet.is_none());
 
     let delete = MenuItem::new(
         LocalizedString::new("scribble-menu-edit-delete").with_placeholder("Delete selected"),
-        cmd::DELETE_SNIPPET,
+        Command::new(cmd::DELETE_SNIPPET, MaybeSnippetId::None),
     )
     .hotkey(SysMods::None, KeyCode::Delete)
     .disabled_if(|| data.selected_snippet.is_none());
