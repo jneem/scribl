@@ -382,7 +382,8 @@ checksum = "212d0f5754cb6769937f4501cc0e67f4f4483c8d2c3e1e922ee9edbe4ab4c7c0"
 [[package]]
 name = "druid"
 version = "0.6.0"
-source = "git+https://github.com/xi-editor/druid.git#f012f2cb9d02234bf2afac530ce74da33559b556"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4b259ffca57f018990c2eac38b4b095811ae77b6387a1ce0a13a89e6eda4058"
 dependencies = [
  "console_log",
  "druid-derive",
@@ -402,8 +403,9 @@ dependencies = [
 
 [[package]]
 name = "druid-derive"
-version = "0.4.0"
-source = "git+https://github.com/xi-editor/druid.git#f012f2cb9d02234bf2afac530ce74da33559b556"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b53703b0938df4629bdd2c2b91cac35bb5a7a6ed6d18704099ff3c37beb9346"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -413,7 +415,8 @@ dependencies = [
 [[package]]
 name = "druid-shell"
 version = "0.6.0"
-source = "git+https://github.com/xi-editor/druid.git#f012f2cb9d02234bf2afac530ce74da33559b556"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6da6ec49be2a815bd553c0af453043625841441c405a33e6e2d51c9a5acfe59b"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -1098,7 +1101,8 @@ dependencies = [
 [[package]]
 name = "lufs"
 version = "0.1.0"
-source = "git+https://github.com/jneem/lufs.git#2351dd73c2bc86b601a9798b067c96bfb1110af5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3209cb40adaeeeda620562e87d3069e195d01f4b06acbe12b4693816a005a7a0"
 
 [[package]]
 name = "malloc_buf"
@@ -1303,7 +1307,8 @@ checksum = "19b17cddbe7ec3f8bc800887bab5e717348c95ea2ca0b1bf0837fb964dc67099"
 [[package]]
 name = "phase_vocoder"
 version = "0.1.0"
-source = "git+https://github.com/jneem/phase_vocoder.git#71a85d3a0aea0e6076ebd47dc3edc0afc984d9b5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3648bd5c92ef6c5c1e55ea3a8ce700894ae44fe8a02ef188b90bae71ce1be476"
 dependencies = [
  "apodize",
  "rustfft",

@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 scribble_curves = { path = "../curves/" }
-druid = { git = "https://github.com/xi-editor/druid.git", features = ["im"] }
+druid = { version = "0.6.0", features = ["im"] }
 log = "0.4.8"
 cpal = "0.11.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
@@ -19,8 +19,8 @@ anyhow = "1.0.27"
 gstreamer-audio = "0.15.3"
 thiserror = "1.0.14"
 rnnoise-c = "0.2.0"
-phase_vocoder = { git = "https://github.com/jneem/phase_vocoder.git" }
-lufs = { git = "https://github.com/jneem/lufs.git" }
+phase_vocoder = "0.1.0"
+lufs = "0.1.0"
 clap = "2.33.0"
 pkg-version = "1.0.0"
 env_logger = "0.7.1"
