@@ -3,6 +3,10 @@ name = "scribble"
 version = "0.1.0"
 authors = ["Joe Neeman <joeneeman@gmail.com>"]
 edition = "2018"
+readme = "../README.md"
+description = "Create simple instructional videos"
+license = "MIT"
+repository = "https://github.com/jneem/scribble"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
