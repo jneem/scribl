@@ -101,7 +101,6 @@ fn create_pipeline(
 
     // This will be called every time the video source requests data.
     let mut frame_counter = 0;
-    let mut device = Device::new().map_err(|_| anyhow!("couldn't open Device"))?;
     let mut need_data_inner = move |src: &gst_app::AppSrc| -> anyhow::Result<()> {
         // We track encoding progress by the fraction of video frames that we've rendered.  This
         // isn't perfect (what with gstreamer's buffering, etc.), but it's probably good enough.
@@ -115,7 +114,8 @@ fn create_pipeline(
         let time = Time::from_video_frame(frame_counter, FPS);
 
         // Create a cairo surface and render to it.
-
+        // On windows (at least), Device is not send. So we create it every frame...
+        let mut device = Device::new().map_err(|_| anyhow!("couldn't open Device"))?;
         let mut bitmap = device
             .bitmap_target(WIDTH as usize, HEIGHT as usize, 1.0)
             .map_err(|_| anyhow!("couldn't create bitmap"))?;
