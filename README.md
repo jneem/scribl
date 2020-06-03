@@ -16,16 +16,17 @@ Here's a screenshot of its user interface:
 
 ![Screenshot](https://raw.githubusercontent.com/jneem/scribble/master/scribble/sample/screenshot.png)
 
-# This is ALPHA software.
+# This is BETA software.
 
-It is likely to crash and eat your hard work. Even if it doesn't the file format is subject to
-change, and so future versions of Scribble won't be able to open current save files.
-*Do not* use this for anything important!
+It is unlikely to work on your computer, particularly if your computer is not
+running linux.  If it does run, there is a chance it will crash and eat your
+hard work.
 
 # How to run
 
-Scribble is written in the [`rust`](https://www.rust-lang.org) programming language. In order to install
-it, you'll need to first [install a `rust` compiler](https://www.rust-lang.org/tools/install).
+Because scribble is still beta, in order to run it you will need to compile it yourself.
+Scribble is written in the [`rust`](https://www.rust-lang.org) programming language,
+so first you'll need to [install a `rust` compiler](https://www.rust-lang.org/tools/install).
 Then you'll need to install some dependencies (because although rust manages rust-written dependencies
 very easily, scribble also depends on some software written in C). If you're running linux,
 you'll need to install (if you don't have them already) development packages for
