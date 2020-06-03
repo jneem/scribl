@@ -6,8 +6,7 @@ use scribble_curves::SnippetsData;
 
 use crate::audio::AudioSnippetsData;
 
-/// Our save file format is simply to serialize this struct as json, compressed
-/// with gzip.
+/// Our save file format is simply to serialize this struct as CBOR.
 ///
 /// In particular, it's very important that the serializion format of this struct
 /// doesn't change unexpectedly.

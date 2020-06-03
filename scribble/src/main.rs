@@ -115,12 +115,16 @@ fn encode(data: EditorState, path: &str) {
     std::thread::spawn(move || crate::encode::encode_blocking(export, tx));
 
     for msg in rx.iter() {
+        use crate::editor_state::StatusMsg;
         use crate::encode::EncodingStatus;
         match msg {
-            // TODO: nicer display
-            EncodingStatus::Encoding(pct) => eprintln!("{}", pct),
-            EncodingStatus::Error(s) => eprintln!("Encoding error: {}", s),
-            EncodingStatus::Finished => eprintln!("Finished!"),
+            StatusMsg::Encoding(e) => match e {
+                // TODO: nicer display
+                EncodingStatus::Encoding(pct) => eprintln!("{}", pct),
+                EncodingStatus::Error(s) => eprintln!("Encoding error: {}", s),
+                EncodingStatus::Finished(_) => eprintln!("Finished!"),
+            },
+            _ => panic!("unexpected status message!"),
         }
     }
 }

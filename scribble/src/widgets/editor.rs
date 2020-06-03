@@ -3,11 +3,13 @@ use druid::{
     theme, BoxConstraints, Color, Command, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx,
     LifeCycle, LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt, WidgetId,
 };
-use std::sync::mpsc::{channel, Receiver};
+use std::path::PathBuf;
+use std::sync::mpsc::{Receiver, Sender};
 
 use crate::cmd;
-use crate::editor_state::{CurrentAction, EditorState, MaybeSnippetId, PenSize, RecordingSpeed};
-use crate::encode::EncodingStatus;
+use crate::editor_state::{
+    CurrentAction, EditorState, MaybeSnippetId, PenSize, RecordingSpeed, StatusMsg,
+};
 use crate::save_state::SaveFileData;
 use crate::widgets::tooltip::{TooltipExt, TooltipHost};
 use crate::widgets::{
@@ -19,9 +21,12 @@ use crate::FRAME_TIME;
 pub struct Editor {
     timer_id: TimerToken,
 
-    // While we're encoding a file, this receives status updates from the encoder. Each update
-    // is a number between 0.0 and 1.0 (where 1.0 means finished).
-    encoder_progress: Option<Receiver<EncodingStatus>>,
+    // The channel that we keep for receiving asynchronous messages.
+    status_rx: Receiver<StatusMsg>,
+
+    // The sending end of `status_rx`.  We never actually send on this, but we keep it around for
+    // handing out copies.
+    status_tx: Sender<StatusMsg>,
 
     inner: Box<dyn Widget<EditorState>>,
 }
@@ -189,9 +194,11 @@ impl Editor {
             .with_child(timeline)
             .with_child(make_status_bar());
 
+        let (tx, rx) = std::sync::mpsc::channel();
         Editor {
             inner: Box::new(TooltipHost::new(Align::centered(column))),
-            encoder_progress: None,
+            status_rx: rx,
+            status_tx: tx,
             timer_id: TimerToken::INVALID,
         }
     }
@@ -309,15 +316,11 @@ impl Editor {
         } else if cmd.is(cmd::EXPORT) {
             let export = cmd.get_unchecked(cmd::EXPORT);
 
-            if self.encoder_progress.is_some() {
+            if data.status.in_progress.encoding.is_some() {
                 log::warn!("already encoding, not doing another one");
             } else {
-                let (tx, rx) = channel();
                 let export = export.clone();
-                // Encoder progress will be read whenever the timer ticks, and when encoding
-                // is done this will be set back to `None`.
-                self.encoder_progress = Some(rx);
-                data.encoding_status = None;
+                let tx = self.status_tx.clone();
                 std::thread::spawn(move || crate::encode::encode_blocking(export, tx));
             }
 
@@ -379,8 +382,6 @@ impl Editor {
             true
         } else if cmd.is(cmd::STOP) {
             match data.action {
-                CurrentAction::Idle => {}
-                CurrentAction::Scanning(_) => {}
                 CurrentAction::Playing => data.stop_playing(),
                 CurrentAction::WaitingToRecord(_) | CurrentAction::Recording(_) => {
                     if let Some(new_snippet) = data.stop_recording() {
@@ -391,6 +392,7 @@ impl Editor {
                     let snip = data.stop_recording_audio();
                     ctx.submit_command(Command::new(cmd::ADD_AUDIO_SNIPPET, snip), None);
                 }
+                _ => {}
             }
             true
         } else if cmd.is(cmd::WARP_TIME_TO) {
@@ -423,30 +425,24 @@ impl Editor {
                     ctx.submit_command(Command::new(cmd::EXPORT, export), None);
                 }
                 Some("scb") => {
-                    data.save_path = Some(path.clone());
-                    if let Err(e) = data.to_save_file().save_to_path(&path) {
-                        log::error!("error saving: '{}'", e);
-                    }
+                    data.status.in_progress.saving = Some(path.clone());
+                    self.spawn_async_save(data.to_save_file(), path);
                 }
                 _ => {
                     log::error!("unknown extension! Trying to save anyway");
-                    data.save_path = Some(path.clone());
-                    if let Err(e) = data.to_save_file().save_to_path(&path) {
-                        log::error!("error saving: '{}'", e);
-                    }
+                    data.status.in_progress.saving = Some(path.clone());
+                    self.spawn_async_save(data.to_save_file(), path);
                 }
             }
             true
         } else if cmd.is(druid::commands::OPEN_FILE) {
-            let info = cmd.get_unchecked(druid::commands::OPEN_FILE);
-            match SaveFileData::load_from_path(info.path()) {
-                Ok(save_data) => {
-                    *data = EditorState::from_save_file(save_data);
-                    data.save_path = Some(info.path().to_owned());
-                }
-                Err(e) => {
-                    log::error!("error loading: '{}'", e);
-                }
+            if data.status.in_progress.loading.is_some() {
+                log::error!("not loading, already loading");
+            } else {
+                let info = cmd.get_unchecked(druid::commands::OPEN_FILE);
+                data.status.in_progress.loading = Some(info.path().to_owned());
+                self.spawn_async_load(info.path().to_owned());
+                data.set_loading();
             }
             true
         } else if cmd.is(druid::commands::CLOSE_WINDOW) {
@@ -460,6 +456,22 @@ impl Editor {
         // to rebuild the menus on every command.
         ctx.set_menu(crate::menus::make_menu(data));
         ret
+    }
+
+    fn spawn_async_save(&mut self, save_data: SaveFileData, path: PathBuf) {
+        let tx = self.status_tx.clone();
+        std::thread::spawn(move || {
+            let result = save_data.save_to_path(&path);
+            let _ = tx.send(StatusMsg::DoneSaving(path, result));
+        });
+    }
+
+    fn spawn_async_load(&mut self, path: PathBuf) {
+        let tx = self.status_tx.clone();
+        std::thread::spawn(move || {
+            let data = SaveFileData::load_from_path(&path);
+            let _ = tx.send(StatusMsg::Load(path, data));
+        });
     }
 }
 
@@ -479,29 +491,33 @@ impl Widget<EditorState> for Editor {
             }
             Event::KeyDown(ev) => self.handle_key_down(ctx, ev, data, env),
             Event::KeyUp(ev) => self.handle_key_up(ctx, ev, data, env),
-            Event::Timer(tok) => {
-                if tok == &self.timer_id {
-                    // Handle any status reports from the encoder.
-                    if let Some(ref rx) = self.encoder_progress {
-                        if let Some(status) = rx.try_iter().last() {
-                            data.encoding_status = Some(status);
-                        }
-                        match data.encoding_status {
-                            Some(EncodingStatus::Finished) | Some(EncodingStatus::Error(_)) => {
-                                self.encoder_progress = None;
+            Event::Timer(tok) if tok == &self.timer_id => {
+                // Handle any status messages.
+                for msg in self.status_rx.try_iter() {
+                    data.update_status(&msg);
+                    match msg {
+                        StatusMsg::Load(path, save_data) => {
+                            if let Ok(save_data) = save_data {
+                                *data = EditorState::from_save_file(save_data);
+                                data.save_path = Some(path.clone());
                             }
-                            _ => {}
                         }
+                        StatusMsg::DoneSaving(path, result) => {
+                            if result.is_ok() {
+                                data.save_path = Some(path.clone());
+                            }
+                        }
+                        _ => {}
                     }
-
-                    // TODO: we should handing ticking using animation instead of timers?
-                    // The issue with that is that `lifecycle` doesn't get to mutate the data.
-
-                    // Update the current time, if necessary.
-                    data.update_time();
-                    self.timer_id = ctx.request_timer(FRAME_TIME);
-                    ctx.set_handled();
                 }
+
+                // TODO: we should handing ticking using animation instead of timers?
+                // The issue with that is that `lifecycle` doesn't get to mutate the data.
+
+                // Update the current time, if necessary.
+                data.update_time();
+                self.timer_id = ctx.request_timer(FRAME_TIME);
+                ctx.set_handled();
             }
             _ => {}
         }

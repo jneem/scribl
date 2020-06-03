@@ -1,3 +1,4 @@
+use anyhow::Error;
 use druid::kurbo::BezPath;
 use druid::{Data, Lens, Point};
 use std::cell::RefCell;
@@ -11,6 +12,7 @@ use scribble_curves::{
 };
 
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData, AudioState};
+use crate::encode::EncodingStatus;
 use crate::save_state::SaveFileData;
 use crate::undo::{UndoStack, UndoState};
 use crate::widgets::ToggleButtonState;
@@ -102,6 +104,46 @@ impl Default for MaybeSnippetId {
     }
 }
 
+#[derive(Clone, Data, Default)]
+pub struct InProgressStatus {
+    pub encoding: Option<f64>,
+    #[data(same_fn = "PartialEq::eq")]
+    pub saving: Option<PathBuf>,
+    #[data(same_fn = "PartialEq::eq")]
+    pub loading: Option<PathBuf>,
+}
+
+#[derive(Clone, Data)]
+pub enum FinishedStatus {
+    Saved {
+        #[data(same_fn = "PartialEq::eq")]
+        path: PathBuf,
+        #[data(same_fn = "PartialEq::eq")]
+        time: Instant,
+    },
+    Loaded {
+        #[data(same_fn = "PartialEq::eq")]
+        path: PathBuf,
+        #[data(same_fn = "PartialEq::eq")]
+        time: Instant,
+    },
+    Encoded {
+        #[data(same_fn = "PartialEq::eq")]
+        path: PathBuf,
+        #[data(same_fn = "PartialEq::eq")]
+        time: Instant,
+    },
+    Error(String),
+}
+
+// This is not the right thing. we should have something for operations in progress,
+// something for finished operations, something for errors.
+#[derive(Clone, Data, Default)]
+pub struct AsyncOpsStatus {
+    pub in_progress: InProgressStatus,
+    pub last_finished: Option<FinishedStatus>,
+}
+
 /// This data contains the state of an editor window.
 #[derive(Clone, Data, Lens)]
 pub struct EditorState {
@@ -143,7 +185,9 @@ pub struct EditorState {
 
     pub palette: crate::widgets::PaletteData,
 
-    pub encoding_status: Option<crate::encode::EncodingStatus>,
+    // There are several actions that we do asynchronously. Here, we have the most recent status of
+    // these actions.
+    pub status: AsyncOpsStatus,
 
     #[data(ignore)]
     pub save_path: Option<PathBuf>,
@@ -169,7 +213,8 @@ impl Default for EditorState {
             pen_size: PenSize::Medium,
             audio: Arc::new(RefCell::new(AudioState::init())),
             palette: crate::widgets::PaletteData::default(),
-            encoding_status: None,
+
+            status: AsyncOpsStatus::default(),
 
             save_path: None,
         }
@@ -398,6 +443,23 @@ impl EditorState {
         }
     }
 
+    /// We're starting to load a saved file, so disable user interaction, playing, etc.
+    pub fn set_loading(&mut self) {
+        match self.action {
+            CurrentAction::Scanning(_) => self.stop_scanning(),
+            CurrentAction::Recording(_) | CurrentAction::WaitingToRecord(_) => {
+                self.stop_recording();
+            }
+            CurrentAction::Playing => self.stop_playing(),
+            CurrentAction::RecordingAudio(_) => {
+                self.stop_recording_audio();
+            }
+            CurrentAction::Idle => {}
+            CurrentAction::Loading => {}
+        }
+        self.action = CurrentAction::Loading;
+    }
+
     pub fn warp_time_to(&mut self, time: Time) {
         self.time = time;
         self.take_time_snapshot();
@@ -527,6 +589,57 @@ impl EditorState {
             self.restore_undo_state(state);
         }
     }
+
+    /// We've just received this message; update the `status` field to reflect it.
+    pub fn update_status(&mut self, msg: &StatusMsg) {
+        match msg {
+            StatusMsg::Encoding(s) => match s {
+                EncodingStatus::Encoding(x) => {
+                    self.status.in_progress.encoding = Some(*x);
+                }
+                EncodingStatus::Finished(path) => {
+                    self.status.in_progress.encoding = None;
+                    self.status.last_finished = Some(FinishedStatus::Encoded {
+                        path: path.clone(),
+                        time: Instant::now(),
+                    });
+                }
+                EncodingStatus::Error(s) => {
+                    self.status.in_progress.encoding = None;
+                    self.status.last_finished = Some(FinishedStatus::Error(s.clone()));
+                }
+            },
+            StatusMsg::Load(path, save_data) => {
+                self.status.in_progress.loading = None;
+                self.status.last_finished = match save_data {
+                    Ok(_) => Some(FinishedStatus::Loaded {
+                        path: path.clone(),
+                        time: Instant::now(),
+                    }),
+                    Err(e) => {
+                        log::error!("error loading: '{}'", e);
+                        Some(FinishedStatus::Error(e.to_string()))
+                    }
+                };
+            }
+            StatusMsg::DoneSaving(path, result) => {
+                self.status.in_progress.saving = None;
+                self.status.last_finished = match result {
+                    Ok(()) => {
+                        Some(FinishedStatus::Saved {
+                            path: path.clone(),
+                            // TODO: time should be when it started saving?
+                            time: Instant::now(),
+                        })
+                    }
+                    Err(e) => {
+                        log::error!("error saving: '{}'", e);
+                        Some(FinishedStatus::Error(e.to_string()))
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Data, Debug, PartialEq)]
@@ -550,6 +663,9 @@ pub enum CurrentAction {
 
     /// They aren't doing anything.
     Idle,
+
+    /// We are still loading the file from disk.
+    Loading,
 }
 
 impl Default for CurrentAction {
@@ -648,5 +764,22 @@ impl PenSize {
             PenSize::Medium => 0.004,
             PenSize::Big => 0.012,
         }
+    }
+}
+
+/// We do various operations asynchronously, so the editor keeps a channel open for getting
+/// updates. These are the types of messages that can come on the channel.
+pub enum StatusMsg {
+    // While we're encoding a file, we get these regular status updates from the encoder.
+    Encoding(EncodingStatus),
+    // We load files asynchronously; when loading is done, we get one of these messages.
+    Load(PathBuf, Result<SaveFileData, Error>),
+    // When a file is done saving, we get one of these messages.
+    DoneSaving(PathBuf, Result<(), Error>),
+}
+
+impl From<EncodingStatus> for StatusMsg {
+    fn from(e: EncodingStatus) -> StatusMsg {
+        StatusMsg::Encoding(e)
     }
 }

@@ -6,12 +6,13 @@ use gstreamer as gst;
 use gstreamer_app as gst_app;
 use gstreamer_audio as gst_audio;
 use gstreamer_video as gst_video;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 
 use scribble_curves::{time, SnippetsData, Time};
 
 use crate::audio::{AudioSnippetsData, Cursor, SAMPLE_RATE};
+use crate::editor_state::StatusMsg;
 
 const FPS: f64 = 30.0;
 // Note that the aspect ratio here needs to match the aspect ratio
@@ -47,7 +48,7 @@ fn create_pipeline(
     audio: AudioSnippetsData,
     frame_count: u32,
     path: &Path,
-    progress: Sender<EncodingStatus>,
+    progress: Sender<StatusMsg>,
 ) -> Result<gst::Pipeline, anyhow::Error> {
     let pipeline = gst::Pipeline::new(None);
     let v_src = gst::ElementFactory::make("appsrc", Some("source"))?;
@@ -104,9 +105,8 @@ fn create_pipeline(
     let mut need_data_inner = move |src: &gst_app::AppSrc| -> anyhow::Result<()> {
         // We track encoding progress by the fraction of video frames that we've rendered.  This
         // isn't perfect (what with gstreamer's buffering, etc.), but it's probably good enough.
-        let _ = progress.send(EncodingStatus::Encoding(
-            frame_counter as f64 / frame_count as f64,
-        ));
+        let _ = progress
+            .send(EncodingStatus::Encoding(frame_counter as f64 / frame_count as f64).into());
         if frame_counter == frame_count {
             let _ = src.end_of_stream();
             return Ok(());
@@ -251,7 +251,7 @@ pub enum EncodingStatus {
     Encoding(f64),
 
     /// We finished encoding successfully.
-    Finished,
+    Finished(#[data(same_fn = "PartialEq::eq")] PathBuf),
 
     /// Encoding aborted with an error.
     Error(String),
@@ -259,7 +259,7 @@ pub enum EncodingStatus {
 
 pub fn do_encode_blocking(
     cmd: crate::cmd::ExportCmd,
-    progress: Sender<EncodingStatus>,
+    progress: Sender<StatusMsg>,
 ) -> Result<(), anyhow::Error> {
     let end_time = cmd
         .snippets
@@ -276,11 +276,12 @@ pub fn do_encode_blocking(
     )?)
 }
 
-pub fn encode_blocking(cmd: crate::cmd::ExportCmd, progress: Sender<EncodingStatus>) {
+pub fn encode_blocking(cmd: crate::cmd::ExportCmd, progress: Sender<StatusMsg>) {
+    let path = cmd.filename.clone();
     if let Err(e) = do_encode_blocking(cmd, progress.clone()) {
         log::error!("error {}", e);
-        let _ = progress.send(EncodingStatus::Error(e.to_string()));
+        let _ = progress.send(EncodingStatus::Error(e.to_string()).into());
     } else {
-        let _ = progress.send(EncodingStatus::Finished);
+        let _ = progress.send(EncodingStatus::Finished(path).into());
     }
 }
