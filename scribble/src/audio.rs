@@ -664,36 +664,36 @@ mod tests {
     fn forward() {
         let snips = snips!(0 => &[1, 2, 3, 4, 5]);
         // a sample rate of 1 is silly, but it lets us get the indices right without any rounding issues.
-        let mut c = Cursor::new(&snips, time::ZERO, 1, true);
+        let mut c = Cursor::new(&snips, time::ZERO, 1);
         let mut out = vec![0; 5];
-        c.mix_to_buffer(&snips, &mut out[..]);
+        c.advance_and_mix(&snips, &mut out[..], true);
         assert_eq!(out, vec![1, 2, 3, 4, 5]);
     }
 
     #[test]
     fn forward_offset() {
         let snips = snips!(5 => &[1, 2, 3, 4, 5]);
-        let mut c = Cursor::new(&snips, time::ZERO, 1, true);
+        let mut c = Cursor::new(&snips, time::ZERO, 1);
         let mut out = vec![0; 15];
-        c.mix_to_buffer(&snips, &mut out[..]);
+        c.advance_and_mix(&snips, &mut out[..], true);
         assert_eq!(out, vec![0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 0, 0, 0, 0, 0]);
     }
 
     #[test]
     fn backward() {
         let snips = snips!(2 => &[1, 2, 3, 4, 5]);
-        let mut c = Cursor::new(&snips, Time::from_micros(9 * 1000000), 1, false);
+        let mut c = Cursor::new(&snips, Time::from_micros(9 * 1000000), 1);
         let mut out = vec![0; 10];
-        c.mix_to_buffer(&snips, &mut out[..]);
-        assert_eq!(out, vec![0, 0, 5, 4, 3, 2, 1, 0, 0, 0]);
+        c.advance_and_mix(&snips, &mut out[..], false);
+        assert_eq!(out, vec![0, 0, 1, 2, 3, 4, 5, 0, 0, 0]);
     }
 
     #[test]
     fn backward_already_finished() {
         let snips = snips!(0 => &[1, 2, 3, 4, 5]);
-        let mut c = Cursor::new(&snips, Time::from_micros(0), 1, false);
+        let mut c = Cursor::new(&snips, Time::from_micros(0), 1);
         let mut out = vec![0; 10];
-        c.mix_to_buffer(&snips, &mut out[..]);
+        c.advance_and_mix(&snips, &mut out[..], false);
         assert_eq!(out, vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
 
@@ -703,9 +703,9 @@ mod tests {
             0 => &[1, 2, 3],
             2 => &[1, 2, 3]
         );
-        let mut c = Cursor::new(&snips, time::ZERO, 1, true);
+        let mut c = Cursor::new(&snips, time::ZERO, 1);
         let mut out = vec![0; 10];
-        c.mix_to_buffer(&snips, &mut out[..]);
+        c.advance_and_mix(&snips, &mut out[..], true);
         assert_eq!(out, vec![1, 2, 4, 2, 3, 0, 0, 0, 0, 0]);
     }
 
@@ -715,10 +715,10 @@ mod tests {
             0 => &[1, 2, 3],
             2 => &[1, 2, 3]
         );
-        let mut c = Cursor::new(&snips, Time::from_micros(10 * 1000000), 1, false);
+        let mut c = Cursor::new(&snips, Time::from_micros(10 * 1000000), 1);
         let mut out = vec![0; 10];
-        c.mix_to_buffer(&snips, &mut out[..]);
-        assert_eq!(out, vec![0, 0, 0, 0, 0, 3, 2, 4, 2, 1]);
+        c.advance_and_mix(&snips, &mut out[..], false);
+        assert_eq!(out, vec![1, 2, 4, 2, 3, 0, 0, 0, 0, 0]);
     }
 
     #[test]
@@ -727,13 +727,13 @@ mod tests {
             0 => &[1, 2, 3],
             12 => &[1, 2, 3]
         );
-        let mut c = Cursor::new(&snips, time::ZERO, 1, true);
+        let mut c = Cursor::new(&snips, time::ZERO, 1);
         let mut out = vec![0; 10];
-        c.mix_to_buffer(&snips, &mut out[..]);
+        c.advance_and_mix(&snips, &mut out[..], true);
         assert_eq!(out, vec![1, 2, 3, 0, 0, 0, 0, 0, 0, 0]);
 
         let mut out = vec![0; 10];
-        c.mix_to_buffer(&snips, &mut out[..]);
+        c.advance_and_mix(&snips, &mut out[..], true);
         assert_eq!(out, vec![0, 0, 1, 2, 3, 0, 0, 0, 0, 0]);
     }
 }
