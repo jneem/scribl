@@ -5,7 +5,3 @@ members = [
     "scribble",
 ]
 
-# The phase vocoder needs a basic level of performance. Otherwise,
-# we get audio buffer underflows.
-[profile.dev.package.phase_vocoder]
-opt-level = 3

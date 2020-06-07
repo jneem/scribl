@@ -1,19 +1,17 @@
-//! This module is in charge of audio (both recording and playback). We are
-//! currently using cpal, but it might be work switching to gstreamer (which
-//! would be way overkill just for this module's needs, but we depend on it for
-//! video encoding anyway).
+//! This module is in charge of audio (both recording and playback).
 
-use cpal::traits::{EventLoopTrait, HostTrait};
-use cpal::{EventLoop, StreamData, UnknownTypeInputBuffer, UnknownTypeOutputBuffer};
+use anyhow::{anyhow, Result};
 use druid::im::OrdMap;
 use druid::Data;
-use phase_vocoder::PhaseVocoder;
+use gst::prelude::*;
+use gstreamer as gst;
+use gstreamer_app as gst_app;
+use gstreamer_audio as gst_audio;
 use serde::de::Deserializer;
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 use scribble_curves::{time, Diff, Time};
 
@@ -21,19 +19,31 @@ use scribble_curves::{time, Diff, Time};
 /// of these alive at any one time, and it is intended to be long-lived (i.e., create it at startup
 /// and just keep it around).
 pub struct AudioState {
-    event_loop: Arc<cpal::EventLoop>,
-    input_device: Option<cpal::Device>,
-    output_device: Option<cpal::Device>,
-    format: cpal::Format,
+    output_data: Arc<Mutex<OutputData>>,
+    // The pipeline will be `None` if there was an error while creating it. In that case, we
+    // already printed an error message so we'll just silently (heh) not play any audio.
+    output_pipeline: Option<gst::Pipeline>,
+    input_data: Arc<Mutex<InputData>>,
+    input_pipeline: Option<gst::Pipeline>,
+}
 
-    // These are the main ways that the audio data is synchronized with the rest of the application.
-    input_data: Arc<Mutex<AudioInput>>,
-    output_data: Arc<Mutex<AudioOutput>>,
+/// This data is shared between the main program and the gstreamer playback pipeline (as
+/// represented by the `needs_data` callback on its `app-src` element). It is protected by
+/// a mutex. When the main program wants to, say, update the audio data, it unlocks the mutex and
+/// mutates `snips`.
+pub struct OutputData {
+    pub snips: AudioSnippetsData,
+    pub cursor: Cursor,
+    pub forwards: bool,
+}
+
+struct InputData {
+    buf: Vec<i16>,
 }
 
 pub const SAMPLE_RATE: u32 = 48000;
 
-/// Each audio snippet is uniquelty identified by one of these ids.
+/// Each audio snippet is uniquely identified by one of these ids.
 // This is serialized as part of saving files, so its serialization format needs to remain
 // stable.
 #[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -72,43 +82,23 @@ struct CursorSnippet {
 /// audio buffers and presenting them as a single logical sequence of samples. It
 /// does not actually store a reference to the buffers, instead working entirely
 /// with indices.
-///
-/// A `Cursor` can either move forwards or backwards, but not both.
 #[derive(Default, Debug)]
 pub struct Cursor {
-    cur_idx: usize,
-    all_cursors: Vec<CursorSnippet>,
-    next_cursor: usize,
+    start_idx: usize,
+    end_idx: usize,
+
+    // A cursor for every snippet, sorted by start index (increasing).
+    forward_cursors: Vec<CursorSnippet>,
+    // The index in forward_cursors of the first snippet starting after `end_idx`.
+    next_forward_cursor: usize,
+
+    // A cursor for every snippet, sorted by end index (decreasing).
+    backward_cursors: Vec<CursorSnippet>,
+    // The index in backward_cursors of the first snippet ending before `start_idx`.
+    next_backward_cursor: usize,
+
+    // The set of cursors for which `cur_idx` is in the interval [start, end).
     active_cursors: Vec<CursorSnippet>,
-    forwards: bool,
-}
-
-// A convenience wrapper around the audio buffer of a snippet. This does two things:
-// - it implicitly does some zero padding, and
-// - it can reverse the order.
-#[derive(Debug)]
-struct Buf<'a> {
-    inner: &'a [i16],
-    offset: usize,
-    len: usize,
-    direction: isize,
-}
-
-impl<'a> std::ops::Index<usize> for Buf<'a> {
-    type Output = i16;
-    fn index(&self, idx: usize) -> &i16 {
-        let dir_idx = if self.direction == 1 {
-            idx
-        } else {
-            self.len - 1 - idx
-        };
-
-        if dir_idx >= self.offset && dir_idx < self.offset + self.inner.len() {
-            &self.inner[dir_idx - self.offset]
-        } else {
-            &0
-        }
-    }
 }
 
 impl CursorSnippet {
@@ -118,79 +108,6 @@ impl CursorSnippet {
             id,
             start,
             end: start + snip.buf.len(),
-        }
-    }
-
-    /// Gets an audio buffer from this cursor snippet. The length of the audio
-    /// buffer is `amount.abs()`, and indexing the audio buffer from 0 through
-    /// its length corresponds to indexing the snippet from `from` to `from +
-    /// amount`. In particular, if `amount` is negative then iterating forwards
-    /// through the returned buffer actually goes backwards through the audio
-    /// data.
-    ///
-    /// The audio snippet must have a non-trivial overlap with the requested
-    /// range; if not, this panics.
-    fn get_buf<'a>(&mut self, data: &'a AudioSnippetsData, from: usize, amount: isize) -> Buf<'a> {
-        if amount > 0 {
-            debug_assert!(from < self.end);
-            debug_assert!(from + amount as usize > self.start);
-        } else {
-            debug_assert!(from > self.start);
-            debug_assert!(from < self.end + (-amount) as usize);
-        }
-
-        let snip = data.snippet(self.id);
-
-        // The starting and ending indices relative to the buffer (could be
-        // negative or extend past the buffer).
-        let (start, end) = (
-            from as isize - self.start as isize,
-            from as isize - self.start as isize + amount,
-        );
-        let (start, end) = if amount > 0 {
-            (start, end)
-        } else {
-            (end, start)
-        };
-        let offset = (-start).max(0) as usize;
-        let start = start.max(0) as usize;
-        let end = (end as usize).min(snip.buf.len());
-
-        Buf {
-            inner: &snip.buf[start..end],
-            offset,
-            len: amount.abs() as usize,
-            direction: amount.signum(),
-        }
-    }
-
-    /// If we are interested in samples between `from` and `from + amount`, does
-    /// this snippet have anything to contribute?
-    fn is_active(&self, from: usize, amount: isize) -> bool {
-        if amount > 0 {
-            from + amount as usize > self.start
-        } else {
-            from < self.end + (-amount) as usize
-        }
-    }
-
-    /// If the audio cursor is currently at `from`, is this snippet finished
-    /// contributing?
-    fn is_finished(&self, from: usize, forwards: bool) -> bool {
-        if forwards {
-            from >= self.end
-        } else {
-            from <= self.start
-        }
-    }
-
-    /// If the audio cursor is currently at `from`, has this snippet started
-    /// contributing yet?
-    fn is_started(&self, from: usize, forwards: bool) -> bool {
-        if forwards {
-            from >= self.start
-        } else {
-            from < self.end
         }
     }
 }
@@ -207,93 +124,141 @@ impl Cursor {
     /// Note that we're currently a bit wasteful when it comes to creating cursors.
     /// We don't support any kind of seeking, so we just keep creating and
     /// destroying cursors.
-    pub fn new(
-        snippets: &AudioSnippetsData,
-        time: Time,
-        sample_rate: u32,
-        forwards: bool,
-    ) -> Cursor {
-        let mut cursors = Vec::new();
+    pub fn new(snippets: &AudioSnippetsData, time: Time, sample_rate: u32) -> Cursor {
+        let mut forward_cursors = Vec::new();
         let cur_idx = time.as_audio_idx(sample_rate);
 
         for (id, snip) in snippets.snippets.iter() {
-            cursors.push(CursorSnippet::new(*id, snip, sample_rate));
-        }
-        // TODO: explain
-        if forwards {
-            cursors.sort_by_key(|c| c.start);
-        } else {
-            cursors.sort_by_key(|c| -(c.end as isize));
+            forward_cursors.push(CursorSnippet::new(*id, snip, sample_rate));
         }
 
-        let mut active = Vec::new();
-        let mut next_cursor = cursors.len();
-        for (c_idx, c) in cursors.iter().enumerate() {
-            if !c.is_started(cur_idx, forwards) {
-                next_cursor = c_idx;
-                break;
+        let mut backward_cursors = forward_cursors.clone();
+        forward_cursors.sort_by_key(|c| c.start);
+        backward_cursors.sort_by_key(|c| -(c.end as isize));
+
+        let active_cursors = forward_cursors
+            .iter()
+            .copied()
+            .filter(|c| c.start < cur_idx && cur_idx < c.end)
+            .collect();
+
+        let mut ret = Cursor {
+            start_idx: cur_idx,
+            end_idx: cur_idx,
+            forward_cursors,
+            next_forward_cursor: 0,
+            backward_cursors,
+            next_backward_cursor: 0,
+            active_cursors,
+        };
+        ret.reset_next_forward_cursor();
+        ret.reset_next_backward_cursor();
+        ret
+    }
+
+    fn reset_next_forward_cursor(&mut self) {
+        match self
+            .forward_cursors
+            .binary_search_by_key(&self.end_idx, |c| c.start)
+        {
+            Ok(mut i) => {
+                // We found a cursor starting at exactly end_idx, but there might be more, so find
+                // the first one.
+                while i > 0 && self.forward_cursors[i - 1].start == self.end_idx {
+                    i -= 1;
+                }
+                self.next_forward_cursor = i;
             }
-
-            if !c.is_finished(cur_idx, forwards) {
-                active.push(*c);
+            Err(i) => {
+                self.next_forward_cursor = i;
             }
-        }
-
-        Cursor {
-            cur_idx,
-            all_cursors: cursors,
-            next_cursor,
-            active_cursors: active,
-            forwards,
         }
     }
 
-    /// Fills the provided buffer with samples from the cursor, and advances the
-    /// cursor past those samples.
-    pub fn mix_to_buffer<B: DerefMut<Target = [i16]>>(
+    fn reset_next_backward_cursor(&mut self) {
+        match self
+            .backward_cursors
+            .binary_search_by_key(&-(self.start_idx as isize), |c| -(c.end as isize))
+        {
+            Ok(mut i) => {
+                // We found a cursor ending exactly at start_idx, but there might be more so find
+                // the first one.
+                while i > 0 && self.backward_cursors[i - 1].end == self.start_idx {
+                    i -= 1;
+                }
+                self.next_backward_cursor = i;
+            }
+            Err(i) => {
+                self.next_backward_cursor = i;
+            }
+        }
+    }
+
+    fn advance_forwards(&mut self, len: usize) {
+        self.start_idx = self.end_idx;
+        self.end_idx += len;
+
+        let mut i = self.next_forward_cursor;
+        while i < self.forward_cursors.len() && self.forward_cursors[i].start <= self.end_idx {
+            self.active_cursors.push(self.forward_cursors[i]);
+            i += 1;
+        }
+        self.next_forward_cursor = i;
+        self.remove_inactive();
+    }
+
+    fn advance_backwards(&mut self, len: usize) {
+        self.end_idx = self.start_idx;
+        self.start_idx = self.start_idx.saturating_sub(len);
+
+        let mut i = self.next_backward_cursor;
+        while i < self.backward_cursors.len() && self.start_idx < self.backward_cursors[i].end {
+            self.active_cursors.push(self.backward_cursors[i]);
+            i += 1;
+        }
+        self.next_backward_cursor = i;
+
+        self.remove_inactive();
+    }
+
+    fn remove_inactive(&mut self) {
+        let start_idx = self.start_idx;
+        let end_idx = self.end_idx;
+        self.active_cursors
+            .retain(|c| c.end > start_idx && c.start < end_idx);
+    }
+
+    /// Fills the provided buffer with samples from the cursor.
+    pub fn advance_and_mix<B: DerefMut<Target = [i16]>>(
         &mut self,
         data: &AudioSnippetsData,
         mut buf: B,
+        forwards: bool,
     ) {
-        // How many bytes do we need from the input buffers? This is signed: it is negative
-        // if we are playing backwards.
-        let input_amount = (buf.len() as isize) * if self.forwards { 1 } else { -1 };
-
-        while self.next_cursor < self.all_cursors.len() {
-            if self.all_cursors[self.next_cursor].is_active(self.cur_idx, input_amount) {
-                self.active_cursors.push(self.all_cursors[self.next_cursor]);
-                self.next_cursor += 1;
-            } else {
-                break;
-            }
-        }
-
-        // TODO: we do a lot of rounding here. Maybe we should work with floats internally?
-        for c in &mut self.active_cursors {
-            let in_buf = c.get_buf(data, self.cur_idx, input_amount);
-            let multiplier = data.snippet(c.id).multiplier;
-
-            // TODO: we could be more efficient here, because we're potentially copying a bunch of
-            // zeros from in_buf, whereas we could simply skip to the non-zero section. But it's
-            // unlikely to be very expensive, whereas getting the indexing right is fiddly...
-            for (idx, out_sample) in buf.iter_mut().enumerate() {
-                *out_sample += ((in_buf[idx] as f32) * multiplier) as i16;
-            }
-        }
-        if self.forwards {
-            self.cur_idx += buf.len()
+        if forwards {
+            self.advance_forwards(buf.len());
         } else {
-            self.cur_idx = self.cur_idx.saturating_sub(buf.len());
+            self.advance_backwards(buf.len());
         }
-        let cur_idx = self.cur_idx;
-        let forwards = self.forwards;
-        self.active_cursors
-            .retain(|c| !c.is_finished(cur_idx, forwards));
+
+        for c in &self.active_cursors {
+            let buf: &mut [i16] = &mut buf;
+            let snip = data.snippet(c.id);
+            let multiplier = snip.multiplier;
+
+            let snip_start = self.start_idx.saturating_sub(c.start);
+            let snip_end = self.end_idx.saturating_sub(c.start).min(snip.buf.len());
+            let buf_offset = c.start.saturating_sub(self.start_idx);
+
+            for (idx, sample) in snip.buf[snip_start..snip_end].iter().enumerate() {
+                buf[buf_offset + idx] += (*sample as f32 * multiplier) as i16;
+            }
+        }
     }
 
     /// Has this cursor finished producing non-zero samples?
     pub fn is_finished(&self) -> bool {
-        self.active_cursors.is_empty() && self.next_cursor == self.all_cursors.len()
+        self.active_cursors.is_empty() && self.next_forward_cursor == self.forward_cursors.len()
     }
 }
 
@@ -301,107 +266,115 @@ impl AudioState {
     /// Initializes the audio and spawns the audio thread. Returns an object that can be used
     /// to control the audio.
     pub fn init() -> AudioState {
-        let host = cpal::default_host();
-        let event_loop = host.event_loop();
-        let input_device = host.default_input_device();
-        let output_device = host.default_output_device();
-        let format = cpal::Format {
-            channels: 1,
-            sample_rate: cpal::SampleRate(SAMPLE_RATE as u32),
-            data_type: cpal::SampleFormat::I16,
-        };
-
-        if input_device.is_none() {
-            log::error!("failed to open an input audio device");
-        }
-        if output_device.is_none() {
-            log::error!("failed to open an output audio device");
+        let output_data = Arc::new(Mutex::new(OutputData {
+            snips: AudioSnippetsData::default(),
+            cursor: Cursor::default(),
+            forwards: true,
+        }));
+        let output_pipeline = create_output_pipeline(Arc::clone(&output_data));
+        if let Err(e) = &output_pipeline {
+            log::error!(
+                "Error initializing audio output, there will be no sound: {}",
+                e
+            );
         }
 
-        let ret = AudioState {
-            event_loop: Arc::new(event_loop),
-            input_device,
-            output_device,
-            format,
-            input_data: Arc::new(Mutex::new(AudioInput::default())),
-            output_data: Arc::new(Mutex::new(AudioOutput::default())),
-        };
-
-        let event_loop = Arc::clone(&ret.event_loop);
-        let input_data = Arc::clone(&ret.input_data);
-        let output_data = Arc::clone(&ret.output_data);
-        thread::spawn(move || audio_thread(event_loop, input_data, output_data));
-        ret
+        let input_data = Arc::new(Mutex::new(InputData { buf: Vec::new() }));
+        let input_pipeline = create_input_pipeline(Arc::clone(&input_data));
+        if let Err(e) = &input_pipeline {
+            log::error!(
+                "Error initializing audio input, there will be no sound: {}",
+                e
+            );
+        }
+        AudioState {
+            output_data,
+            output_pipeline: output_pipeline.ok(),
+            input_data,
+            input_pipeline: input_pipeline.ok(),
+        }
     }
 
-    pub fn set_velocity(&mut self, vel: f64) {
-        self.output_data.lock().unwrap().speed_factor = vel;
-    }
-
-    pub fn start_recording(&mut self) -> anyhow::Result<()> {
-        if let Some(ref input_device) = self.input_device {
-            let input_stream = self
-                .event_loop
-                .build_input_stream(input_device, &self.format)?;
-
-            {
-                let mut input = self.input_data.lock().unwrap();
-                assert!(input.id.is_none());
-                input.id = Some(input_stream.clone());
-                input.buf.clear();
+    pub fn seek(&mut self, time: Time, velocity: f64) {
+        self.output_data.lock().unwrap().forwards = velocity > 0.0;
+        let result = || -> Result<()> {
+            if let Some(pipe) = self.output_pipeline.as_ref() {
+                if let Some(sink) = pipe.get_by_name("playback-sink") {
+                    if velocity > 0.0 {
+                        sink.seek(
+                            velocity,
+                            gst::SeekFlags::FLUSH,
+                            gst::SeekType::Set,
+                            gst::ClockTime::from_useconds(time.as_micros() as u64),
+                            gst::SeekType::Set,
+                            gst::ClockTime::none(),
+                        )?;
+                    } else {
+                        // There's a very annoying bug, either here or in gstreamer, in which if we
+                        // play with velocity 1.0 and then velocity -1.0, it doesn't actually play.
+                        // The workaround for now is just not to use velocity -1.0: it only comes
+                        // up when scanning, anyway, so we can just ensure that the scanning speed
+                        // is never -1.0.
+                        sink.seek(
+                            velocity,
+                            gst::SeekFlags::FLUSH,
+                            gst::SeekType::Set,
+                            gst::ClockTime::from_useconds(0),
+                            gst::SeekType::Set,
+                            gst::ClockTime::from_useconds(time.as_micros() as u64),
+                        )?;
+                    }
+                }
             }
-
-            self.event_loop.play_stream(input_stream)?;
+            Ok(())
+        }();
+        if let Err(e) = result {
+            log::error!("failed to seek: {}", e);
         }
-        Ok(())
+    }
+
+    pub fn start_recording(&mut self) {
+        self.input_data.lock().unwrap().buf.clear();
+
+        if let Some(pipe) = self.input_pipeline.as_ref() {
+            if let Err(e) = pipe.set_state(gst::State::Playing) {
+                log::error!("failed to start recording audio: {}", e);
+            }
+        }
     }
 
     pub fn stop_recording(&mut self) -> Vec<i16> {
-        let mut input_data = self.input_data.lock().unwrap();
-        if let Some(id) = input_data.id.take() {
-            self.event_loop.destroy_stream(id);
-        } else {
-            log::error!("no input stream while stopping recording");
-        }
-
         let mut buf = Vec::new();
-        std::mem::swap(&mut input_data.buf, &mut buf);
-
+        std::mem::swap(&mut self.input_data.lock().unwrap().buf, &mut buf);
+        if let Some(pipe) = self.output_pipeline.as_ref() {
+            if let Err(e) = pipe.set_state(gst::State::Paused) {
+                log::error!("failed to pause recording: {}", e);
+            }
+        }
         process_audio(buf)
     }
 
-    pub fn start_playing(
-        &mut self,
-        data: AudioSnippetsData,
-        time: Time,
-        velocity: f64,
-    ) -> anyhow::Result<()> {
-        if let Some(ref output_device) = self.output_device {
-            let cursor = Cursor::new(&data, time, SAMPLE_RATE, velocity > 0.0);
-            let output_stream = self
-                .event_loop
-                .build_output_stream(output_device, &self.format)?;
-
-            {
-                let mut output = self.output_data.lock().unwrap();
-                assert!(output.id.is_none());
-                output.id = Some(output_stream.clone());
-                output.bufs = data;
-                output.speed_factor = velocity;
-                output.cursor = cursor;
-            }
-
-            self.event_loop.play_stream(output_stream)?;
+    pub fn start_playing(&mut self, data: AudioSnippetsData, time: Time, velocity: f64) {
+        {
+            let mut lock = self.output_data.lock().unwrap();
+            lock.cursor = Cursor::new(&data, time, SAMPLE_RATE);
+            lock.snips = data;
+            lock.forwards = velocity > 0.0;
         }
-        Ok(())
+        if let Some(pipe) = self.output_pipeline.as_ref() {
+            if let Err(e) = pipe.set_state(gst::State::Playing) {
+                log::error!("failed to start playing audio: {}", e);
+                return;
+            }
+        }
+        self.seek(time, velocity);
     }
 
     pub fn stop_playing(&mut self) {
-        let mut output = self.output_data.lock().unwrap();
-        if let Some(id) = output.id.take() {
-            self.event_loop.destroy_stream(id);
-        } else {
-            log::error!("tried to stop a non-existent stream");
+        if let Some(pipe) = self.output_pipeline.as_ref() {
+            if let Err(e) = pipe.set_state(gst::State::Paused) {
+                log::error!("failed to stop audio: {}", e);
+            }
         }
     }
 }
@@ -471,93 +444,140 @@ impl AudioSnippetsData {
     }
 }
 
-#[derive(Default)]
-struct AudioInput {
-    id: Option<cpal::StreamId>,
-    buf: Vec<i16>,
-}
+fn create_input_pipeline(data: Arc<Mutex<InputData>>) -> Result<gst::Pipeline> {
+    let pipeline = gst::Pipeline::new(None);
+    let src = gst::ElementFactory::make("autoaudiosrc", Some("record-source"))?;
+    let sink = gst::ElementFactory::make("appsink", Some("record-sink"))?;
+    pipeline.add_many(&[&src, &sink])?;
+    gst::Element::link_many(&[&src, &sink])?;
 
-#[derive(Default)]
-struct AudioOutput {
-    id: Option<cpal::StreamId>,
-    speed_factor: f64,
-    cursor: Cursor,
-    bufs: AudioSnippetsData,
-}
+    let sink = sink
+        .dynamic_cast::<gst_app::AppSink>()
+        .map_err(|_| anyhow!("bug: couldn't cast sink to an AppSink"))?;
+    let audio_info =
+        gst_audio::AudioInfo::new(gst_audio::AudioFormat::S16le, SAMPLE_RATE as u32, 1).build()?;
+    sink.set_caps(Some(&audio_info.to_caps()?));
 
-fn audio_thread(
-    event_loop: Arc<EventLoop>,
-    input: Arc<Mutex<AudioInput>>,
-    output: Arc<Mutex<AudioOutput>>,
-) {
-    let mut pvoc = PhaseVocoder::new(1.0);
-    let mut pvoc_speed = 1.0f64;
-    let mut mix_buffer = vec![0; 2048];
-
-    // Keep track of the last output stream, because when the output
-    // stream changes then we need to clear the vocoder's buffer.
-    let mut last_output_stream_id = None;
-
-    event_loop.run(move |stream_id, stream_data| {
-        let stream_data = stream_data.expect("error getting stream data");
-        match stream_data {
-            StreamData::Output {
-                buffer: UnknownTypeOutputBuffer::I16(mut buf),
-            } => {
-                if last_output_stream_id.as_ref() != Some(&stream_id) {
-                    pvoc.reset(pvoc_speed.abs() as f32);
-                    last_output_stream_id = Some(stream_id.clone());
-                }
-                let mut buf: &mut [i16] = &mut *buf;
-
-                for elem in buf.iter_mut() {
-                    *elem = 0;
-                }
-
-                // We do mix + time-shifting until the output buffer is full.
-                while !buf.is_empty() {
-                    for elem in &mut mix_buffer {
-                        *elem = 0;
-                    }
-
-                    {
-                        // We do the cheaper part (mixing from the various buffers into our single buffer)
-                        // in a smaller scope, to avoid holding the lock.
-                        let mut output_data = output.lock().unwrap();
-                        let output_data = output_data.deref_mut();
-                        if output_data.id.as_ref() != Some(&stream_id) {
-                            return;
-                        }
-                        output_data
-                            .cursor
-                            .mix_to_buffer(&output_data.bufs, &mut mix_buffer[..]);
-                        if output_data.speed_factor != pvoc_speed {
-                            pvoc_speed = output_data.speed_factor;
-                            pvoc.reset(pvoc_speed.abs() as f32);
-                        }
-                    }
-
-                    // Now that we've dropped the lock, do the time-shifting and actually write to the buffer.
-                    pvoc.input(&mix_buffer[..]);
-                    let len = pvoc.samples_available().min(buf.len());
-                    pvoc.consume_output(&mut buf[..len]);
-                    buf = &mut buf[len..];
-                }
+    let new_sample = move |sink: &gst_app::AppSink| -> Result<gst::FlowSuccess, gst::FlowError> {
+        let sample = match sink.pull_sample() {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Failed to pull sample: {}", e);
+                return Err(gst::FlowError::CustomError);
             }
-            StreamData::Input {
-                buffer: UnknownTypeInputBuffer::I16(buf),
-            } => {
-                let mut input_data = input.lock().unwrap();
-                if input_data.id != Some(stream_id) {
-                    return;
-                }
-                input_data.buf.extend_from_slice(&buf);
+        };
+
+        let buffer = match sample.get_buffer() {
+            Some(b) => b,
+            None => {
+                log::error!("Failed to get sample buffer");
+                return Err(gst::FlowError::CustomError);
             }
-            _ => {
-                panic!("unexpected data");
+        };
+
+        let buffer = match buffer.map_readable() {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("Failed to map buffer as readable: {}", e);
+                return Err(gst::FlowError::CustomError);
             }
+        };
+
+        let buffer = buffer.as_slice();
+        let mut lock = data.lock().unwrap();
+        for sample in buffer.chunks(2) {
+            lock.buf.push(i16::from_le_bytes([sample[0], sample[1]]));
         }
-    });
+        Ok(gst::FlowSuccess::Ok)
+    };
+    sink.set_callbacks(
+        gst_app::AppSinkCallbacks::new()
+            .new_sample(new_sample)
+            .build(),
+    );
+    Ok(pipeline)
+}
+
+/// Creates a gstreamer AppSrc element that mixes our audio and provides it to a gstreamer
+/// pipeline.
+pub fn create_appsrc(data: Arc<Mutex<OutputData>>, name: &str) -> Result<gst::Element> {
+    let src = gst::ElementFactory::make("appsrc", Some(name))?;
+    let src = src
+        .dynamic_cast::<gst_app::AppSrc>()
+        .map_err(|_| anyhow!("bug: couldn't cast src to an AppSrc"))?;
+    let audio_info =
+        gst_audio::AudioInfo::new(gst_audio::AudioFormat::S16le, SAMPLE_RATE as u32, 1).build()?;
+    src.set_caps(Some(&audio_info.to_caps()?));
+    src.set_property_format(gst::Format::Time);
+    src.set_stream_type(gst_app::AppStreamType::RandomAccess);
+
+    let need_audio_data_inner =
+        move |src: &gst_app::AppSrc, size_hint: u32| -> anyhow::Result<()> {
+            let mut lock = data.lock().unwrap();
+            if lock.cursor.is_finished() {
+                let _ = src.end_of_stream();
+                return Ok(());
+            }
+
+            // I'm not sure if this is necessary, but there isn't much documentation on `size_hint` in
+            // gstreamer, so just to be sure let's make sure it isn't too small.
+            let size = size_hint.max(1024);
+
+            // gstreamer buffers seem to only ever hand out [u8], but we prefer to work with
+            // [i16]s. Here, we're doing an extra copy to handle endian-ness and avoid unsafe.
+            let mut buf = vec![0i16; size as usize / 2];
+            let forwards = lock.forwards;
+            let data: &mut OutputData = &mut lock;
+            data.cursor
+                .advance_and_mix(&data.snips, &mut buf[..], forwards);
+            let time = Time::from_audio_idx(data.cursor.start_idx as i64, SAMPLE_RATE);
+
+            let mut gst_buffer = gst::Buffer::with_size(size as usize)?;
+            {
+                let gst_buffer_ref = gst_buffer
+                    .get_mut()
+                    .ok_or(anyhow!("couldn't get mut buffer"))?;
+
+                gst_buffer_ref.set_pts(gst::ClockTime::from_useconds(time.as_micros() as u64));
+                let mut data = gst_buffer_ref.map_writable()?;
+                for (idx, bytes) in data.as_mut_slice().chunks_mut(2).enumerate() {
+                    bytes.copy_from_slice(&buf[idx].to_le_bytes());
+                }
+            }
+            let _ = src.push_buffer(gst_buffer);
+            Ok(())
+        };
+
+    let need_audio_data = move |src: &gst_app::AppSrc, size_hint: u32| {
+        if let Err(e) = need_audio_data_inner(src, size_hint) {
+            log::error!("error synthesizing audio: {}", e);
+        }
+    };
+
+    // The seek callback doesn't actually do anything. That's because we reset the cursor position
+    // in `start_playing` anyway, and that's the only meaningful seek that ever happens.
+    let seek = move |_src: &gst_app::AppSrc, _arg: u64| -> bool { true };
+
+    src.set_callbacks(
+        gst_app::AppSrcCallbacks::new()
+            .need_data(need_audio_data)
+            .seek_data(seek)
+            .build(),
+    );
+    Ok(src.upcast::<gst::Element>())
+}
+
+fn create_output_pipeline(data: Arc<Mutex<OutputData>>) -> Result<gst::Pipeline> {
+    let pipeline = gst::Pipeline::new(None);
+    let src = create_appsrc(data, "playback-source")?;
+    let scale = gst::ElementFactory::make("scaletempo", Some("playback-scale"))?;
+    let resample = gst::ElementFactory::make("audioresample", Some("playback-resample"))?;
+    let sink = gst::ElementFactory::make("autoaudiosink", Some("playback-sink"))?;
+
+    pipeline.add_many(&[&src, &scale, &resample, &sink])?;
+    gst::Element::link_many(&[&src, &scale, &resample, &sink])?;
+
+    Ok(pipeline)
 }
 
 // Processes the recorded audio.

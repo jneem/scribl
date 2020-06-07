@@ -230,7 +230,7 @@ impl Editor {
 
         match ev.key_code {
             KeyCode::ArrowRight | KeyCode::ArrowLeft => {
-                let speed = if ev.mods.shift { 2.0 } else { 1.0 };
+                let speed = if ev.mods.shift { 3.0 } else { 1.5 };
                 let dir = if ev.key_code == KeyCode::ArrowRight {
                     1.0
                 } else {

@@ -4,10 +4,10 @@ use druid::{Affine, Data};
 use gst::prelude::*;
 use gstreamer as gst;
 use gstreamer_app as gst_app;
-use gstreamer_audio as gst_audio;
 use gstreamer_video as gst_video;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 
 use scribble_curves::{time, SnippetsData, Time};
 
@@ -51,18 +51,24 @@ fn create_pipeline(
     progress: Sender<StatusMsg>,
 ) -> Result<gst::Pipeline, anyhow::Error> {
     let pipeline = gst::Pipeline::new(None);
-    let v_src = gst::ElementFactory::make("appsrc", Some("source"))?;
-    let v_convert = gst::ElementFactory::make("videoconvert", Some("convert"))?;
-    let v_encode = gst::ElementFactory::make("vp9enc", Some("encode"))?;
-    let v_queue1 = gst::ElementFactory::make("queue", Some("queue1"))?;
-    let v_queue2 = gst::ElementFactory::make("queue", Some("queue2"))?;
-    let a_src = gst::ElementFactory::make("appsrc", Some("audio-source"))?;
-    let a_convert = gst::ElementFactory::make("audioconvert", Some("audio-convert"))?;
-    let a_encode = gst::ElementFactory::make("vorbisenc", Some("audio-encode"))?;
-    let a_queue1 = gst::ElementFactory::make("queue", Some("audio-queue1"))?;
-    let a_queue2 = gst::ElementFactory::make("queue", Some("audio-queue2"))?;
-    let mux = gst::ElementFactory::make("webmmux", Some("mux"))?;
-    let sink = gst::ElementFactory::make("filesink", Some("sink"))?;
+    let v_src = gst::ElementFactory::make("appsrc", Some("encode-vsource"))?;
+    let v_convert = gst::ElementFactory::make("videoconvert", Some("encode-vconvert"))?;
+    let v_encode = gst::ElementFactory::make("vp9enc", Some("encode-vencode"))?;
+    let v_queue1 = gst::ElementFactory::make("queue", Some("encode-vqueue1"))?;
+    let v_queue2 = gst::ElementFactory::make("queue", Some("encode-vqueue2"))?;
+    let audio_output_data = crate::audio::OutputData {
+        cursor: Cursor::new(&audio, Time::from_micros(0), SAMPLE_RATE),
+        snips: audio,
+        forwards: true,
+    };
+    let a_src =
+        crate::audio::create_appsrc(Arc::new(Mutex::new(audio_output_data)), "encode-asrc")?;
+    let a_convert = gst::ElementFactory::make("audioconvert", Some("encode-aconvert"))?;
+    let a_encode = gst::ElementFactory::make("vorbisenc", Some("encode-aencode"))?;
+    let a_queue1 = gst::ElementFactory::make("queue", Some("encode-aqueue1"))?;
+    let a_queue2 = gst::ElementFactory::make("queue", Some("encode-aqueue2"))?;
+    let mux = gst::ElementFactory::make("webmmux", Some("encode-mux"))?;
+    let sink = gst::ElementFactory::make("filesink", Some("encode-sink"))?;
 
     pipeline.add_many(&[&v_src, &v_convert, &v_encode, &v_queue1, &v_queue2])?;
     pipeline.add_many(&[&a_src, &a_convert, &a_encode, &a_queue1, &a_queue2])?;
@@ -90,14 +96,6 @@ fn create_pipeline(
         .map_err(|_| anyhow!("bug: couldn't cast v_src to an AppSrc"))?;
     v_src.set_caps(Some(&video_info.to_caps()?));
     v_src.set_property_format(gst::Format::Time); // FIXME: what does this mean?
-
-    let a_src = a_src
-        .dynamic_cast::<gst_app::AppSrc>()
-        .map_err(|_| anyhow!("bug: couldn't cast a_src to an AppSrc"))?;
-    let audio_info =
-        gst_audio::AudioInfo::new(gst_audio::AudioFormat::S16le, SAMPLE_RATE as u32, 1).build()?;
-    a_src.set_caps(Some(&audio_info.to_caps()?));
-    a_src.set_property_format(gst::Format::Time); // FIXME: needed?
 
     // This will be called every time the video source requests data.
     let mut frame_counter = 0;
@@ -168,53 +166,7 @@ fn create_pipeline(
         }
     };
 
-    let mut cursor = Cursor::new(&audio, time::ZERO, crate::audio::SAMPLE_RATE, true);
-    let mut time_us = 0i64;
-    let mut need_audio_data_inner =
-        move |src: &gst_app::AppSrc, size_hint: u32| -> anyhow::Result<()> {
-            if cursor.is_finished() {
-                let _ = src.end_of_stream();
-                return Ok(());
-            }
-
-            // I'm not sure if this is necessary, but there isn't much documentation on `size_hint` in
-            // gstreamer, so just to be sure let's make sure it isn't too small.
-            let size = size_hint.max(1024);
-
-            // gstreamer buffers seem to only ever hand out [u8], but we prefer to work with
-            // [i16]s. Here, we're doing an extra copy to handle endian-ness and avoid unsafe.
-            let mut buf = vec![0i16; size as usize / 2];
-            cursor.mix_to_buffer(&audio, &mut buf[..]);
-
-            let mut gst_buffer = gst::Buffer::with_size(size as usize)?;
-            {
-                let gst_buffer_ref = gst_buffer
-                    .get_mut()
-                    .ok_or(anyhow!("couldn't get mut buffer"))?;
-                gst_buffer_ref.set_pts(time_us as u64 * gst::USECOND);
-                time_us += (size as i64 / 2 * 1000000) / SAMPLE_RATE as i64;
-                let mut data = gst_buffer_ref.map_writable()?;
-                for (idx, bytes) in data.as_mut_slice().chunks_mut(2).enumerate() {
-                    bytes.copy_from_slice(&buf[idx].to_le_bytes());
-                }
-            }
-            let _ = src.push_buffer(gst_buffer);
-            Ok(())
-        };
-
-    let need_audio_data = move |src: &gst_app::AppSrc, size_hint: u32| {
-        if let Err(e) = need_audio_data_inner(src, size_hint) {
-            log::error!("error synthesizing audio: {}", e);
-        }
-    };
-
     v_src.set_callbacks(gst_app::AppSrcCallbacks::new().need_data(need_data).build());
-    a_src.set_callbacks(
-        gst_app::AppSrcCallbacks::new()
-            .need_data(need_audio_data)
-            .build(),
-    );
-
     Ok(pipeline)
 }
 

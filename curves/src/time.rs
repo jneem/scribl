@@ -53,6 +53,10 @@ impl Time {
     pub fn as_audio_idx(&self, sample_rate: u32) -> usize {
         (self.0 as f64 / 1e6 * sample_rate as f64) as usize
     }
+
+    pub fn from_audio_idx(idx: i64, sample_rate: u32) -> Time {
+        Time::from_micros(((idx as f64) * 1e6 / sample_rate as f64) as i64)
+    }
 }
 
 impl Diff {

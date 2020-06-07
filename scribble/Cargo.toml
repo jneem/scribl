@@ -14,7 +14,6 @@ repository = "https://github.com/jneem/scribble"
 scribble_curves = { version = "0.1.0", path = "../curves/" }
 druid = { version = "0.6.0", features = ["im"] }
 log = "0.4.8"
-cpal = "0.11.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 gstreamer = "0.15.4"
 gstreamer-video = "0.15.3"
@@ -23,7 +22,6 @@ anyhow = "1.0.27"
 gstreamer-audio = "0.15.3"
 thiserror = "1.0.14"
 rnnoise-c = "0.2.0"
-phase_vocoder = "0.1.0"
 lufs = "0.1.0"
 clap = "2.33.0"
 pkg-version = "1.0.0"
