@@ -38,7 +38,7 @@ impl AppState {
         self.editors.insert(id, state.clone());
 
         let ret = WindowDesc::new(move || Editor::new().lens(EditorLens(id)))
-            .title(LocalizedString::new("Scribble"))
+            .title(LocalizedString::new("Scribl"))
             .menu(menus::make_menu(&state))
             .window_size((800.0, 600.0));
 

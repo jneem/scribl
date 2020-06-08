@@ -2,7 +2,7 @@ use druid::Data;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
-/// The clock of a scribble.
+/// The clock of a scribl.
 // This is measured in microseconds from the beginning. We enforce that the value is non-negative,
 // but arithmetic is more convenient with signed types.
 #[derive(
@@ -67,7 +67,7 @@ impl Diff {
     /// # Examples
     ///
     /// ```
-    /// use scribble_curves::time::{ZERO, Time};
+    /// use scribl_curves::time::{ZERO, Time};
     /// assert_eq!((ZERO - ZERO).as_audio_idx(44100), 0);
     /// assert_eq!((Time::from_micros(1000000) - ZERO).as_audio_idx(44100), 44100);
     /// assert_eq!((ZERO - Time::from_micros(1000000)).as_audio_idx(44100), -44100);

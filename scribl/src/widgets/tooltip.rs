@@ -50,7 +50,7 @@ const BASELINE_GUESS_FACTOR: f64 = 0.7;
 const X_PADDING: f64 = 6.0;
 
 /// The argument is a string containing the tooltip text.
-const SHOW_TOOLTIP: Selector<String> = Selector::new("scribble.show-tooltip");
+const SHOW_TOOLTIP: Selector<String> = Selector::new("scribl.show-tooltip");
 
 impl<T: Data, W: Widget<T>> Controller<T, W> for TooltipGuest<T> {
     fn event(&mut self, child: &mut W, ctx: &mut EventCtx, ev: &Event, data: &mut T, env: &Env) {

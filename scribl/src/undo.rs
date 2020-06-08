@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use scribble_curves::{Curve, SnippetsData, Time};
+use scribl_curves::{Curve, SnippetsData, Time};
 
 use crate::audio::AudioSnippetsData;
 use crate::editor_state::MaybeSnippetId;

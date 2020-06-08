@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use scribble_curves::{
+use scribl_curves::{
     time, Curve, Effect, Effects, FadeEffect, LineStyle, SegmentData, SnippetData, SnippetId,
     SnippetsData, Time,
 };
@@ -48,10 +48,10 @@ impl SegmentInProgress {
     pub fn to_curve(&self, distance_threshold: f64, angle_threshold: f64) -> (BezPath, Vec<Time>) {
         let points = self.points.borrow();
         let times = self.times.borrow();
-        let point_indices = scribble_curves::simplify::simplify(&points, distance_threshold);
+        let point_indices = scribl_curves::simplify::simplify(&points, distance_threshold);
         let times: Vec<Time> = point_indices.iter().map(|&i| times[i]).collect();
         let points: Vec<Point> = point_indices.iter().map(|&i| points[i]).collect();
-        let path = scribble_curves::smooth::smooth(&points, 0.4, angle_threshold);
+        let path = scribl_curves::smooth::smooth(&points, 0.4, angle_threshold);
         (path, times)
     }
 }

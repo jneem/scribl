@@ -3,7 +3,7 @@ use druid::{
     LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
 };
 
-use scribble_curves::SnippetsCursor;
+use scribl_curves::SnippetsCursor;
 
 use crate::cmd;
 use crate::editor_state::{CurrentAction, EditorState};

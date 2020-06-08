@@ -1,17 +1,17 @@
 [package]
-name = "scribble"
+name = "scribl"
 version = "0.1.0"
 authors = ["Joe Neeman <joeneeman@gmail.com>"]
 edition = "2018"
 readme = "../README.md"
 description = "Create simple instructional videos"
 license = "MIT"
-repository = "https://github.com/jneem/scribble"
+repository = "https://github.com/jneem/scribl"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-scribble_curves = { version = "0.1.0", path = "../curves/" }
+scribl_curves = { version = "0.1.0", path = "../curves/" }
 druid = { version = "0.6.0", features = ["im"] }
 log = "0.4.8"
 serde = { version = "1.0", features = ["derive", "rc"] }

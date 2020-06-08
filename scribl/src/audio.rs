@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 
-use scribble_curves::{time, Diff, Time};
+use scribl_curves::{time, Diff, Time};
 
 /// This is in charge of the audio event loop, and various other things. There should only be one
 /// of these alive at any one time, and it is intended to be long-lived (i.e., create it at startup

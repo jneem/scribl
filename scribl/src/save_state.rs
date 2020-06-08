@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::path::Path;
 
-use scribble_curves::SnippetsData;
+use scribl_curves::SnippetsData;
 
 use crate::audio::AudioSnippetsData;
 
@@ -79,7 +79,7 @@ mod tests {
         let read_again = SaveFileData::load_from(&written[..]).unwrap();
 
         // We do check that if something was written using the current version
-        // of scribble, then save -> load is the identity.
+        // of scribl, then save -> load is the identity.
         let mut written_again = Vec::new();
         read_again.save_to(&mut written_again).unwrap();
         assert_eq!(written, written_again);

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
-use scribble_curves::{time, SnippetsData, Time};
+use scribl_curves::{time, SnippetsData, Time};
 
 use crate::audio::{AudioSnippetsData, Cursor, SAMPLE_RATE};
 use crate::editor_state::StatusMsg;
@@ -121,7 +121,7 @@ fn create_pipeline(
             let mut ctx = bitmap.render_context();
             ctx.clear(druid::Color::WHITE);
             ctx.with_save(|ctx| {
-                // scribble's internal coordinates are always with respect to a drawing width of 1.0.
+                // scribl's internal coordinates are always with respect to a drawing width of 1.0.
                 ctx.transform(Affine::scale(WIDTH as f64));
                 for (_, snip) in anim.snippets() {
                     snip.render(ctx, time);

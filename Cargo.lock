@@ -1644,7 +1644,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed3d612bc64430efeb3f7ee6ef26d590dce0c43249217bddc62112540c7941e1"
 
 [[package]]
-name = "scribble"
+name = "scribl"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1660,14 +1660,14 @@ dependencies = [
  "lufs",
  "pkg-version",
  "rnnoise-c",
- "scribble_curves",
+ "scribl_curves",
  "serde",
  "serde_cbor",
  "thiserror",
 ]
 
 [[package]]
-name = "scribble_curves"
+name = "scribl_curves"
 version = "0.1.0"
 dependencies = [
  "druid",

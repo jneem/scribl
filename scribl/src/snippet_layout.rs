@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use scribble_curves::{time, SnippetData, SnippetId, Time};
+use scribl_curves::{time, SnippetData, SnippetId, Time};
 
 use crate::audio::{AudioSnippetData, AudioSnippetId};
 

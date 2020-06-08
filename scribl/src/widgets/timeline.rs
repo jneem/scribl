@@ -8,7 +8,7 @@ use druid::{
 };
 use std::collections::HashMap;
 
-use scribble_curves::{time, Diff, SnippetData, SnippetId, SnippetsData, Time};
+use scribl_curves::{time, Diff, SnippetData, SnippetId, SnippetsData, Time};
 
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData};
 use crate::cmd;

@@ -18,12 +18,12 @@ mod widgets;
 
 const BUTTON_BACKGROUND_DISABLED: Key<Color> = Key::new("button_background_disabled");
 const BUTTON_FOREGROUND_DISABLED: Key<Color> = Key::new("button_foreground_disabled");
-const BUTTON_ICON_PADDING: Key<f64> = Key::new("scribble.button_icon_padding");
-const BUTTON_ICON_DISABLED: Key<Color> = Key::new("scribble-radio-button-icon-disabled");
-const BUTTON_ICON_SELECTED: Key<Color> = Key::new("scribble-radio-button-icon-selected");
-const BUTTON_ICON_HOT: Key<Color> = Key::new("scribble-radio-button-icon-hot");
-const BUTTON_ICON_IDLE: Key<Color> = Key::new("scribble-radio-button-icon-idle");
-const BUTTON_GROUP_BORDER_WIDTH: Key<f64> = Key::new("scribble-button-group-border-width");
+const BUTTON_ICON_PADDING: Key<f64> = Key::new("scribl.button_icon_padding");
+const BUTTON_ICON_DISABLED: Key<Color> = Key::new("scribl-radio-button-icon-disabled");
+const BUTTON_ICON_SELECTED: Key<Color> = Key::new("scribl-radio-button-icon-selected");
+const BUTTON_ICON_HOT: Key<Color> = Key::new("scribl-radio-button-icon-hot");
+const BUTTON_ICON_IDLE: Key<Color> = Key::new("scribl-radio-button-icon-idle");
+const BUTTON_GROUP_BORDER_WIDTH: Key<f64> = Key::new("scribl-button-group-border-width");
 pub const FRAME_TIME: Duration = Duration::from_millis(16);
 pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("text_size_small");
 
@@ -52,7 +52,7 @@ fn main() {
         return;
     }
 
-    let matches = App::new("scribble")
+    let matches = App::new("scribl")
         .version(format!("{}.{}.{}", MAJOR, MINOR, PATCH).as_str())
         .author("Joe Neeman <joeneeman@gmail.com>")
         .arg(
