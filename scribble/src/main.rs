@@ -6,6 +6,7 @@ use std::time::Duration;
 mod app_delegate;
 mod app_state;
 mod audio;
+mod autosave;
 mod cmd;
 mod editor_state;
 mod encode;

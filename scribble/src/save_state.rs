@@ -1,3 +1,4 @@
+use druid::Data;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::path::Path;
@@ -10,7 +11,7 @@ use crate::audio::AudioSnippetsData;
 ///
 /// In particular, it's very important that the serializion format of this struct
 /// doesn't change unexpectedly.
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Data, Deserialize, Serialize)]
 pub struct SaveFileData {
     /// This is currently always set to zero, but it's here in case we need to make
     /// changes.

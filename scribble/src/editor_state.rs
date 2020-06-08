@@ -612,7 +612,11 @@ impl EditorState {
                     }
                 };
             }
-            StatusMsg::DoneSaving(path, result) => {
+            StatusMsg::DoneSaving {
+                path,
+                result,
+                autosave: _autosave,
+            } => {
                 self.status.in_progress.saving = None;
                 self.status.last_finished = match result {
                     Ok(()) => {
@@ -765,7 +769,11 @@ pub enum StatusMsg {
     // We load files asynchronously; when loading is done, we get one of these messages.
     Load(PathBuf, Result<SaveFileData, Error>),
     // When a file is done saving, we get one of these messages.
-    DoneSaving(PathBuf, Result<(), Error>),
+    DoneSaving {
+        path: PathBuf,
+        result: Result<(), Error>,
+        autosave: bool,
+    },
 }
 
 impl From<EncodingStatus> for StatusMsg {

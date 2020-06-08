@@ -1,11 +1,14 @@
 use druid::widget::{Align, Flex};
 use druid::{
-    theme, BoxConstraints, Color, Command, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx,
-    LifeCycle, LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt, WidgetId,
+    theme, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, KeyCode, KeyEvent,
+    LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt,
+    WidgetId,
 };
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
+use std::time::Duration;
 
+use crate::autosave::AutosaveData;
 use crate::cmd;
 use crate::editor_state::{
     CurrentAction, EditorState, MaybeSnippetId, PenSize, RecordingSpeed, StatusMsg,
@@ -18,8 +21,17 @@ use crate::widgets::{
 };
 use crate::FRAME_TIME;
 
+const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(60);
+
 pub struct Editor {
     timer_id: TimerToken,
+
+    // Every AUTOSAVE_DURATION, we will attempt to save the current file.
+    autosave_timer_id: TimerToken,
+    // We won't save the current file if it hasn't changed since the last autosave.
+    last_autosave_data: Option<SaveFileData>,
+    // We send the autosave data on this channel.
+    autosave_tx: Sender<AutosaveData>,
 
     // The channel that we keep for receiving asynchronous messages.
     status_rx: Receiver<StatusMsg>,
@@ -195,11 +207,15 @@ impl Editor {
             .with_child(make_status_bar());
 
         let (tx, rx) = std::sync::mpsc::channel();
+        let autosave_tx = crate::autosave::spawn_autosave_thread(tx.clone());
         Editor {
             inner: Box::new(TooltipHost::new(Align::centered(column))),
             status_rx: rx,
             status_tx: tx,
             timer_id: TimerToken::INVALID,
+            autosave_timer_id: TimerToken::INVALID,
+            last_autosave_data: None,
+            autosave_tx,
         }
     }
 }
@@ -462,7 +478,11 @@ impl Editor {
         let tx = self.status_tx.clone();
         std::thread::spawn(move || {
             let result = save_data.save_to_path(&path);
-            let _ = tx.send(StatusMsg::DoneSaving(path, result));
+            let _ = tx.send(StatusMsg::DoneSaving {
+                path,
+                result,
+                autosave: false,
+            });
         });
     }
 
@@ -502,8 +522,12 @@ impl Widget<EditorState> for Editor {
                                 data.save_path = Some(path.clone());
                             }
                         }
-                        StatusMsg::DoneSaving(path, result) => {
-                            if result.is_ok() {
+                        StatusMsg::DoneSaving {
+                            path,
+                            result,
+                            autosave,
+                        } => {
+                            if !autosave && result.is_ok() {
                                 data.save_path = Some(path.clone());
                             }
                         }
@@ -518,6 +542,20 @@ impl Widget<EditorState> for Editor {
                 data.update_time();
                 self.timer_id = ctx.request_timer(FRAME_TIME);
                 ctx.set_handled();
+            }
+            Event::Timer(tok) if tok == &self.autosave_timer_id => {
+                let autosave_data = data.to_save_file();
+                if !self.last_autosave_data.same(&Some(autosave_data.clone())) {
+                    let autosave_data = AutosaveData {
+                        data: autosave_data.clone(),
+                        path: data.save_path.clone(),
+                    };
+                    if let Err(e) = self.autosave_tx.send(autosave_data) {
+                        log::error!("failed to send autosave data: {}", e);
+                    }
+                }
+                self.last_autosave_data = Some(autosave_data);
+                self.autosave_timer_id = ctx.request_timer(AUTOSAVE_INTERVAL);
             }
             _ => {}
         }
@@ -541,6 +579,9 @@ impl Widget<EditorState> for Editor {
         data: &EditorState,
         env: &Env,
     ) {
+        if let LifeCycle::WidgetAdded = event {
+            self.autosave_timer_id = ctx.request_timer(AUTOSAVE_INTERVAL);
+        }
         self.inner.lifecycle(ctx, event, data, env);
     }
 
