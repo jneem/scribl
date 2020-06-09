@@ -8,8 +8,8 @@ use crate::cmd;
 use crate::editor_state::{CurrentAction, MaybeSnippetId};
 use crate::widgets::ToggleButtonState;
 
-const SCRIBL_FILE_TYPE: FileSpec = FileSpec::new("Scribl animation", &["scb"]);
-const EXPORT_FILE_TYPE: FileSpec = FileSpec::new("mp4 video", &["mp4"]);
+const SCRIBL_FILE_TYPE: FileSpec = FileSpec::new("Scribl animation (.scb)", &["scb"]);
+const EXPORT_FILE_TYPE: FileSpec = FileSpec::new("mp4 video (.mp4)", &["mp4"]);
 
 use crate::app_state::AppState;
 use crate::editor_state::EditorState;
