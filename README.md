@@ -10,7 +10,7 @@ doc-cam + microphone method for creating video lectures.
 
 Here's a short video created with scribl:
 
-[![Sample video](https://img.youtube.com/vi/MB7anfjTe9I/hqdefault.jpg)](https://youtu.be/MB7anfjTe9I)
+[![Sample video](https://img.youtube.com/vi/5YkicmmhbcY/hqdefault.jpg)](https://youtu.be/5YkicmmhbcY)
 
 Here's a screenshot of its user interface:
 
