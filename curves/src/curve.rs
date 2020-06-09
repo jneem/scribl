@@ -343,7 +343,7 @@ pub mod tests {
         // BezPath doesn't implement PartialEq, so just compare the other parts.
         assert_eq!(deserialized.times, c.times);
         assert_eq!(deserialized.seg_boundaries, c.seg_boundaries);
-        assert_eq!(deserialized.seg_styles, seg_stylesta);
+        assert_eq!(deserialized.seg_styles, c.seg_styles);
     }
 
     #[test]
@@ -353,6 +353,6 @@ pub mod tests {
         let read: StrokeSeq = serde_cbor::from_slice(&written[..]).unwrap();
         assert_eq!(read.times, c.times);
         assert_eq!(read.seg_boundaries, c.seg_boundaries);
-        assert_eq!(read.seg_styles, seg_stylesta);
+        assert_eq!(read.seg_styles, c.seg_styles);
     }
 }
