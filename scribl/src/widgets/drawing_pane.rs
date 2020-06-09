@@ -142,8 +142,8 @@ impl Widget<EditorState> for DrawingPane {
             if let Some(curve) = data.new_curve.as_ref() {
                 curve.render(ctx.render_ctx, data.time());
             }
-            if let Some(path_in_progress) = data.new_snippet_as_curve() {
-                path_in_progress.render(ctx.render_ctx, data.time());
+            if let Some(snip) = data.new_segment.as_ref() {
+                snip.render(ctx.render_ctx, data.cur_style(), data.time());
             }
         });
     }

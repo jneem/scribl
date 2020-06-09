@@ -54,7 +54,7 @@ impl Time {
         (self.0 as f64 / 1e6 * sample_rate as f64) as usize
     }
 
-    pub fn from_audio_idx(idx: i64, sample_rate: u32) -> Time {
+    pub fn from_audio_idx(idx: usize, sample_rate: u32) -> Time {
         Time::from_micros(((idx as f64) * 1e6 / sample_rate as f64) as i64)
     }
 }
@@ -137,22 +137,42 @@ impl std::ops::Sub<Time> for Time {
 }
 
 impl TimeSpan {
+    /// Creates a new `TimeSpan` representing the closed interval `[start, end]`.
+    ///
+    /// # Panics
+    ///
     /// Panics if `start > end`.
     pub fn new(start: Time, end: Time) -> TimeSpan {
         assert!(start <= end);
         TimeSpan { start, end }
     }
 
+    /// The starting time of this `TimeSpan`.
     pub fn start(&self) -> Time {
         self.start
     }
 
+    /// The ending time of this `TimeSpan`.
     pub fn end(&self) -> Time {
         self.end
     }
 
     /// Interpolates from a time in this timespan to a time in `other`.
-    /// TODO: examples,
+    ///
+    /// # Panics
+    ///
+    /// Panics if `time` doesn't belong to this `TimeSpan`.
+    ///
+    /// # Example
+    /// ```rust
+    /// use scribl_curves::time::{Time, TimeSpan};
+    /// let me = TimeSpan::new(Time::from_micros(0), Time::from_micros(100));
+    /// let other = TimeSpan::new(Time::from_micros(0), Time::from_micros(10));
+    ///
+    /// assert_eq!(me.interpolate_to(Time::from_micros(50), other), Time::from_micros(5));
+    /// assert_eq!(me.interpolate_to(Time::from_micros(59), other), Time::from_micros(5));
+    /// assert_eq!(me.interpolate_to(Time::from_micros(78), other), Time::from_micros(7));
+    /// ```
     pub fn interpolate_to(&self, time: Time, other: TimeSpan) -> Time {
         assert!(self.start <= time && time <= self.end);
 

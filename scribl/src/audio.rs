@@ -530,7 +530,7 @@ pub fn create_appsrc(data: Arc<Mutex<OutputData>>, name: &str) -> Result<gst::El
             let data: &mut OutputData = &mut lock;
             data.cursor
                 .advance_and_mix(&data.snips, &mut buf[..], forwards);
-            let time = Time::from_audio_idx(data.cursor.start_idx as i64, SAMPLE_RATE);
+            let time = Time::from_audio_idx(data.cursor.start_idx, SAMPLE_RATE);
 
             let mut gst_buffer = gst::Buffer::with_size(size as usize)?;
             {

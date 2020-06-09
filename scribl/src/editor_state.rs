@@ -1,14 +1,14 @@
 use anyhow::Error;
 use druid::kurbo::BezPath;
-use druid::{Data, Lens, Point};
+use druid::{Data, Lens, Point, RenderContext};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
 use scribl_curves::{
-    time, Curve, Effect, Effects, FadeEffect, LineStyle, SegmentData, SnippetData, SnippetId,
-    SnippetsData, Time,
+    time, Curve, Effect, Effects, FadeEffect, SegmentStyle, SnippetData, SnippetId, SnippetsData,
+    Time,
 };
 
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData, AudioState};
@@ -39,20 +39,39 @@ impl SegmentInProgress {
         self.len += 1;
     }
 
-    /// Returns a simplified and smoothed version of this polyline.
-    ///
-    /// `distance_threshold` controls the simplification: higher values will result in
-    /// a curve with fewer points. `angle_threshold` affects the presence of angles in
-    /// the returned curve: higher values will result in more smooth parts and fewer
-    /// angular parts.
-    pub fn to_curve(&self, distance_threshold: f64, angle_threshold: f64) -> (BezPath, Vec<Time>) {
-        let points = self.points.borrow();
-        let times = self.times.borrow();
-        let point_indices = scribl_curves::simplify::simplify(&points, distance_threshold);
-        let times: Vec<Time> = point_indices.iter().map(|&i| times[i]).collect();
-        let points: Vec<Point> = point_indices.iter().map(|&i| points[i]).collect();
-        let path = scribl_curves::smooth::smooth(&points, 0.4, angle_threshold);
-        (path, times)
+    pub fn render(&self, ctx: &mut impl RenderContext, style: SegmentStyle, time: Time) {
+        use druid::piet::{LineCap, LineJoin, StrokeStyle};
+        let stroke_style = StrokeStyle {
+            line_join: Some(LineJoin::Round),
+            line_cap: Some(LineCap::Round),
+            ..StrokeStyle::new()
+        };
+
+        let ps = self.points.borrow();
+        if ps.is_empty() {
+            return;
+        }
+        let mut path = BezPath::new();
+        path.move_to(ps[0]);
+        for p in &ps[1..] {
+            path.line_to(*p);
+        }
+        let last = *self.times.borrow().last().unwrap();
+        // TODO: this is copy-paste from Curve
+        let color = if let Some(fade) = style.effects.fade() {
+            if time >= last + fade.pause + fade.fade {
+                return;
+            } else if time >= last + fade.pause {
+                let ratio =
+                    (time - (last + fade.pause)).as_micros() as f64 / fade.fade.as_micros() as f64;
+                style.color.with_alpha(1.0 - ratio)
+            } else {
+                style.color
+            }
+        } else {
+            style.color
+        };
+        ctx.stroke_styled(&path, &color, style.thickness, &stroke_style);
     }
 }
 
@@ -314,25 +333,21 @@ impl EditorState {
 
     /// Takes the segment that is currently being drawn and adds it to the snippet in progress.
     pub fn add_segment_to_snippet(&mut self, seg: SegmentInProgress) {
-        let effects = self.selected_effects();
-        let style = LineStyle {
-            color: self.palette.selected_color().clone(),
-            thickness: self.pen_size.size_fraction(),
-        };
-        let seg_data = SegmentData { effects, style };
-        let (path, times) = seg.to_curve(0.0005, std::f64::consts::PI / 4.0);
-
         // TODO(performance): this is quadratic for long snippets with lots of segments, because
         // we clone it every time the pen lifts.
-        if let Some(curve) = self.new_curve.as_ref() {
-            let mut curve_clone = curve.as_ref().clone();
-            curve_clone.append_segment(path, times, seg_data);
-            self.new_curve = Some(Arc::new(curve_clone));
-        } else {
-            let mut curve = Curve::new();
-            curve.append_segment(path, times, seg_data);
-            self.new_curve = Some(Arc::new(curve));
-        }
+        let mut curve = self
+            .new_curve
+            .as_ref()
+            .map(|c| c.as_ref().clone())
+            .unwrap_or(Curve::new());
+        curve.append_stroke(
+            &seg.points.borrow(),
+            &seg.times.borrow(),
+            self.cur_style(),
+            0.0005,
+            std::f64::consts::PI / 4.0,
+        );
+        self.new_curve = Some(Arc::new(curve));
     }
 
     /// Stops recording drawing, returning the snippet that we just finished recording (if it was
@@ -472,31 +487,11 @@ impl EditorState {
         self.new_segment.take()
     }
 
-    /// Returns the new snippet being drawn, converted to a [`Curve`] for your rendering convenience.
-    pub fn new_snippet_as_curve(&self) -> Option<Curve> {
-        if let Some(ref new_snippet) = self.new_segment {
-            let mut ret = Curve::new();
-            for (i, (p, t)) in new_snippet
-                .points
-                .borrow()
-                .iter()
-                .zip(new_snippet.times.borrow().iter())
-                .enumerate()
-            {
-                if i == 0 {
-                    let style = LineStyle {
-                        color: self.palette.selected_color().clone(),
-                        thickness: self.pen_size.size_fraction(),
-                    };
-                    let effects = self.selected_effects();
-                    ret.move_to(*p, *t, style, effects);
-                } else {
-                    ret.line_to(*p, *t);
-                }
-            }
-            Some(ret)
-        } else {
-            None
+    pub fn cur_style(&self) -> SegmentStyle {
+        SegmentStyle {
+            color: self.palette.selected_color().clone(),
+            thickness: self.pen_size.size_fraction(),
+            effects: self.selected_effects(),
         }
     }
 

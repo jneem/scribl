@@ -7,7 +7,7 @@ mod snippet;
 pub mod span_cursor;
 pub mod time;
 
-pub use crate::curve::{Curve, LineStyle, SegmentData};
+pub use crate::curve::{Curve, SegmentStyle};
 pub use crate::effect::{Effect, Effects, FadeEffect};
 pub use crate::lerp::Lerp;
 pub use crate::time::{Diff, Time};

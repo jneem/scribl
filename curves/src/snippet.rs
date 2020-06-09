@@ -30,8 +30,10 @@ pub struct SnippetsData {
 pub type SnippetsCursor = span_cursor::Cursor<Time, SnippetId>;
 
 impl SnippetData {
-    // TODO: this panics if the curve is empty
     pub fn new(curve: Curve) -> SnippetData {
+        if curve.times.is_empty() {
+            panic!("tried to create a snippet from an empty curve");
+        }
         let start = *curve.times.first().unwrap();
         let end = *curve.times.last().unwrap();
         let lerp = Lerp::identity(start, end);
@@ -61,7 +63,7 @@ impl SnippetData {
             Ok(i) => i + 1,
             Err(i) => i,
         };
-        &self.curve.path.elements()[..idx]
+        &self.curve.elements()[..idx]
     }
 
     pub fn path_between(&self, start: Time, end: Time) -> &[PathEl] {
@@ -84,7 +86,7 @@ impl SnippetData {
             Ok(i) => i + 1,
             Err(i) => i,
         };
-        &self.curve.path.elements()[start_idx..end_idx]
+        &self.curve.elements()[start_idx..end_idx]
     }
 
     pub fn start_time(&self) -> Time {
