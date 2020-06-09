@@ -36,8 +36,11 @@ impl PartialEq for SegmentStyle {
     }
 }
 
+/// A `StrokeSeq` is a sequence of strokes (or segments), each of which is a continuous curve. Each
+/// segment can have its own style; the only restriction is that they must be non-decreasing in
+/// time.
 #[derive(Clone, Debug)]
-pub struct Curve {
+pub struct StrokeSeq {
     path: BezPath,
     pub times: Vec<Time>,
 
@@ -50,9 +53,9 @@ pub struct Curve {
     seg_styles: Vec<SegmentStyle>,
 }
 
-impl Curve {
-    pub fn new() -> Curve {
-        Curve {
+impl StrokeSeq {
+    pub fn new() -> StrokeSeq {
+        StrokeSeq {
             path: BezPath::new(),
             times: Vec::new(),
             seg_boundaries: Vec::new(),
@@ -184,7 +187,7 @@ impl Curve {
 }
 
 // A curve gets serialized as a sequence of segments.
-impl Serialize for Curve {
+impl Serialize for StrokeSeq {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         let mut seq = ser.serialize_seq(Some(self.seg_styles.len()))?;
 
@@ -196,10 +199,10 @@ impl Serialize for Curve {
     }
 }
 
-impl<'a> Deserialize<'a> for Curve {
-    fn deserialize<D: Deserializer<'a>>(de: D) -> Result<Curve, D::Error> {
+impl<'a> Deserialize<'a> for StrokeSeq {
+    fn deserialize<D: Deserializer<'a>>(de: D) -> Result<StrokeSeq, D::Error> {
         let segments: Vec<SavedSegment> = Deserialize::deserialize(de)?;
-        let mut curve = Curve::new();
+        let mut curve = StrokeSeq::new();
 
         for seg in segments {
             let p = |(x, y)| Point::new(x as f64 / 10_000.0, y as f64 / 10_000.0);
@@ -297,8 +300,8 @@ fn serialize_path_els<S: Serializer>(path: &[PathEl], ser: S) -> Result<S::Ok, S
 pub mod tests {
     use super::*;
 
-    pub fn basic_curve() -> Curve {
-        let mut c = Curve::new();
+    pub fn basic_curve() -> StrokeSeq {
+        let mut c = StrokeSeq::new();
         let p = |x, y| Point::new(x, y);
         let t = |x| Time::from_micros(x);
         let style = SegmentStyle {
@@ -336,7 +339,7 @@ pub mod tests {
         let c = basic_curve();
 
         let ser = serde_json::to_string(&c).unwrap();
-        let deserialized: Curve = serde_json::from_str(&ser).unwrap();
+        let deserialized: StrokeSeq = serde_json::from_str(&ser).unwrap();
         // BezPath doesn't implement PartialEq, so just compare the other parts.
         assert_eq!(deserialized.times, c.times);
         assert_eq!(deserialized.seg_boundaries, c.seg_boundaries);
@@ -347,7 +350,7 @@ pub mod tests {
     fn serde_two_segments() {
         let c = basic_curve();
         let written = serde_cbor::to_vec(&c).unwrap();
-        let read: Curve = serde_cbor::from_slice(&written[..]).unwrap();
+        let read: StrokeSeq = serde_cbor::from_slice(&written[..]).unwrap();
         assert_eq!(read.times, c.times);
         assert_eq!(read.seg_boundaries, c.seg_boundaries);
         assert_eq!(read.seg_styles, seg_stylesta);

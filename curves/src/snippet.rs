@@ -4,7 +4,7 @@ use druid::{Data, RenderContext};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::Arc;
 
-use crate::{span_cursor, Curve, Lerp, Time};
+use crate::{span_cursor, Lerp, StrokeSeq, Time};
 
 /// Snippets are identified by unique ids.
 #[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -13,7 +13,7 @@ pub struct SnippetId(u64);
 
 #[derive(Deserialize, Serialize, Data, Debug, Clone)]
 pub struct SnippetData {
-    pub curve: Arc<Curve>,
+    pub curve: Arc<StrokeSeq>,
     pub lerp: Arc<Lerp>,
 
     /// Controls whether the snippet ever ends. If `None`, it means that the snippet will remain
@@ -30,7 +30,7 @@ pub struct SnippetsData {
 pub type SnippetsCursor = span_cursor::Cursor<Time, SnippetId>;
 
 impl SnippetData {
-    pub fn new(curve: Curve) -> SnippetData {
+    pub fn new(curve: StrokeSeq) -> SnippetData {
         if curve.times.is_empty() {
             panic!("tried to create a snippet from an empty curve");
         }

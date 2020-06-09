@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use scribl_curves::{
-    time, Curve, Effect, Effects, FadeEffect, SegmentStyle, SnippetData, SnippetId, SnippetsData,
-    Time,
+    time, Effect, Effects, FadeEffect, SegmentStyle, SnippetData, SnippetId, SnippetsData,
+    StrokeSeq, Time,
 };
 
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData, AudioState};
@@ -167,7 +167,7 @@ pub struct AsyncOpsStatus {
 #[derive(Clone, Data, Lens)]
 pub struct EditorState {
     pub new_segment: Option<SegmentInProgress>,
-    pub new_curve: Option<Arc<Curve>>,
+    pub new_curve: Option<Arc<StrokeSeq>>,
 
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,
@@ -339,7 +339,7 @@ impl EditorState {
             .new_curve
             .as_ref()
             .map(|c| c.as_ref().clone())
-            .unwrap_or(Curve::new());
+            .unwrap_or(StrokeSeq::new());
         curve.append_stroke(
             &seg.points.borrow(),
             &seg.times.borrow(),
