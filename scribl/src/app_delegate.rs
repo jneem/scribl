@@ -15,6 +15,7 @@ impl AppDelegate<AppState> for Delegate {
         data: &mut AppState,
         _env: &Env,
     ) -> bool {
+        log::info!("command {:?}", cmd);
         if cmd.is(druid::commands::NEW_FILE) {
             let window_desc = data.add_editor(EditorState::default());
             ctx.new_window(window_desc);

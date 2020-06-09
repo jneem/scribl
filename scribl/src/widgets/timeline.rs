@@ -411,6 +411,7 @@ impl Widget<EditorState> for TimelineSnippet {
                         }
                         ctx.request_paint();
                         ctx.set_handled();
+                        ctx.set_menu(crate::menus::make_menu(data));
                     }
                 }
             }
