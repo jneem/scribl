@@ -236,8 +236,8 @@ impl EditorState {
         let mut ret = Effects::default();
         if self.fade_enabled {
             ret.add(Effect::Fade(FadeEffect {
-                pause: time::Diff::from_micros(250_000),
-                fade: time::Diff::from_micros(250_000),
+                pause: time::TimeDiff::from_micros(250_000),
+                fade: time::TimeDiff::from_micros(250_000),
             }));
         }
         ret
@@ -261,7 +261,7 @@ impl EditorState {
         let wall_micros_elapsed = Instant::now()
             .duration_since(self.time_snapshot.0)
             .as_micros();
-        let logical_time_elapsed = time::Diff::from_micros(
+        let logical_time_elapsed = time::TimeDiff::from_micros(
             (wall_micros_elapsed as f64 * self.action.time_factor()) as i64,
         );
         self.time_snapshot.1 + logical_time_elapsed

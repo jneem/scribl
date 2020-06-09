@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 
-use scribl_curves::{time, Diff, Time};
+use scribl_curves::{time, Time, TimeDiff};
 
 /// This is in charge of the audio event loop, and various other things. There should only be one
 /// of these alive at any one time, and it is intended to be long-lived (i.e., create it at startup
@@ -397,7 +397,7 @@ impl AudioSnippetData {
     }
 
     pub fn end_time(&self) -> Time {
-        let length = time::Diff::from_audio_idx(self.buf().len() as i64, SAMPLE_RATE);
+        let length = time::TimeDiff::from_audio_idx(self.buf().len() as i64, SAMPLE_RATE);
         self.start_time() + length
     }
 
@@ -583,7 +583,7 @@ fn create_output_pipeline(data: Arc<Mutex<OutputData>>) -> Result<gst::Pipeline>
 // Processes the recorded audio.
 // - Truncates the beginning and end a little bit (to remove to sound of the user pressing the keyboard to start/stop recording).
 // - Runs noise removal using RNNoise.
-const TRUNCATION_LEN: Diff = Diff::from_micros(100_000);
+const TRUNCATION_LEN: TimeDiff = TimeDiff::from_micros(100_000);
 fn process_audio(mut buf: Vec<i16>) -> Vec<i16> {
     let trunc_samples = TRUNCATION_LEN.as_audio_idx(SAMPLE_RATE) as usize;
     if buf.len() <= 4 * trunc_samples {

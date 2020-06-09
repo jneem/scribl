@@ -8,7 +8,7 @@ use druid::{
 };
 use std::collections::HashMap;
 
-use scribl_curves::{time, Diff, SnippetData, SnippetId, SnippetsData, Time};
+use scribl_curves::{time, SnippetData, SnippetId, SnippetsData, Time, TimeDiff};
 
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData};
 use crate::cmd;
@@ -33,13 +33,13 @@ const SNIPPET_WAVEFORM_COLOR: Color = crate::UI_DARK_BLUE;
 const MARK_COLOR: Color = Color::rgb8(0x33, 0x33, 0x99);
 
 /// Converts from a time interval to a width in pixels.
-fn pix_width(d: Diff) -> f64 {
+fn pix_width(d: TimeDiff) -> f64 {
     d.as_micros() as f64 * PIXELS_PER_USEC
 }
 
 /// Converts from a width in pixels to a time interval.
-fn width_pix(p: f64) -> Diff {
-    Diff::from_micros((p / PIXELS_PER_USEC) as i64)
+fn width_pix(p: f64) -> TimeDiff {
+    TimeDiff::from_micros((p / PIXELS_PER_USEC) as i64)
 }
 
 /// Converts from a time instant to an x-position in pixels.
@@ -167,7 +167,7 @@ impl Snip {
     }
 
     /// Returns the list of times at which this snippet was lerped.
-    fn inner_lerp_times(&self) -> Vec<Diff> {
+    fn inner_lerp_times(&self) -> Vec<TimeDiff> {
         match self {
             Snip::Audio(_) => Vec::new(),
             Snip::Drawing(d) => {
@@ -237,7 +237,7 @@ impl<W: Widget<EditorState>> Controller<EditorState, Scroll<EditorState, W>>
             let max_vis_time = x_pix(child.offset().x + size.width);
 
             // Scroll this much past the cursor, so it isn't right at the edge.
-            let padding = Diff::from_micros(1_000_000).min(width_pix(size.width / 4.0));
+            let padding = TimeDiff::from_micros(1_000_000).min(width_pix(size.width / 4.0));
 
             let delta_x = if time + padding > max_vis_time {
                 pix_width(time - max_vis_time + padding)

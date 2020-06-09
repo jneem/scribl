@@ -17,7 +17,7 @@ pub struct Time(i64);
     Copy, Clone, Data, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize,
 )]
 #[serde(transparent)]
-pub struct Diff(i64);
+pub struct TimeDiff(i64);
 
 /// An interval of times.
 #[derive(Copy, Clone, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
@@ -59,7 +59,7 @@ impl Time {
     }
 }
 
-impl Diff {
+impl TimeDiff {
     /// Interpreting `self` as the offset from the beginning of an audio buffer, return the
     /// corresponding index into that buffer. Note that the return value is signed, because a
     /// negative offset from the beginning of an audio buffer corresponds to a negative index.
@@ -76,63 +76,63 @@ impl Diff {
         (self.0 as f64 / 1e6 * sample_rate as f64) as isize
     }
 
-    pub fn from_audio_idx(idx: i64, sample_rate: u32) -> Diff {
-        Diff(((idx as f64) * 1e6 / sample_rate as f64) as i64)
+    pub fn from_audio_idx(idx: i64, sample_rate: u32) -> TimeDiff {
+        TimeDiff(((idx as f64) * 1e6 / sample_rate as f64) as i64)
     }
 
     pub const fn as_micros(self) -> i64 {
         self.0
     }
 
-    pub const fn from_micros(us: i64) -> Diff {
-        Diff(us)
+    pub const fn from_micros(us: i64) -> TimeDiff {
+        TimeDiff(us)
     }
 }
 
-impl std::ops::AddAssign<Diff> for Time {
-    fn add_assign(&mut self, rhs: Diff) {
+impl std::ops::AddAssign<TimeDiff> for Time {
+    fn add_assign(&mut self, rhs: TimeDiff) {
         *self = *self + rhs;
     }
 }
 
-impl std::ops::Add<Diff> for Time {
+impl std::ops::Add<TimeDiff> for Time {
     type Output = Time;
-    fn add(self, rhs: Diff) -> Time {
+    fn add(self, rhs: TimeDiff) -> Time {
         Time(self.0.saturating_add(rhs.0).max(0))
     }
 }
 
-impl std::ops::Add<Diff> for Diff {
-    type Output = Diff;
-    fn add(self, rhs: Diff) -> Diff {
-        Diff(self.0.saturating_add(rhs.0))
+impl std::ops::Add<TimeDiff> for TimeDiff {
+    type Output = TimeDiff;
+    fn add(self, rhs: TimeDiff) -> TimeDiff {
+        TimeDiff(self.0.saturating_add(rhs.0))
     }
 }
 
-impl std::ops::Sub<Diff> for Diff {
-    type Output = Diff;
-    fn sub(self, rhs: Diff) -> Diff {
-        Diff(self.0.saturating_sub(rhs.0))
+impl std::ops::Sub<TimeDiff> for TimeDiff {
+    type Output = TimeDiff;
+    fn sub(self, rhs: TimeDiff) -> TimeDiff {
+        TimeDiff(self.0.saturating_sub(rhs.0))
     }
 }
 
-impl std::ops::SubAssign<Diff> for Time {
-    fn sub_assign(&mut self, rhs: Diff) {
+impl std::ops::SubAssign<TimeDiff> for Time {
+    fn sub_assign(&mut self, rhs: TimeDiff) {
         *self = *self - rhs;
     }
 }
 
-impl std::ops::Sub<Diff> for Time {
+impl std::ops::Sub<TimeDiff> for Time {
     type Output = Time;
-    fn sub(self, rhs: Diff) -> Time {
+    fn sub(self, rhs: TimeDiff) -> Time {
         Time(self.0.saturating_sub(rhs.0).max(0))
     }
 }
 
 impl std::ops::Sub<Time> for Time {
-    type Output = Diff;
-    fn sub(self, rhs: Time) -> Diff {
-        Diff(self.0 - rhs.0)
+    type Output = TimeDiff;
+    fn sub(self, rhs: Time) -> TimeDiff {
+        TimeDiff(self.0 - rhs.0)
     }
 }
 

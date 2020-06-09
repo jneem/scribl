@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::time::{Diff, Time, TimeSpan};
+use crate::time::{Time, TimeDiff, TimeSpan};
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Lerp {
@@ -117,8 +117,8 @@ impl Lerp {
 }
 
 enum LerpResult {
-    AfterEnd(Diff),
-    BeforeStart(Diff),
+    AfterEnd(TimeDiff),
+    BeforeStart(TimeDiff),
     SingleTime(Time),
     Interval(Time, Time),
 }

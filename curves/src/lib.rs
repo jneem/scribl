@@ -10,5 +10,5 @@ pub mod time;
 pub use crate::curve::{SegmentStyle, StrokeSeq};
 pub use crate::effect::{Effect, Effects, FadeEffect};
 pub use crate::lerp::Lerp;
-pub use crate::time::{Diff, Time};
+pub use crate::time::{Time, TimeDiff};
 pub use snippet::{SnippetData, SnippetId, SnippetsCursor, SnippetsData};

@@ -217,7 +217,7 @@ pub fn do_encode_blocking(
         .snippets
         .last_draw_time()
         .max(cmd.audio_snippets.end_time())
-        + time::Diff::from_micros(200000);
+        + time::TimeDiff::from_micros(200000);
     let num_frames = end_time.as_video_frame(FPS);
     main_loop(create_pipeline(
         cmd.snippets,

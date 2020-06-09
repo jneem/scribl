@@ -7,7 +7,7 @@ use serde::de::{Deserializer, SeqAccess, Visitor};
 use serde::ser::{SerializeSeq, Serializer};
 use serde::{Deserialize, Serialize};
 
-use crate::time::Diff;
+use crate::time::TimeDiff;
 
 /// A fade effect.
 ///
@@ -16,10 +16,10 @@ use crate::time::Diff;
 pub struct FadeEffect {
     /// After the segment finishes, it will remain at full opacity for this duration.
     /// Then it will start fading out.
-    pub pause: Diff,
+    pub pause: TimeDiff,
 
     /// The segment will fade out (linearly interpolated) for this length of time.
-    pub fade: Diff,
+    pub fade: TimeDiff,
 }
 
 // TODO: how do we deserialize an "open" enum? We'd like to be able to read files
@@ -38,7 +38,7 @@ pub struct Effects {
 impl FadeEffect {
     /// `t` is the time that has elapsed since the end of a segment. By how much should we fade the
     /// segment in response?
-    pub fn opacity_at_time(&self, t: Diff) -> f64 {
+    pub fn opacity_at_time(&self, t: TimeDiff) -> f64 {
         if t >= self.pause + self.fade {
             0.0
         } else if t <= self.pause {
@@ -119,8 +119,8 @@ mod tests {
 
         let mut fade = Effects::default();
         fade.add(Effect::Fade(FadeEffect {
-            pause: Diff::from_micros(100),
-            fade: Diff::from_micros(100),
+            pause: TimeDiff::from_micros(100),
+            fade: TimeDiff::from_micros(100),
         }));
         let written = serde_cbor::to_vec(&fade).unwrap();
         let read = serde_cbor::from_slice(&written[..]).unwrap();
