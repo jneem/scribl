@@ -57,17 +57,8 @@ impl SegmentInProgress {
             path.line_to(*p);
         }
         let last = *self.times.borrow().last().unwrap();
-        // TODO: this is copy-paste from Curve
         let color = if let Some(fade) = style.effects.fade() {
-            if time >= last + fade.pause + fade.fade {
-                return;
-            } else if time >= last + fade.pause {
-                let ratio =
-                    (time - (last + fade.pause)).as_micros() as f64 / fade.fade.as_micros() as f64;
-                style.color.with_alpha(1.0 - ratio)
-            } else {
-                style.color
-            }
+            style.color.with_alpha(fade.opacity_at_time(time - last))
         } else {
             style.color
         };

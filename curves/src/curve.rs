@@ -127,16 +127,9 @@ impl StrokeSeq {
             if let Some(last) = seg.times.last() {
                 if *last <= time {
                     let color = if let Some(fade) = seg.style.effects.fade() {
-                        if time >= *last + fade.pause + fade.fade {
-                            // The curve has faded out; no need to draw it at all
-                            continue;
-                        } else if time >= *last + fade.pause {
-                            let ratio = (time - (*last + fade.pause)).as_micros() as f64
-                                / fade.fade.as_micros() as f64;
-                            seg.style.color.with_alpha(1.0 - ratio)
-                        } else {
-                            seg.style.color
-                        }
+                        seg.style
+                            .color
+                            .with_alpha(fade.opacity_at_time(time - *last))
                     } else {
                         seg.style.color
                     };

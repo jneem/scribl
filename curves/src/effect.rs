@@ -35,6 +35,21 @@ pub struct Effects {
     fade: Option<FadeEffect>,
 }
 
+impl FadeEffect {
+    /// `t` is the time that has elapsed since the end of a segment. By how much should we fade the
+    /// segment in response?
+    pub fn opacity_at_time(&self, t: Diff) -> f64 {
+        if t >= self.pause + self.fade {
+            0.0
+        } else if t <= self.pause {
+            1.0
+        } else {
+            let ratio = (t - self.pause).as_micros() as f64 / self.fade.as_micros() as f64;
+            1.0 - ratio
+        }
+    }
+}
+
 impl Effects {
     pub fn add(&mut self, effect: Effect) {
         match effect {
