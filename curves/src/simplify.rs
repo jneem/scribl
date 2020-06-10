@@ -1,6 +1,6 @@
 use druid::kurbo::{Line, Point};
 
-// Squared distance from the point `p` to the line *segment* `line.
+// Squared distance from the point `p` to the line *segment* `line`.
 fn sq_distance(p: Point, line: Line) -> f64 {
     // Translate the start of the line to the origin.
     let px = p.x - line.p0.x;
@@ -26,6 +26,10 @@ fn sq_distance(p: Point, line: Line) -> f64 {
     }
 }
 
+/// Given a polyline represented as a collection of points, returns a simpler polyline that
+/// approximates the original. To be precise, the return value is a collection of indices into
+/// `points`; the simpler polyline is made up of the subset of `points` indexed by the return
+/// value.
 pub fn simplify(points: &[Point], eps: f64) -> Vec<usize> {
     if points.is_empty() {
         return Vec::new();
@@ -54,12 +58,11 @@ pub fn simplify(points: &[Point], eps: f64) -> Vec<usize> {
             .map(|p| sq_distance(*p, line))
             .enumerate()
             .max_by(|&(_idx1, dist1), &(_idx2, dist2)| {
-                // We want to sort by the distance, but f64 doesn't implement Ord so we can't do max_by_key.
-                if dist1 < dist2 {
-                    std::cmp::Ordering::Less
-                } else {
-                    std::cmp::Ordering::Greater
-                }
+                // We want to sort by the distance, but f64 doesn't implement Ord so we can't do
+                // max_by_key.
+                dist1
+                    .partial_cmp(&dist2)
+                    .unwrap_or(std::cmp::Ordering::Less)
             })
         {
             let max_idx = start + 1 + max_idx;
