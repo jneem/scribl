@@ -2,6 +2,55 @@ use serde::{Deserialize, Serialize};
 
 use crate::time::{Time, TimeDiff, TimeSpan};
 
+/// Specifies interpolations between two sets of times.
+///
+/// This struct maintains two lists of "key-frame" times, which it uses for mapping times from one
+/// scale to another.  The two lists of key-frames must have the same length; the `i`th key-frame
+/// of one list is mapped to the `i`th key-frame of the other list, and times that fall in between
+/// key-frames are mapped using linear interpolation. There are various different ways that you can
+/// handle times that lie outside the range of key-frames, as illustrated in the examples below.
+///
+/// # Examples
+///
+/// ```
+/// # use scribl_curves::{Lerp, Time};
+///
+/// let t = |x| Time::from_micros(x);
+///
+/// // Create an "identity" lerp that just maps the interval [100, 200] to itself.
+/// let mut lerp = Lerp::identity(t(100), t(200));
+///
+/// // Now map time 150 to time 180. The interval [100, 150] will be stretched to cover
+/// // [100, 180], and the interval [150, 200] will be squished to [180, 200].
+/// lerp.add_lerp(t(150), t(180));
+///
+/// // The midpoint between 100 and 150 will be mapped to the midpoint between 100 and 180.
+/// assert_eq!(lerp.lerp(t(125)), Some(t(140)));
+/// // The midpoint between 150 and 200 will be mapped to the midpoint between 180 and 200.
+/// assert_eq!(lerp.lerp(t(175)), Some(t(190)));
+///
+/// // Adding a lerp is like taking the *composition* of the two mappings. So taking the previous
+/// // lerp and then sending 140 to 150 means that the original 125 will get sent to 150.
+/// lerp.add_lerp(t(140), t(150));
+/// assert_eq!(lerp.lerp(t(125)), Some(t(150)));
+/// assert_eq!(lerp.lerp(t(120)), Some(t(140)));
+///
+/// // When we map a time to something outside the current output range, something special happens:
+/// // all of the output times will get "squished" to the new time. Currently, the interval
+/// // [125, 200] is getting mapped to [150, 200]; after this line, that whole interval will get
+/// // mapped to 250.
+/// lerp.add_lerp(t(150), t(250));
+/// assert_eq!(lerp.lerp(t(125)), Some(t(250)));
+/// assert_eq!(lerp.lerp(t(199)), Some(t(250)));
+///
+/// // There are three different ways that elements outside the domain can be handled.
+/// // The `lerp` method returns `None` if asked to map something outside its domain.
+/// assert_eq!(lerp.lerp(t(201)), None);
+/// // The `lerp_clamped` method effectively rounds its input to the nearest end of the domain.
+/// assert_eq!(lerp.lerp_clamped(t(201)), t(250));
+/// // The `lerp_extended` method extends the map past the original domain by linear interpolation.
+/// assert_eq!(lerp.lerp_extended(t(201)), t(251));
+/// ```
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Lerp {
     original_values: Vec<Time>,
@@ -9,6 +58,12 @@ pub struct Lerp {
 }
 
 impl Lerp {
+    /// Creates a new `Lerp` in which the key-frames in `original` are mapped to the key-frames in
+    /// `lerped`. Both `original` and `lerped` must be sorted, and they must have the same length.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `original` and `lerped` have the same length.
     fn new(original: Vec<Time>, lerped: Vec<Time>) -> Lerp {
         //assert!(original.is_sorted()); // is_sorted is nightly-only
         //assert!(lerped.is_sorted());
@@ -19,19 +74,75 @@ impl Lerp {
         }
     }
 
+    /// Creates a new `Lerp` representing the identity mapping on the interval `[start, end]`.
+    ///
+    /// That is, `start` will be mapped to `start`, `end` will be mapped to `end`, and everything
+    /// in between will also be mapped to itself. Times outside the interval `[start, end]` will be
+    /// treated differently depending on which of the lerping functions you call.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use scribl_curves::{Lerp, Time};
+    /// let t = |x| Time::from_micros(x);
+    /// assert_eq!(Lerp::identity(t(0), t(10)).lerp(t(5)), Some(t(5)));
+    /// assert_eq!(Lerp::identity(t(0), t(10)).lerp(t(10)), Some(t(10)));
+    /// ```
     pub fn identity(start: Time, end: Time) -> Lerp {
         assert!(end >= start);
         Lerp::new(vec![start, end], vec![start, end])
     }
 
+    /// The first time in the range of the mapping.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use scribl_curves::{Lerp, Time};
+    /// let t = |x| Time::from_micros(x);
+    /// assert_eq!(
+    ///     Lerp::identity(t(10), t(20))
+    ///         .with_new_lerp(t(10), t(9))
+    ///         .first(),
+    ///     t(9)
+    /// );
+    /// ```
     pub fn first(&self) -> Time {
         *self.lerped_values.first().unwrap()
     }
 
+    /// The last time in the range of the mapping.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use scribl_curves::{Lerp, Time};
+    /// let t = |x| Time::from_micros(x);
+    /// assert_eq!(
+    ///     Lerp::identity(t(10), t(20))
+    ///         .with_new_lerp(t(20), t(25))
+    ///         .last(),
+    ///     t(25)
+    /// );
+    /// ```
     pub fn last(&self) -> Time {
         *self.lerped_values.last().unwrap()
     }
 
+    /// All of the key frames in the range of the mapping.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use scribl_curves::{Lerp, Time};
+    /// let t = |x| Time::from_micros(x);
+    /// assert_eq!(
+    ///     Lerp::identity(t(10), t(20))
+    ///         .with_new_lerp(t(15), t(18))
+    ///         .times(),
+    ///     &[t(10), t(18), t(20)]
+    /// );
+    /// ```
     pub fn times(&self) -> &[Time] {
         &self.lerped_values
     }
@@ -51,6 +162,16 @@ impl Lerp {
         match lerp_interval(t, &self.original_values, &self.lerped_values) {
             AfterEnd(_) => self.last(),
             BeforeStart(_) => self.first(),
+            SingleTime(t) => t,
+            Interval(t, _) => t,
+        }
+    }
+
+    pub fn lerp_extended(&self, t: Time) -> Time {
+        use LerpResult::*;
+        match lerp_interval(t, &self.original_values, &self.lerped_values) {
+            AfterEnd(t) => *self.lerped_values.last().unwrap() + t,
+            BeforeStart(t) => *self.lerped_values.first().unwrap() + t,
             SingleTime(t) => t,
             Interval(t, _) => t,
         }
