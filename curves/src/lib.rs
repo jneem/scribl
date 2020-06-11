@@ -1,14 +1,14 @@
-pub mod curve;
-pub mod effect;
-pub mod lerp;
-pub mod simplify;
-pub mod smooth;
+mod curve;
+mod effect;
+mod lerp;
+mod simplify;
+mod smooth;
 mod snippet;
-pub mod span_cursor;
-pub mod time;
+mod span_cursor;
+mod time;
 
-pub use crate::curve::{SegmentStyle, StrokeSeq};
+pub use crate::curve::{StrokeSeq, StrokeStyle};
 pub use crate::effect::{Effect, Effects, FadeEffect};
 pub use crate::lerp::Lerp;
-pub use crate::time::{Time, TimeDiff};
+pub use crate::time::{Time, TimeDiff, TimeSpan};
 pub use snippet::{SnippetData, SnippetId, SnippetsCursor, SnippetsData};

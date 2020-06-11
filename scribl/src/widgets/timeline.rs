@@ -8,7 +8,7 @@ use druid::{
 };
 use std::collections::HashMap;
 
-use scribl_curves::{time, SnippetData, SnippetId, SnippetsData, Time, TimeDiff};
+use scribl_curves::{SnippetData, SnippetId, SnippetsData, Time, TimeDiff};
 
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData};
 use crate::cmd;
@@ -79,7 +79,7 @@ struct AudioWaveform {
 
 /// The cached "waveform" of a drawing snippet.
 struct DrawingWaveform {
-    segments: Vec<(Time, Time, Color)>,
+    strokes: Vec<(Time, Time, Color)>,
 }
 
 /// The data of a snippet (either a drawing snippet or an audio snippet).
@@ -106,8 +106,8 @@ impl AudioWaveform {
         let mut path = BezPath::new();
         path.move_to((0.0, 0.0));
         for p in (0..(width as usize)).step_by(pix_per_sample) {
-            let start_time = x_pix(p as f64) - time::ZERO;
-            let end_time = x_pix((p + pix_per_sample) as f64) - time::ZERO;
+            let start_time = x_pix(p as f64) - Time::ZERO;
+            let end_time = x_pix((p + pix_per_sample) as f64) - Time::ZERO;
             let start_idx =
                 (start_time.as_audio_idx(crate::audio::SAMPLE_RATE) as usize).min(buf.len());
             let end_idx =
@@ -131,20 +131,20 @@ impl AudioWaveform {
 
 impl DrawingWaveform {
     fn from_snippet(data: &SnippetData) -> DrawingWaveform {
-        let mut segs = Vec::new();
-        for seg in data.curve.segments() {
-            if seg.times.is_empty() {
+        let mut strokes = Vec::new();
+        for stroke in data.strokes() {
+            if stroke.times.is_empty() {
                 continue;
             }
-            let first_time = *seg.times.first().unwrap();
-            let last_time = *seg.times.last().unwrap();
-            segs.push((
-                data.lerp.lerp_clamped(first_time),
-                data.lerp.lerp_clamped(last_time),
-                seg.style.color,
+            let first_time = *stroke.times.first().unwrap();
+            let last_time = *stroke.times.last().unwrap();
+            strokes.push((
+                data.lerp().lerp_clamped(first_time),
+                data.lerp().lerp_clamped(last_time),
+                stroke.style.color,
             ));
         }
-        DrawingWaveform { segments: segs }
+        DrawingWaveform { strokes }
     }
 }
 
@@ -171,7 +171,7 @@ impl Snip {
         match self {
             Snip::Audio(_) => Vec::new(),
             Snip::Drawing(d) => {
-                let lerps = d.lerp.times();
+                let lerps = d.lerp().times();
                 let first_idx = lerps
                     .iter()
                     .position(|&x| x != lerps[0])
@@ -377,7 +377,7 @@ impl TimelineSnippet {
                     .segs
                     .as_ref()
                     .expect("drawing widget should have cached segment extents");
-                for &(start, end, ref color) in &segs.segments {
+                for &(start, end, ref color) in &segs.strokes {
                     let start_x = pix_width(start - data.start_time());
                     let end_x = pix_width(end - data.start_time());
                     let rect = Rect::from_points((start_x, 0.0), (end_x, height));

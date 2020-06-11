@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 
-use scribl_curves::{time, Time, TimeDiff};
+use scribl_curves::{Time, TimeDiff};
 
 /// This is in charge of the audio event loop, and various other things. There should only be one
 /// of these alive at any one time, and it is intended to be long-lived (i.e., create it at startup
@@ -397,7 +397,7 @@ impl AudioSnippetData {
     }
 
     pub fn end_time(&self) -> Time {
-        let length = time::TimeDiff::from_audio_idx(self.buf().len() as i64, SAMPLE_RATE);
+        let length = TimeDiff::from_audio_idx(self.buf().len() as i64, SAMPLE_RATE);
         self.start_time() + length
     }
 
@@ -440,7 +440,7 @@ impl AudioSnippetsData {
             .values()
             .map(|snip| snip.end_time())
             .max()
-            .unwrap_or(time::ZERO)
+            .unwrap_or(Time::ZERO)
     }
 }
 
@@ -664,7 +664,7 @@ mod tests {
     fn forward() {
         let snips = snips!(0 => &[1, 2, 3, 4, 5]);
         // a sample rate of 1 is silly, but it lets us get the indices right without any rounding issues.
-        let mut c = Cursor::new(&snips, time::ZERO, 1);
+        let mut c = Cursor::new(&snips, Time::ZERO, 1);
         let mut out = vec![0; 5];
         c.advance_and_mix(&snips, &mut out[..], true);
         assert_eq!(out, vec![1, 2, 3, 4, 5]);
@@ -673,7 +673,7 @@ mod tests {
     #[test]
     fn forward_offset() {
         let snips = snips!(5 => &[1, 2, 3, 4, 5]);
-        let mut c = Cursor::new(&snips, time::ZERO, 1);
+        let mut c = Cursor::new(&snips, Time::ZERO, 1);
         let mut out = vec![0; 15];
         c.advance_and_mix(&snips, &mut out[..], true);
         assert_eq!(out, vec![0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 0, 0, 0, 0, 0]);
@@ -703,7 +703,7 @@ mod tests {
             0 => &[1, 2, 3],
             2 => &[1, 2, 3]
         );
-        let mut c = Cursor::new(&snips, time::ZERO, 1);
+        let mut c = Cursor::new(&snips, Time::ZERO, 1);
         let mut out = vec![0; 10];
         c.advance_and_mix(&snips, &mut out[..], true);
         assert_eq!(out, vec![1, 2, 4, 2, 3, 0, 0, 0, 0, 0]);
@@ -727,7 +727,7 @@ mod tests {
             0 => &[1, 2, 3],
             12 => &[1, 2, 3]
         );
-        let mut c = Cursor::new(&snips, time::ZERO, 1);
+        let mut c = Cursor::new(&snips, Time::ZERO, 1);
         let mut out = vec![0; 10];
         c.advance_and_mix(&snips, &mut out[..], true);
         assert_eq!(out, vec![1, 2, 3, 0, 0, 0, 0, 0, 0, 0]);

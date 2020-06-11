@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
-use scribl_curves::{time, SnippetsData, Time};
+use scribl_curves::{SnippetsData, Time, TimeDiff};
 
 use crate::audio::{AudioSnippetsData, Cursor, SAMPLE_RATE};
 use crate::editor_state::StatusMsg;
@@ -217,7 +217,7 @@ pub fn do_encode_blocking(
         .snippets
         .last_draw_time()
         .max(cmd.audio_snippets.end_time())
-        + time::TimeDiff::from_micros(200000);
+        + TimeDiff::from_micros(200000);
     let num_frames = end_time.as_video_frame(FPS);
     main_loop(create_pipeline(
         cmd.snippets,

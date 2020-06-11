@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use scribl_curves::{
-    time, Effect, Effects, FadeEffect, SegmentStyle, SnippetData, SnippetId, SnippetsData,
-    StrokeSeq, Time,
+    Effect, Effects, FadeEffect, SnippetData, SnippetId, SnippetsData, StrokeSeq, StrokeStyle,
+    Time, TimeDiff,
 };
 
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData, AudioState};
@@ -39,12 +39,12 @@ impl SegmentInProgress {
         self.len += 1;
     }
 
-    pub fn render(&self, ctx: &mut impl RenderContext, style: SegmentStyle, time: Time) {
-        use druid::piet::{LineCap, LineJoin, StrokeStyle};
-        let stroke_style = StrokeStyle {
+    pub fn render(&self, ctx: &mut impl RenderContext, style: StrokeStyle, time: Time) {
+        use druid::piet::{self, LineCap, LineJoin};
+        let stroke_style = piet::StrokeStyle {
             line_join: Some(LineJoin::Round),
             line_cap: Some(LineCap::Round),
-            ..StrokeStyle::new()
+            ..piet::StrokeStyle::new()
         };
 
         let ps = self.points.borrow();
@@ -217,8 +217,8 @@ impl Default for EditorState {
             recording_speed: RecordingSpeed::Slow,
             undo: Arc::new(RefCell::new(UndoStack::new(UndoState::default()))),
 
-            time_snapshot: (Instant::now(), time::ZERO),
-            time: time::ZERO,
+            time_snapshot: (Instant::now(), Time::ZERO),
+            time: Time::ZERO,
             fade_enabled: false,
             pen_size: PenSize::Medium,
             audio: Arc::new(RefCell::new(AudioState::init())),
@@ -236,8 +236,8 @@ impl EditorState {
         let mut ret = Effects::default();
         if self.fade_enabled {
             ret.add(Effect::Fade(FadeEffect {
-                pause: time::TimeDiff::from_micros(250_000),
-                fade: time::TimeDiff::from_micros(250_000),
+                pause: TimeDiff::from_micros(250_000),
+                fade: TimeDiff::from_micros(250_000),
             }));
         }
         ret
@@ -261,9 +261,8 @@ impl EditorState {
         let wall_micros_elapsed = Instant::now()
             .duration_since(self.time_snapshot.0)
             .as_micros();
-        let logical_time_elapsed = time::TimeDiff::from_micros(
-            (wall_micros_elapsed as f64 * self.action.time_factor()) as i64,
-        );
+        let logical_time_elapsed =
+            TimeDiff::from_micros((wall_micros_elapsed as f64 * self.action.time_factor()) as i64);
         self.time_snapshot.1 + logical_time_elapsed
     }
 
@@ -478,8 +477,8 @@ impl EditorState {
         self.new_segment.take()
     }
 
-    pub fn cur_style(&self) -> SegmentStyle {
-        SegmentStyle {
+    pub fn cur_style(&self) -> StrokeStyle {
+        StrokeStyle {
             color: self.palette.selected_color().clone(),
             thickness: self.pen_size.size_fraction(),
             effects: self.selected_effects(),

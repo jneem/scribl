@@ -26,9 +26,9 @@ pub struct TimeSpan {
     end: Time,
 }
 
-pub const ZERO: Time = Time(0);
-
 impl Time {
+    pub const ZERO: Time = Time(0);
+
     pub fn from_micros(us: i64) -> Time {
         assert!(us >= 0);
         Time(us)

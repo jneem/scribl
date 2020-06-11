@@ -1,5 +1,5 @@
 use druid::kurbo::{BezPath, ParamCurve, PathEl, PathSeg, Point};
-use druid::piet::{LineCap, LineJoin, StrokeStyle};
+use druid::piet::{self, LineCap, LineJoin};
 use druid::{Color, RenderContext};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -20,7 +20,7 @@ mod serde_color {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct SegmentStyle {
+pub struct StrokeStyle {
     #[serde(with = "serde_color")]
     pub color: Color,
     pub thickness: f64,
@@ -28,29 +28,29 @@ pub struct SegmentStyle {
 }
 
 // piet::Color doesn't implement PartialEq, so we can't derive this.
-impl PartialEq for SegmentStyle {
-    fn eq(&self, other: &SegmentStyle) -> bool {
+impl PartialEq for StrokeStyle {
+    fn eq(&self, other: &StrokeStyle) -> bool {
         self.thickness == other.thickness
             && self.color.as_rgba_u32() == other.color.as_rgba_u32()
             && self.effects == other.effects
     }
 }
 
-/// A `StrokeSeq` is a sequence of strokes (or segments), each of which is a continuous curve. Each
-/// segment can have its own style; the only restriction is that they must be non-decreasing in
-/// time.
+/// A `StrokeSeq` is a sequence of strokes, each of which is a continuous curve. Each stroke can
+/// have its own style (thickness, color, effects). The strokes in a `StrokeSeq` are non-decreasing
+/// in time: one stroke ends before another begins.
 #[derive(Clone, Debug)]
 pub struct StrokeSeq {
     path: BezPath,
     pub times: Vec<Time>,
 
-    // The path can consist of many different "segments" (continuous parts between
-    // pen lifts). This contains the first index of each segment, which will always
+    // The path can consist of many different "strokes" (continuous parts between
+    // pen lifts). This contains the first index of each stroke, which will always
     // point to a `MoveTo`.
-    seg_boundaries: Vec<usize>,
+    stroke_boundaries: Vec<usize>,
 
-    // This has the same length as `seg_boundaries`.
-    seg_styles: Vec<SegmentStyle>,
+    // This has the same length as `stroke_boundaries`.
+    stroke_styles: Vec<StrokeStyle>,
 }
 
 impl StrokeSeq {
@@ -58,19 +58,21 @@ impl StrokeSeq {
         StrokeSeq {
             path: BezPath::new(),
             times: Vec::new(),
-            seg_boundaries: Vec::new(),
-            seg_styles: Vec::new(),
+            stroke_boundaries: Vec::new(),
+            stroke_styles: Vec::new(),
         }
     }
 
+    /// Returns all the elements in this `StrokeSeq`. The return value will contain only `MoveTo`
+    /// (for the first element of each stroke) and `CurveTo`.
     pub fn elements(&self) -> &[PathEl] {
         self.path.elements()
     }
 
-    fn append_path(&mut self, p: BezPath, times: Vec<Time>, style: SegmentStyle) {
+    fn append_path(&mut self, p: BezPath, times: Vec<Time>, style: StrokeStyle) {
         assert_eq!(p.elements().len(), times.len());
-        self.seg_boundaries.push(self.times.len());
-        self.seg_styles.push(style);
+        self.stroke_boundaries.push(self.times.len());
+        self.stroke_styles.push(style);
         self.times.extend_from_slice(&times[..]);
         self.path.extend(p.into_iter());
     }
@@ -79,7 +81,7 @@ impl StrokeSeq {
         &mut self,
         points: &[Point],
         times: &[Time],
-        style: SegmentStyle,
+        style: StrokeStyle,
         distance_threshold: f64,
         angle_threshold: f64,
     ) {
@@ -98,80 +100,91 @@ impl StrokeSeq {
         self.append_path(path, times, style);
     }
 
-    pub fn segments<'a>(&'a self) -> impl Iterator<Item = Segment<'a>> + 'a {
-        self.seg_boundaries
+    pub fn strokes<'a>(&'a self) -> impl Iterator<Item = Stroke<'a>> + 'a {
+        self.stroke_boundaries
             .iter()
             .enumerate()
-            .map(move |(idx, &seg_start_idx)| {
-                let seg_end_idx = self
-                    .seg_boundaries
+            .map(move |(idx, &stroke_start_idx)| {
+                let stroke_end_idx = self
+                    .stroke_boundaries
                     .get(idx + 1)
                     .cloned()
                     .unwrap_or(self.times.len());
-                Segment {
-                    style: self.seg_styles[idx].clone(),
-                    elements: &self.path.elements()[seg_start_idx..seg_end_idx],
-                    times: &self.times[seg_start_idx..seg_end_idx],
+                Stroke {
+                    style: self.stroke_styles[idx].clone(),
+                    elements: &self.path.elements()[stroke_start_idx..stroke_end_idx],
+                    times: &self.times[stroke_start_idx..stroke_end_idx],
                 }
             })
     }
 
     pub fn render(&self, ctx: &mut impl RenderContext, time: Time) {
-        let stroke_style = StrokeStyle {
+        let stroke_style = piet::StrokeStyle {
             line_join: Some(LineJoin::Round),
             line_cap: Some(LineCap::Round),
-            ..StrokeStyle::new()
+            ..piet::StrokeStyle::new()
         };
 
-        for seg in self.segments() {
-            if let Some(last) = seg.times.last() {
+        for stroke in self.strokes() {
+            if let Some(last) = stroke.times.last() {
                 if *last <= time {
-                    let color = if let Some(fade) = seg.style.effects.fade() {
-                        seg.style
+                    let color = if let Some(fade) = stroke.style.effects.fade() {
+                        stroke
+                            .style
                             .color
                             .with_alpha(fade.opacity_at_time(time - *last))
                     } else {
-                        seg.style.color
+                        stroke.style.color
                     };
-                    ctx.stroke_styled(&seg.elements, &color, seg.style.thickness, &stroke_style);
+                    ctx.stroke_styled(
+                        &stroke.elements,
+                        &color,
+                        stroke.style.thickness,
+                        &stroke_style,
+                    );
                 } else {
-                    // For the last segment, we construct a new segment whose end time is interpolated
-                    // up until the current time.
-                    // Note: we're doing some unnecessary cloning, just for the convenience of being able
-                    // to use BezPath::get_seg.
-                    let c = BezPath::from_vec(seg.elements.to_owned());
-                    let t_idx = seg.times.binary_search(&time).unwrap_or_else(|i| i);
+                    // For the last stroke, we construct a new stroke whose end time is
+                    // interpolated up until the current time.
+                    // Note: we're doing some unnecessary cloning, just for the convenience of
+                    // being able to use BezPath::get_seg.
+                    let c = BezPath::from_vec(stroke.elements.to_owned());
+                    let t_idx = stroke.times.binary_search(&time).unwrap_or_else(|i| i);
 
                     if t_idx == 0 {
-                        // If we only contain the first element of the curve, it's a MoveTo and doesn't
-                        // need to be drawn anyway.
+                        // If we only contain the first element, it's a MoveTo and
+                        // doesn't need to be drawn anyway.
                         break;
                     }
 
-                    // We already checked that time > seg.times.last().
-                    assert!(t_idx < seg.times.len());
-                    assert_eq!(seg.times.len(), seg.elements.len());
-                    let last_seg = c.get_seg(t_idx).unwrap();
+                    // We already checked that time > stroke.times.last().
+                    assert!(t_idx < stroke.times.len());
+                    assert_eq!(stroke.times.len(), stroke.elements.len());
+                    let last_stroke = c.get_seg(t_idx).unwrap();
                     // The indexing is ok, because we already checked t_idx > 0.
-                    let prev_t = seg.times[t_idx - 1].as_micros() as f64;
-                    let next_t = seg.times[t_idx].as_micros() as f64;
+                    let prev_t = stroke.times[t_idx - 1].as_micros() as f64;
+                    let next_t = stroke.times[t_idx].as_micros() as f64;
                     let t_ratio = if prev_t == next_t {
                         1.0
                     } else {
                         (time.as_micros() as f64 - prev_t) / (next_t - prev_t)
                     };
-                    let last_seg = last_seg.subsegment(0.0..t_ratio);
+                    let last_stroke = last_stroke.subsegment(0.0..t_ratio);
 
                     let mut c: BezPath = c.iter().take(t_idx).collect();
-                    match last_seg {
+                    match last_stroke {
                         PathSeg::Cubic(x) => c.curve_to(x.p1, x.p2, x.p3),
                         PathSeg::Quad(x) => c.quad_to(x.p1, x.p2),
                         PathSeg::Line(x) => c.line_to(x.p1),
                     }
 
-                    ctx.stroke_styled(&c, &seg.style.color, seg.style.thickness, &stroke_style);
+                    ctx.stroke_styled(
+                        &c,
+                        &stroke.style.color,
+                        stroke.style.thickness,
+                        &stroke_style,
+                    );
 
-                    // We've already rendered the segment spanning the ending time, so we're done.
+                    // We've already rendered the stroke spanning the ending time, so we're done.
                     break;
                 }
             }
@@ -179,13 +192,13 @@ impl StrokeSeq {
     }
 }
 
-// A curve gets serialized as a sequence of segments.
+// A curve gets serialized as a sequence of strokes.
 impl Serialize for StrokeSeq {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
-        let mut seq = ser.serialize_seq(Some(self.seg_styles.len()))?;
+        let mut seq = ser.serialize_seq(Some(self.stroke_styles.len()))?;
 
-        for seg in self.segments() {
-            seq.serialize_element(&seg)?;
+        for stroke in self.strokes() {
+            seq.serialize_element(&stroke)?;
         }
 
         seq.end()
@@ -194,27 +207,27 @@ impl Serialize for StrokeSeq {
 
 impl<'a> Deserialize<'a> for StrokeSeq {
     fn deserialize<D: Deserializer<'a>>(de: D) -> Result<StrokeSeq, D::Error> {
-        let segments: Vec<SavedSegment> = Deserialize::deserialize(de)?;
+        let strokes: Vec<SavedSegment> = Deserialize::deserialize(de)?;
         let mut curve = StrokeSeq::new();
 
-        for seg in segments {
+        for stroke in strokes {
             let p = |(x, y)| Point::new(x as f64 / 10_000.0, y as f64 / 10_000.0);
 
             let mut path = BezPath::new();
-            if seg.elements.is_empty() {
+            if stroke.elements.is_empty() {
                 continue;
             }
-            path.move_to(p(seg.elements[0]));
-            for points in seg.elements[1..].chunks(3) {
+            path.move_to(p(stroke.elements[0]));
+            for points in stroke.elements[1..].chunks(3) {
                 path.curve_to(p(points[0]), p(points[1]), p(points[2]));
             }
 
-            let times = seg
+            let times = stroke
                 .times
                 .into_iter()
                 .map(|x| Time::from_micros(x as i64))
                 .collect();
-            curve.append_path(path, times, seg.style);
+            curve.append_path(path, times, stroke.style);
         }
 
         Ok(curve)
@@ -225,26 +238,27 @@ impl<'a> Deserialize<'a> for StrokeSeq {
 struct SavedSegment {
     elements: Vec<(i32, i32)>,
     times: Vec<u64>,
-    style: SegmentStyle,
+    style: StrokeStyle,
 }
 
-/// A single continuous segment of a [`Curve`], with data borrowed from the curve.
+/// A single continuous stroke in a [`StrokeSeq`], with borrowed data.
 ///
-/// The segments of a curve can be obtained from [`Curve::segments`].
+/// The strokes of a curve can be obtained from [`Curve::strokes`].
 #[derive(Serialize)]
-pub struct Segment<'a> {
-    /// The elements of this segment. This will always start with a `PathEl::MoveTo`.
+pub struct Stroke<'a> {
+    /// The elements of this stroke. This will always start with a `PathEl::MoveTo`, and it will be
+    /// followed only by `PathEl::CurveTo`s.
     #[serde(serialize_with = "serialize_path_els")]
     pub elements: &'a [PathEl],
 
     /// The times at which the elements were drawn. This slice has the same length as `elements`.
     pub times: &'a [Time],
 
-    /// The style for drawing this segment.
-    pub style: SegmentStyle,
+    /// The style for drawing this stroke.
+    pub style: StrokeStyle,
 }
 
-// We do manual serialization for curves (and segments), mainly to ensure that
+// We do manual serialization for curves (and strokes), mainly to ensure that
 // the file format stays stable.
 fn serialize_path_els<S: Serializer>(path: &[PathEl], ser: S) -> Result<S::Ok, S::Error> {
     // We serialize as a list of tuples. Each moveto gives one; each curveto gives three.
@@ -297,7 +311,7 @@ pub mod tests {
         let mut c = StrokeSeq::new();
         let p = |x, y| Point::new(x, y);
         let t = |x| Time::from_micros(x);
-        let style = SegmentStyle {
+        let style = StrokeStyle {
             color: Color::WHITE,
             thickness: 1.0,
             effects: Effects::default(),
@@ -322,9 +336,9 @@ pub mod tests {
     }
 
     #[test]
-    fn segments() {
+    fn strokes() {
         let c = basic_curve();
-        assert_eq!(c.segments().count(), 2);
+        assert_eq!(c.strokes().count(), 2);
     }
 
     #[test]
@@ -335,17 +349,17 @@ pub mod tests {
         let deserialized: StrokeSeq = serde_json::from_str(&ser).unwrap();
         // BezPath doesn't implement PartialEq, so just compare the other parts.
         assert_eq!(deserialized.times, c.times);
-        assert_eq!(deserialized.seg_boundaries, c.seg_boundaries);
-        assert_eq!(deserialized.seg_styles, c.seg_styles);
+        assert_eq!(deserialized.stroke_boundaries, c.stroke_boundaries);
+        assert_eq!(deserialized.stroke_styles, c.stroke_styles);
     }
 
     #[test]
-    fn serde_two_segments() {
+    fn serde_two_strokes() {
         let c = basic_curve();
         let written = serde_cbor::to_vec(&c).unwrap();
         let read: StrokeSeq = serde_cbor::from_slice(&written[..]).unwrap();
         assert_eq!(read.times, c.times);
-        assert_eq!(read.seg_boundaries, c.seg_boundaries);
-        assert_eq!(read.seg_styles, c.seg_styles);
+        assert_eq!(read.stroke_boundaries, c.stroke_boundaries);
+        assert_eq!(read.stroke_styles, c.stroke_styles);
     }
 }

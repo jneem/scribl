@@ -11,16 +11,32 @@ use crate::{span_cursor, Lerp, StrokeSeq, Time};
 #[serde(transparent)]
 pub struct SnippetId(u64);
 
+/// A snippet is a sequence of strokes, each one possibly with a time distortion (provided by
+/// [`Lerp`]).
+///
+/// This struct implements [`druid::Data`]. In particular, it is cheap to clone: most of the actual
+/// data lives behind shared references.
+///
+/// [`Lerp`]: struct.Lerp.html
+/// [`druid::Data`]: ../druid/trait.Data.html
 #[derive(Deserialize, Serialize, Data, Debug, Clone)]
 pub struct SnippetData {
-    pub curve: Arc<StrokeSeq>,
-    pub lerp: Arc<Lerp>,
+    #[serde(rename = "curve")]
+    strokes: Arc<StrokeSeq>,
+    lerp: Arc<Lerp>,
 
     /// Controls whether the snippet ever ends. If `None`, it means that the snippet will remain
     /// forever; if `Some(t)` it means that the snippet will disappear at time `t`.
-    pub end: Option<Time>,
+    end: Option<Time>,
 }
 
+/// A collection of `SnippetData`s, which can be accessed using their [id].
+///
+/// This struct implements [`druid::Data`]. In particular, it is cheap to clone: most of the actual
+/// data lives behind shared references.
+///
+/// [id]: struct.SnippetId.html
+/// [`druid::Data`]: ../druid/trait.Data.html
 #[derive(Clone, Data, Default)]
 pub struct SnippetsData {
     last_id: u64,
@@ -30,20 +46,36 @@ pub struct SnippetsData {
 pub type SnippetsCursor = span_cursor::Cursor<Time, SnippetId>;
 
 impl SnippetData {
-    pub fn new(curve: StrokeSeq) -> SnippetData {
-        if curve.times.is_empty() {
-            panic!("tried to create a snippet from an empty curve");
+    pub fn new(strokes: StrokeSeq) -> SnippetData {
+        if strokes.times.is_empty() {
+            panic!("tried to create a snippet from an empty stroke sequence");
         }
-        let start = *curve.times.first().unwrap();
-        let end = *curve.times.last().unwrap();
+        let start = *strokes.times.first().unwrap();
+        let end = *strokes.times.last().unwrap();
         let lerp = Lerp::identity(start, end);
         SnippetData {
-            curve: Arc::new(curve),
+            strokes: Arc::new(strokes),
             lerp: Arc::new(lerp),
             end: None,
         }
     }
 
+    pub fn strokes<'a>(&'a self) -> impl Iterator<Item = crate::curve::Stroke<'a>> {
+        self.strokes.strokes()
+    }
+
+    /// Returns the `Lerp` object used for time-distorting this snippet.
+    pub fn lerp(&self) -> &Lerp {
+        &self.lerp
+    }
+
+    /// Returns the time at which this snippet should cease to be visible, or `None` if the snippet
+    /// should always be visible.
+    pub fn end_time(&self) -> Option<Time> {
+        self.end
+    }
+
+    /// Has this snippet drawn anything by `time`?
     pub fn visible_at(&self, time: Time) -> bool {
         if let Some(end) = self.end {
             self.start_time() <= time && time <= end
@@ -52,18 +84,21 @@ impl SnippetData {
         }
     }
 
+    /// Returns a reference to just that part of the path that exists up until `time`.
+    ///
+    /// If there if a path element that starts before `time` and ends after `time`, it will be
+    /// included too.
     pub fn path_at(&self, time: Time) -> &[PathEl] {
         if !self.visible_at(time) {
             return &[];
         }
 
-        // TODO: maybe there can be a better API that just gets idx directly?
         let local_time = self.lerp.unlerp_clamped(time);
-        let idx = match self.curve.times.binary_search(&local_time) {
+        let idx = match self.strokes.times.binary_search(&local_time) {
             Ok(i) => i + 1,
             Err(i) => i,
         };
-        &self.curve.elements()[..idx]
+        &self.strokes.elements()[..idx]
     }
 
     pub fn path_between(&self, start: Time, end: Time) -> &[PathEl] {
@@ -78,15 +113,15 @@ impl SnippetData {
 
         let local_start = self.lerp.unlerp_clamped(start);
         let local_end = self.lerp.unlerp_clamped(end);
-        let start_idx = match self.curve.times.binary_search(&local_start) {
+        let start_idx = match self.strokes.times.binary_search(&local_start) {
             Ok(i) => i,
             Err(i) => i,
         };
-        let end_idx = match self.curve.times.binary_search(&local_end) {
+        let end_idx = match self.strokes.times.binary_search(&local_end) {
             Ok(i) => i + 1,
             Err(i) => i,
         };
-        &self.curve.elements()[start_idx..end_idx]
+        &self.strokes.elements()[start_idx..end_idx]
     }
 
     pub fn start_time(&self) -> Time {
@@ -98,17 +133,12 @@ impl SnippetData {
         self.lerp.last()
     }
 
-    /// The time at which this snippet should disappear.
-    pub fn end_time(&self) -> Option<Time> {
-        self.end
-    }
-
     pub fn render(&self, ctx: &mut impl RenderContext, time: Time) {
         if !self.visible_at(time) {
             return;
         }
         let local_time = self.lerp.unlerp_extended(time);
-        self.curve.render(ctx, local_time);
+        self.strokes.render(ctx, local_time);
     }
 }
 
@@ -161,7 +191,7 @@ impl SnippetsData {
             .values()
             .map(|snip| snip.last_draw_time())
             .max()
-            .unwrap_or(crate::time::ZERO)
+            .unwrap_or(Time::ZERO)
     }
 
     pub fn create_cursor(&self, time: Time) -> SnippetsCursor {
@@ -171,37 +201,6 @@ impl SnippetsData {
             id: *id,
         });
         span_cursor::Cursor::new(spans, time)
-    }
-
-    pub fn render_changes(
-        &self,
-        ctx: &mut impl RenderContext,
-        cursor: &mut SnippetsCursor,
-        new_time: Time,
-    ) {
-        //let old_time = cursor.current();
-        let active_snips = cursor.advance_to(new_time);
-
-        // TODO: we could use more precise information about the bounding boxes.
-        /* This panics currently, because of kurbo #98.
-        let bbox = active_snips.active_ids()
-            .map(|id| self.snippets[&id].path_between(old_time, new_time).bounding_box())
-            .fold(Rect::ZERO, |r1, r2| r1.union(r2));
-
-        dbg!(bbox);
-        for id in active_snips.active_ids() {
-            let snip = &self.snippets[&id];
-            // TODO: is there a better way to test for empty intersection?
-            if snip.path_at(new_time).bounding_box().intersect(bbox).area() > 0.0 {
-                snip.render(ctx, new_time);
-            }
-        }
-        */
-
-        for id in active_snips.active_ids() {
-            let snip = &self.snippets[&id];
-            snip.render(ctx, new_time);
-        }
     }
 }
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use scribl_curves::{time, SnippetData, SnippetId, Time};
+use scribl_curves::{SnippetData, SnippetId, Time};
 
 use crate::audio::{AudioSnippetData, AudioSnippetId};
 
@@ -19,8 +19,8 @@ pub struct SnippetLayout<T> {
 impl From<(SnippetId, &SnippetData)> for SnippetBounds<SnippetId> {
     fn from(data: (SnippetId, &SnippetData)) -> SnippetBounds<SnippetId> {
         SnippetBounds {
-            start: data.1.lerp.first(),
-            end: data.1.end,
+            start: data.1.lerp().first(),
+            end: data.1.end_time(),
             id: data.0,
         }
     }
@@ -50,7 +50,7 @@ pub fn layout<Id: Copy + Hash + Eq, T: Into<SnippetBounds<Id>>, I: Iterator<Item
     'bounds: for b in &bounds {
         for (row_idx, end) in row_ends.iter_mut().enumerate() {
             if let Some(finite_end_time) = *end {
-                if finite_end_time == time::ZERO || b.start > finite_end_time {
+                if finite_end_time == Time::ZERO || b.start > finite_end_time {
                     *end = b.end;
                     ret.positions.insert(b.id, row_idx);
                     continue 'bounds;
