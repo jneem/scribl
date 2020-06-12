@@ -67,10 +67,10 @@ impl TimeDiff {
     /// # Examples
     ///
     /// ```
-    /// use scribl_curves::time::{ZERO, Time};
-    /// assert_eq!((ZERO - ZERO).as_audio_idx(44100), 0);
-    /// assert_eq!((Time::from_micros(1000000) - ZERO).as_audio_idx(44100), 44100);
-    /// assert_eq!((ZERO - Time::from_micros(1000000)).as_audio_idx(44100), -44100);
+    /// use scribl_curves::Time;
+    /// assert_eq!((Time::ZERO - Time::ZERO).as_audio_idx(44100), 0);
+    /// assert_eq!((Time::from_micros(1000000) - Time::ZERO).as_audio_idx(44100), 44100);
+    /// assert_eq!((Time::ZERO - Time::from_micros(1000000)).as_audio_idx(44100), -44100);
     /// ```
     pub fn as_audio_idx(&self, sample_rate: u32) -> isize {
         (self.0 as f64 / 1e6 * sample_rate as f64) as isize
@@ -165,7 +165,7 @@ impl TimeSpan {
     ///
     /// # Example
     /// ```rust
-    /// use scribl_curves::time::{Time, TimeSpan};
+    /// use scribl_curves::{Time, TimeSpan};
     /// let me = TimeSpan::new(Time::from_micros(0), Time::from_micros(100));
     /// let other = TimeSpan::new(Time::from_micros(0), Time::from_micros(10));
     ///
