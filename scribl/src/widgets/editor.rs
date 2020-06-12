@@ -53,9 +53,9 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
     )
     .tooltip(|state: &EditorState, _env: &Env| {
         if state.action.rec_toggle() == ToggleButtonState::ToggledOn {
-            "Stop recording"
+            "Stop recording (Space)"
         } else {
-            "Record a drawing"
+            "Record a drawing (Space)"
         }
         .to_owned()
     });
@@ -149,9 +149,9 @@ impl Editor {
         )
         .tooltip(|state: &EditorState, _env: &Env| {
             if state.action.rec_audio_toggle() == ToggleButtonState::ToggledOn {
-                "Stop recording"
+                "Stop recording (Shift+Space)"
             } else {
-                "Start recording audio"
+                "Start recording audio (Space)"
             }
             .to_owned()
         });
@@ -165,9 +165,9 @@ impl Editor {
         )
         .tooltip(|state: &EditorState, _env: &Env| {
             if state.action.play_toggle() == ToggleButtonState::ToggledOn {
-                "Pause playback"
+                "Pause playback (P)"
             } else {
-                "Play back the animation"
+                "Play back the animation (P)"
             }
             .to_owned()
         });

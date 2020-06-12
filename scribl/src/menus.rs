@@ -43,7 +43,8 @@ fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
     let save_as = MenuItem::new(
         LocalizedString::new("common-menu-file-save-as"),
         save_as_command,
-    );
+    )
+    .hotkey(SysMods::CmdShift, "s");
 
     // Note that we're reusing the SHOW_SAVE_PANEL command for exporting. There doesn't appear to
     // be another way to get the system file dialog.
