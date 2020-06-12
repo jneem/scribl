@@ -139,10 +139,10 @@ impl Widget<EditorState> for DrawingPane {
             for (_, snip) in data.snippets.snippets() {
                 snip.render(ctx.render_ctx, data.time());
             }
-            if let Some(curve) = data.new_curve.as_ref() {
+            if let Some(curve) = data.new_stroke_seq.as_ref() {
                 curve.render(ctx.render_ctx, data.time());
             }
-            if let Some(snip) = data.new_segment.as_ref() {
+            if let Some(snip) = data.new_stroke.as_ref() {
                 snip.render(ctx.render_ctx, data.cur_style(), data.time());
             }
         });

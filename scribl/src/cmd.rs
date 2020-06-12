@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use scribl_curves::{SnippetData, SnippetsData, Time};
 
 use crate::audio::{AudioSnippetData, AudioSnippetsData};
-use crate::editor_state::{MaybeSnippetId, SegmentInProgress};
+use crate::editor_state::{MaybeSnippetId, StrokeInProgress};
 
 /// Starts recording a drawing.
 pub const DRAW: Selector = Selector::new("scribl.draw");
@@ -47,7 +47,7 @@ pub const CHOOSE_COLOR: Selector<Color> = Selector::new("scribl.choose-color");
 pub const EXPORT: Selector<ExportCmd> = Selector::new("scribl.export");
 
 /// Appends a new segment to the currently-drawing snippet.
-pub const APPEND_NEW_SEGMENT: Selector<SegmentInProgress> =
+pub const APPEND_NEW_SEGMENT: Selector<StrokeInProgress> =
     Selector::new("scribl.append-new-segment");
 
 #[derive(Clone)]

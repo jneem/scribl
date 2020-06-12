@@ -289,41 +289,46 @@ impl Editor {
     ) -> bool {
         // TODO: change to match when that is supported.
         let ret = if cmd.is(cmd::ADD_SNIPPET) {
+            let prev_state = data.undo_state();
             let snip = cmd.get_unchecked(cmd::ADD_SNIPPET);
             let (new_snippets, new_id) = data.snippets.with_new_snippet(snip.clone());
             data.snippets = new_snippets;
             data.selected_snippet = new_id.into();
-            data.push_undo_state();
+            data.push_undo_state(prev_state.with_time(snip.start_time()), "add drawing");
             true
         } else if cmd.is(cmd::DELETE_SNIPPET) {
             let id = cmd.get_unchecked(cmd::DELETE_SNIPPET);
             if let Some(id) = id.as_draw().or(data.selected_snippet.as_draw()) {
+                let prev_state = data.undo_state();
                 let new_snippets = data.snippets.without_snippet(id);
                 data.snippets = new_snippets;
                 if data.selected_snippet == id.into() {
                     data.selected_snippet = MaybeSnippetId::None;
                 }
-                data.push_undo_state();
+                data.push_undo_state(prev_state, "delete drawing");
             } else if let Some(id) = id.as_audio().or(data.selected_snippet.as_audio()) {
+                let prev_state = data.undo_state();
                 let new_snippets = data.audio_snippets.without_snippet(id);
                 data.audio_snippets = new_snippets;
                 if data.selected_snippet == id.into() {
                     data.selected_snippet = MaybeSnippetId::None;
                 }
-                data.push_undo_state();
+                data.push_undo_state(prev_state, "delete audio");
             } else {
                 log::error!("No snippet id to delete");
             }
             true
         } else if cmd.is(cmd::ADD_AUDIO_SNIPPET) {
+            let prev_state = data.undo_state();
             let snip = cmd.get_unchecked(cmd::ADD_AUDIO_SNIPPET);
             data.audio_snippets = data.audio_snippets.with_new_snippet(snip.clone());
-            data.push_undo_state();
+            data.push_undo_state(prev_state.with_time(snip.start_time()), "add audio");
             true
         } else if cmd.is(cmd::APPEND_NEW_SEGMENT) {
+            let prev_state = data.undo_state();
             let seg = cmd.get_unchecked(cmd::APPEND_NEW_SEGMENT);
             data.add_segment_to_snippet(seg.clone());
-            data.push_transient_undo_state();
+            data.push_transient_undo_state(prev_state, "add stroke");
             true
         } else if cmd.is(cmd::CHOOSE_COLOR) {
             let color = cmd.get_unchecked(cmd::CHOOSE_COLOR);
@@ -342,23 +347,26 @@ impl Editor {
 
             true
         } else if cmd.is(cmd::SET_MARK) {
+            let prev_state = data.undo_state();
             let time = cmd.get_unchecked(cmd::SET_MARK).unwrap_or(data.time());
             data.mark = Some(time);
-            data.push_undo_state();
+            data.push_undo_state(prev_state, "set mark");
             true
         } else if cmd.is(cmd::TRUNCATE_SNIPPET) {
             if let Some(id) = data.selected_snippet.as_draw() {
+                let prev_state = data.undo_state();
                 data.snippets = data.snippets.with_truncated_snippet(id, data.time());
-                data.push_undo_state();
+                data.push_undo_state(prev_state, "truncate drawing");
             } else {
                 log::error!("cannot truncate, nothing selected");
             }
             true
         } else if cmd.is(cmd::LERP_SNIPPET) {
             if let (Some(mark_time), Some(id)) = (data.mark, data.selected_snippet.as_draw()) {
+                let prev_state = data.undo_state();
                 data.snippets = data.snippets.with_new_lerp(id, data.time(), mark_time);
-                data.push_undo_state();
-                ctx.submit_command(Command::new(cmd::WARP_TIME_TO, mark_time), None);
+                data.warp_time_to(mark_time);
+                data.push_undo_state(prev_state, "warp drawing");
             } else {
                 log::error!(
                     "cannot lerp, mark time {:?}, selected {:?}",

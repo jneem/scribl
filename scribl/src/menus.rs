@@ -73,8 +73,32 @@ fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
 }
 
 fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
-    let undo = platform_menus::common::undo().disabled_if(|| !data.undo.borrow().can_undo());
-    let redo = platform_menus::common::redo().disabled_if(|| !data.undo.borrow().can_redo());
+    let undo = if data.undo.borrow().can_undo() {
+        MenuItem::new(
+            // FIXME: figure out how localization is expected to work
+            LocalizedString::new("scribl-menu-edit-undo").with_placeholder(format!(
+                "Undo {}",
+                data.undo.borrow().undo_description().unwrap_or("")
+            )),
+            commands::UNDO,
+        )
+        .hotkey(SysMods::Cmd, "z")
+    } else {
+        platform_menus::common::undo().disabled()
+    };
+
+    let redo = if data.undo.borrow().can_redo() {
+        MenuItem::new(
+            LocalizedString::new("scribl-menu-edit-redo").with_placeholder(format!(
+                "Redo {}",
+                data.undo.borrow().redo_description().unwrap_or("")
+            )),
+            commands::REDO,
+        )
+        .hotkey(SysMods::CmdShift, "z")
+    } else {
+        platform_menus::common::redo().disabled()
+    };
 
     let draw = MenuItem::new(
         LocalizedString::new("scribl-menu-edit-draw").with_placeholder("Draw"),

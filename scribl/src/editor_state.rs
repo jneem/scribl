@@ -21,7 +21,7 @@ use crate::widgets::ToggleButtonState;
 /// pen-up). Because we expect lots of fast changes to this, it uses interior
 /// mutability to avoid repeated allocations.
 #[derive(Clone, Data, Default)]
-pub struct SegmentInProgress {
+pub struct StrokeInProgress {
     #[data(ignore)]
     points: Arc<RefCell<Vec<Point>>>,
 
@@ -32,7 +32,7 @@ pub struct SegmentInProgress {
     len: usize,
 }
 
-impl SegmentInProgress {
+impl StrokeInProgress {
     pub fn add_point(&mut self, p: Point, t: Time) {
         self.points.borrow_mut().push(p);
         self.times.borrow_mut().push(t);
@@ -157,8 +157,8 @@ pub struct AsyncOpsStatus {
 /// This data contains the state of an editor window.
 #[derive(Clone, Data, Lens)]
 pub struct EditorState {
-    pub new_segment: Option<SegmentInProgress>,
-    pub new_curve: Option<Arc<StrokeSeq>>,
+    pub new_stroke: Option<StrokeInProgress>,
+    pub new_stroke_seq: Option<Arc<StrokeSeq>>,
 
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,
@@ -173,7 +173,7 @@ pub struct EditorState {
     #[lens(name = "ignore_undo")]
     #[data(ignore)]
     pub undo: Arc<RefCell<UndoStack>>,
-
+    // TODO: doc
     #[lens(name = "time_lens")]
     time: Time,
 
@@ -206,8 +206,8 @@ pub struct EditorState {
 impl Default for EditorState {
     fn default() -> EditorState {
         EditorState {
-            new_segment: None,
-            new_curve: None,
+            new_stroke: None,
+            new_stroke_seq: None,
             snippets: SnippetsData::default(),
             audio_snippets: AudioSnippetsData::default(),
             selected_snippet: MaybeSnippetId::None,
@@ -215,7 +215,7 @@ impl Default for EditorState {
 
             action: CurrentAction::Idle,
             recording_speed: RecordingSpeed::Slow,
-            undo: Arc::new(RefCell::new(UndoStack::new(UndoState::default()))),
+            undo: Arc::new(RefCell::new(UndoStack::new())),
 
             time_snapshot: (Instant::now(), Time::ZERO),
             time: Time::ZERO,
@@ -274,8 +274,8 @@ impl EditorState {
     }
 
     pub fn start_recording(&mut self, time_factor: f64) {
-        assert!(self.new_curve.is_none());
-        assert!(self.new_segment.is_none());
+        assert!(self.new_stroke_seq.is_none());
+        assert!(self.new_stroke.is_none());
         assert_eq!(self.action, CurrentAction::Idle);
 
         self.action = CurrentAction::WaitingToRecord(time_factor);
@@ -300,7 +300,7 @@ impl EditorState {
             CurrentAction::Scanning(_) => self.stop_scanning(),
             _ => {}
         }
-        self.new_segment = None;
+        self.new_stroke = None;
         self.action = CurrentAction::WaitingToRecord(self.recording_speed.factor());
         self.take_time_snapshot();
     }
@@ -322,11 +322,11 @@ impl EditorState {
     }
 
     /// Takes the segment that is currently being drawn and adds it to the snippet in progress.
-    pub fn add_segment_to_snippet(&mut self, seg: SegmentInProgress) {
+    pub fn add_segment_to_snippet(&mut self, seg: StrokeInProgress) {
         // TODO(performance): this is quadratic for long snippets with lots of segments, because
         // we clone it every time the pen lifts.
         let mut curve = self
-            .new_curve
+            .new_stroke_seq
             .as_ref()
             .map(|c| c.as_ref().clone())
             .unwrap_or(StrokeSeq::new());
@@ -337,7 +337,7 @@ impl EditorState {
             0.0005,
             std::f64::consts::PI / 4.0,
         );
-        self.new_curve = Some(Arc::new(curve));
+        self.new_stroke_seq = Some(Arc::new(curve));
     }
 
     /// Stops recording drawing, returning the snippet that we just finished recording (if it was
@@ -349,14 +349,14 @@ impl EditorState {
 
         self.audio.borrow_mut().stop_playing();
 
-        if let Some(seg) = self.new_segment.take() {
+        if let Some(seg) = self.new_stroke.take() {
             // If there is an unfinished segment, we add it directly to the snippet without going
             // through a command, because we don't need the extra undo state.
             self.add_segment_to_snippet(seg);
         }
         self.action = CurrentAction::Idle;
         self.take_time_snapshot();
-        self.new_curve
+        self.new_stroke_seq
             .take()
             .map(|arc_curve| SnippetData::new(arc_curve.as_ref().clone()))
     }
@@ -463,18 +463,18 @@ impl EditorState {
     pub fn add_to_cur_snippet(&mut self, p: Point, t: Time) {
         assert!(self.action.is_recording());
 
-        if let Some(ref mut snip) = self.new_segment {
+        if let Some(ref mut snip) = self.new_stroke {
             snip.add_point(p, t);
         } else {
-            let mut snip = SegmentInProgress::default();
+            let mut snip = StrokeInProgress::default();
             snip.add_point(p, t);
-            self.new_segment = Some(snip);
+            self.new_stroke = Some(snip);
         }
     }
 
-    pub fn finish_cur_segment(&mut self) -> Option<SegmentInProgress> {
+    pub fn finish_cur_segment(&mut self) -> Option<StrokeInProgress> {
         assert!(self.action.is_recording());
-        self.new_segment.take()
+        self.new_stroke.take()
     }
 
     pub fn cur_style(&self) -> StrokeStyle {
@@ -489,6 +489,7 @@ impl EditorState {
         EditorState {
             snippets: data.snippets,
             audio_snippets: data.audio_snippets,
+            undo: Arc::new(RefCell::new(UndoStack::new())),
             ..Default::default()
         }
     }
@@ -501,9 +502,9 @@ impl EditorState {
         }
     }
 
-    fn undo_state(&self) -> UndoState {
+    pub fn undo_state(&self) -> UndoState {
         UndoState {
-            new_curve: self.new_curve.clone(),
+            new_curve: self.new_stroke_seq.clone(),
             snippets: self.snippets.clone(),
             audio_snippets: self.audio_snippets.clone(),
             selected_snippet: self.selected_snippet.clone(),
@@ -512,18 +513,24 @@ impl EditorState {
         }
     }
 
-    pub fn push_undo_state(&mut self) {
-        self.undo.borrow_mut().push(self.undo_state());
+    pub fn push_undo_state(&mut self, prev_state: UndoState, description: impl ToString) {
+        self.undo
+            .borrow_mut()
+            .push(prev_state, self.undo_state(), description.to_string());
     }
 
-    pub fn push_transient_undo_state(&mut self) {
-        self.undo.borrow_mut().push_transient(self.undo_state());
+    pub fn push_transient_undo_state(&mut self, prev_state: UndoState, description: impl ToString) {
+        self.undo.borrow_mut().push_transient(
+            prev_state,
+            self.undo_state(),
+            description.to_string(),
+        );
     }
 
     fn restore_undo_state(&mut self, undo: UndoState) {
-        let mid_recording = self.new_curve.is_some();
+        let mid_recording = self.new_stroke_seq.is_some();
 
-        self.new_curve = undo.new_curve;
+        self.new_stroke_seq = undo.new_curve;
         self.snippets = undo.snippets;
         self.audio_snippets = undo.audio_snippets;
         self.selected_snippet = undo.selected_snippet;
@@ -536,7 +543,7 @@ impl EditorState {
         // In case the undo resets us to a mid-recording state, we ensure that
         // the state is waiting-to-record (i.e., recording but paused).
         if mid_recording {
-            if let Some(new_curve) = self.new_curve.as_ref() {
+            if let Some(new_curve) = self.new_stroke_seq.as_ref() {
                 if let Some(&time) = new_curve.times.last() {
                     // This is even more of a special-case hack: the end of the
                     // last-drawn curve is likely to be after undo.time (because
