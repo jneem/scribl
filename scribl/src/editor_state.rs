@@ -39,6 +39,10 @@ impl StrokeInProgress {
         self.len += 1;
     }
 
+    pub fn last_point(&self) -> Option<Point> {
+        self.points.borrow().last().copied()
+    }
+
     pub fn render(&self, ctx: &mut impl RenderContext, style: StrokeStyle, time: Time) {
         use druid::piet::{self, LineCap, LineJoin};
         let stroke_style = piet::StrokeStyle {

@@ -101,7 +101,7 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
     }
 
     fn update(&mut self, ctx: &mut UpdateCtx, old_data: &T, data: &T, _env: &Env) {
-        if !old_data.same(data) {
+        if (self.toggle_state)(old_data) != (self.toggle_state)(data) {
             ctx.request_paint();
         }
     }

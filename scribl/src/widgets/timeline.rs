@@ -247,6 +247,9 @@ impl<W: Widget<EditorState>> Controller<EditorState, Scroll<EditorState, W>>
                 0.0
             };
 
+            if delta_x > 0.0 {
+                ctx.request_paint();
+            }
             child.scroll(Vec2 { x: delta_x, y: 0.0 }, size);
         }
         child.update(ctx, old_data, data, env);
@@ -298,6 +301,14 @@ impl TimelineInner {
                 }),
             );
         }
+    }
+
+    fn invalid_rect(s: Time, t: Time, height: f64) -> Rect {
+        let x1 = pix_x(s);
+        let x2 = pix_x(t);
+        Rect::from_points((x1, 0.0), (x2, height))
+            .inset((CURSOR_THICKNESS / 2.0, 0.0))
+            .expand()
     }
 }
 
@@ -409,7 +420,6 @@ impl Widget<EditorState> for TimelineSnippet {
                             Id::Drawing(id) => data.selected_snippet = id.into(),
                             Id::Audio(id) => data.selected_snippet = id.into(),
                         }
-                        ctx.request_paint();
                         ctx.set_handled();
                         ctx.set_menu(crate::menus::make_menu(data));
                     }
@@ -520,14 +530,12 @@ impl Widget<EditorState> for TimelineInner {
                 let time = Time::from_micros((ev.pos.x / PIXELS_PER_USEC) as i64);
                 ctx.submit_command(Command::new(cmd::WARP_TIME_TO, time), None);
                 ctx.set_active(true);
-                ctx.request_paint();
             }
             Event::MouseMove(ev) => {
                 // On click-and-drag, we change the time with the drag.
                 if ctx.is_active() {
                     let time = Time::from_micros((ev.pos.x.max(0.0) / PIXELS_PER_USEC) as i64);
                     ctx.submit_command(Command::new(cmd::WARP_TIME_TO, time), None);
-                    ctx.request_paint();
                 }
             }
             Event::MouseUp(_) => {
@@ -557,8 +565,13 @@ impl Widget<EditorState> for TimelineInner {
             self.recreate_children(&data.snippets, &data.audio_snippets);
             ctx.children_changed();
         }
-        if old_data.time() != data.time() || old_data.mark != data.mark {
+        if old_data.mark != data.mark {
             ctx.request_paint();
+        }
+        if old_data.time() != data.time() {
+            let invalid =
+                TimelineInner::invalid_rect(old_data.time(), data.time(), ctx.size().height);
+            ctx.request_paint_rect(invalid);
         }
         for child in self.children.values_mut() {
             child.update(ctx, data, env);

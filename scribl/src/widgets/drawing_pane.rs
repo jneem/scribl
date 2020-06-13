@@ -3,7 +3,7 @@ use druid::{
     LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
 };
 
-use scribl_curves::SnippetsCursor;
+use scribl_curves::{SnippetsCursor, Time};
 
 use crate::cmd;
 use crate::editor_state::{CurrentAction, EditorState};
@@ -21,7 +21,7 @@ const PAPER_BDY_THICKNESS: f64 = 1.0;
 
 pub struct DrawingPane {
     paper_rect: Rect,
-    cursor: Option<SnippetsCursor>,
+    cursor: SnippetsCursor,
 }
 
 impl DrawingPane {
@@ -33,8 +33,11 @@ impl DrawingPane {
 
     fn from_image_coords(&self) -> Affine {
         let top_left = Vec2::new(self.paper_rect.x0, self.paper_rect.y0);
-        let size_ratio = DRAWING_WIDTH / self.paper_rect.width();
-        Affine::translate(top_left) * Affine::scale(1.0 / size_ratio)
+        Affine::translate(top_left) * Affine::scale(self.from_image_scale())
+    }
+
+    fn from_image_scale(&self) -> f64 {
+        self.paper_rect.width() / DRAWING_WIDTH
     }
 }
 
@@ -42,7 +45,7 @@ impl Default for DrawingPane {
     fn default() -> DrawingPane {
         DrawingPane {
             paper_rect: Rect::ZERO,
-            cursor: None,
+            cursor: SnippetsCursor::empty(Time::ZERO),
         }
     }
 }
@@ -53,8 +56,18 @@ impl Widget<EditorState> for DrawingPane {
             Event::MouseMove(ev) => {
                 if ctx.is_active() && state.action.is_recording() {
                     let time = state.accurate_time();
+
+                    // Compute the rectangle that needs to be invalidated in order to draw this new
+                    // point.
+                    let mut invalid = Rect::from_origin_size(ev.pos, (0.0, 0.0));
+                    let last_point = state.new_stroke.as_ref().and_then(|s| s.last_point());
+                    if let Some(last_point) = last_point {
+                        invalid = invalid.union_pt(last_point);
+                    }
+                    let pen_width = state.pen_size.size_fraction() * self.from_image_scale();
+                    ctx.request_paint_rect(invalid.inset(pen_width).expand());
+
                     state.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
-                    ctx.request_paint();
                 }
             }
             Event::MouseDown(ev) if ev.button.is_left() => {
@@ -66,7 +79,6 @@ impl Widget<EditorState> for DrawingPane {
                     state.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
 
                     ctx.set_active(true);
-                    ctx.request_paint();
                 }
             }
             Event::MouseUp(ev) => {
@@ -92,11 +104,13 @@ impl Widget<EditorState> for DrawingPane {
         _env: &Env,
     ) {
         if old_data.time() != data.time() {
+            self.cursor.advance_to(data.time());
+            // TODO: figure out the region that changed
             ctx.request_paint();
         }
 
         if !old_data.snippets.same(&data.snippets) {
-            self.cursor = Some(data.snippets.create_cursor(data.time()));
+            self.cursor = data.snippets.create_cursor(data.time());
             ctx.request_paint();
         }
     }

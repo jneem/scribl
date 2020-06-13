@@ -1,11 +1,18 @@
-use druid::lens;
+use druid::piet::{FontBuilder, PietText, PietTextLayout, Text, TextLayout, TextLayoutBuilder};
 use druid::widget::prelude::*;
 use druid::widget::{Align, Either, Flex, Label, ProgressBar, WidgetExt};
+use druid::{lens, Color, Point};
 use druid::{Data, LensExt};
 use std::borrow::Cow;
 use std::path::Path;
 
+use scribl_curves::Time;
+
 use crate::editor_state::{AsyncOpsStatus, EditorState, FinishedStatus};
+
+const LINE_HEIGHT_FACTOR: f64 = 1.2;
+const X_PADDING: f64 = 5.0;
+const BASELINE_GUESS_FACTOR: f64 = 0.8;
 
 // We have two possible status widgets: one is just a label; the other is a label + progress bar.
 #[derive(Clone, Data, Debug)]
@@ -46,14 +53,10 @@ fn status_type(status: &AsyncOpsStatus) -> StatusType {
 }
 
 pub fn make_status_bar() -> impl Widget<EditorState> {
-    let time_label = Label::new(|data: &EditorState, _env: &Env| {
-        let usecs = data.time().as_micros();
-        let mins = usecs / 60_000_000;
-        let secs = (usecs / 1_000_000) % 60;
-        let cents = (usecs / 10_000) % 100;
-        format!("{:02}:{:02}.{:02}", mins, secs, cents)
-    });
+    let time_label = Clock.lens(EditorState::time_lens);
 
+    // TODO: label requests layout every time the string changes, which isn't necessary here.
+    // Make a fixed-size label that doesn't re-layout itself.
     let label = Label::dynamic(
         |data: &AsyncOpsStatus, _env: &Env| match status_type(data) {
             StatusType::Label(s) => s.to_owned(),
@@ -95,4 +98,56 @@ pub fn make_status_bar() -> impl Widget<EditorState> {
         .with_flex_spacer(1.0)
         .with_child(status_label.lens(EditorState::status));
     Align::centered(row)
+}
+
+// This is basically a Label, but with a fixed width: Label calls `request_layout` every time its
+// text changes, which is too much for this purpose.
+struct Clock;
+
+fn get_layout(time: Time, t: &mut PietText, env: &Env) -> PietTextLayout {
+    let font_name = env.get(crate::FONT_NAME_MONO);
+    let font_size = env.get(druid::theme::TEXT_SIZE_NORMAL);
+    let font = t.new_font_by_name(font_name, font_size).build().unwrap();
+    let usecs = time.as_micros();
+    let mins = usecs / 60_000_000;
+    let secs = (usecs / 1_000_000) % 60;
+    let cents = (usecs / 10_000) % 100;
+    t.new_text_layout(
+        &font,
+        &format!("{:02}:{:02}.{:02}", mins, secs, cents),
+        f64::INFINITY,
+    )
+    .build()
+    .unwrap()
+}
+
+impl Widget<Time> for Clock {
+    fn event(&mut self, _: &mut EventCtx, _: &Event, _: &mut Time, _: &Env) {}
+
+    fn lifecycle(&mut self, _: &mut LifeCycleCtx, _: &LifeCycle, _: &Time, _: &Env) {}
+
+    fn update(&mut self, ctx: &mut UpdateCtx, _: &Time, _: &Time, _: &Env) {
+        ctx.request_paint();
+    }
+
+    fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints, _: &Time, env: &Env) -> Size {
+        let font_size = env.get(druid::theme::TEXT_SIZE_NORMAL);
+        let layout = get_layout(Time::ZERO, &mut ctx.text(), env);
+        bc.constrain((
+            layout.width() + 2.0 * X_PADDING,
+            font_size * LINE_HEIGHT_FACTOR,
+        ))
+    }
+
+    fn paint(&mut self, ctx: &mut PaintCtx, data: &Time, env: &Env) {
+        let font_size = env.get(druid::theme::TEXT_SIZE_NORMAL);
+        let layout = get_layout(*data, &mut ctx.text(), env);
+        let line_height = font_size * LINE_HEIGHT_FACTOR;
+
+        // Find the origin for the text
+        let origin = Point::new(X_PADDING, line_height * BASELINE_GUESS_FACTOR);
+        let color = Color::WHITE;
+
+        ctx.draw_text(&layout, origin, &color);
+    }
 }

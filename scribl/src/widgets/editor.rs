@@ -377,11 +377,9 @@ impl Editor {
             true
         } else if cmd.is(druid::commands::UNDO) {
             data.undo();
-            ctx.request_paint();
             true
         } else if cmd.is(druid::commands::REDO) {
             data.redo();
-            ctx.request_paint();
             true
         } else if cmd.is(cmd::PLAY) {
             if data.action.is_idle() {

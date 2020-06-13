@@ -103,6 +103,17 @@ impl<T: Ord + Copy, Id: Copy + Eq + Hash> Cursor<T, Id> {
         }
     }
 
+    pub fn empty(time: T) -> Cursor<T, Id> {
+        Cursor {
+            spans_start: Vec::new(),
+            spans_end: Vec::new(),
+            active: Vec::new(),
+            next_start_idx: 0,
+            next_end_idx: 0,
+            current: time,
+        }
+    }
+
     pub fn current(&self) -> T {
         self.current
     }

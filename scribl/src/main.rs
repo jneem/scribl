@@ -25,7 +25,8 @@ const BUTTON_ICON_HOT: Key<Color> = Key::new("scribl-radio-button-icon-hot");
 const BUTTON_ICON_IDLE: Key<Color> = Key::new("scribl-radio-button-icon-idle");
 const BUTTON_GROUP_BORDER_WIDTH: Key<f64> = Key::new("scribl-button-group-border-width");
 pub const FRAME_TIME: Duration = Duration::from_millis(16);
-pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("text_size_small");
+pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("scribl-text-size-small");
+pub const FONT_NAME_MONO: Key<&str> = Key::new("scribl-font-name-mono");
 
 use app_state::AppState;
 use editor_state::EditorState;
@@ -101,6 +102,7 @@ fn main() {
             e.set(BUTTON_ICON_PADDING, 2.0);
             e.set(BUTTON_GROUP_BORDER_WIDTH, 1.0);
             e.set(TEXT_SIZE_SMALL, 10.0);
+            e.set(FONT_NAME_MONO, "monospace");
         })
         .launch(initial_state)
         .expect("failed to launch");
