@@ -200,7 +200,7 @@ impl SnippetsData {
             end: snip.end_time(),
             id: *id,
         });
-        span_cursor::Cursor::new(spans, time)
+        span_cursor::Cursor::new(spans, time, time)
     }
 }
 

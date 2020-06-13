@@ -104,7 +104,7 @@ impl Widget<EditorState> for DrawingPane {
         _env: &Env,
     ) {
         if old_data.time() != data.time() {
-            self.cursor.advance_to(data.time());
+            self.cursor.advance_to(data.time(), data.time());
             // TODO: figure out the region that changed
             ctx.request_paint();
         }
@@ -118,10 +118,13 @@ impl Widget<EditorState> for DrawingPane {
     fn lifecycle(
         &mut self,
         _ctx: &mut LifeCycleCtx,
-        _: &LifeCycle,
-        _state: &EditorState,
+        event: &LifeCycle,
+        data: &EditorState,
         _env: &Env,
     ) {
+        if matches!(event, LifeCycle::WidgetAdded) {
+            self.cursor = data.snippets.create_cursor(data.time());
+        }
     }
 
     fn layout(
@@ -150,8 +153,10 @@ impl Widget<EditorState> for DrawingPane {
 
         ctx.with_save(|ctx| {
             ctx.transform(self.from_image_coords());
-            for (_, snip) in data.snippets.snippets() {
-                snip.render(ctx.render_ctx, data.time());
+            for id in self.cursor.active_ids() {
+                data.snippets
+                    .snippet(id)
+                    .render(ctx.render_ctx, data.time());
             }
             if let Some(curve) = data.new_stroke_seq.as_ref() {
                 curve.render(ctx.render_ctx, data.time());

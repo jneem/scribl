@@ -82,6 +82,7 @@ struct CursorSnippet {
 /// audio buffers and presenting them as a single logical sequence of samples. It
 /// does not actually store a reference to the buffers, instead working entirely
 /// with indices.
+// TODO: we should be able to replace this with span_cursor
 #[derive(Default, Debug)]
 pub struct Cursor {
     start_idx: usize,
