@@ -9,9 +9,9 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
-use scribl_curves::{SnippetsData, Time, TimeDiff};
+use scribl_curves::{Cursor, SnippetsData, Time, TimeDiff};
 
-use crate::audio::{AudioSnippetsData, Cursor, SAMPLE_RATE};
+use crate::audio::AudioSnippetsData;
 use crate::editor_state::StatusMsg;
 
 const FPS: f64 = 30.0;
@@ -57,7 +57,7 @@ fn create_pipeline(
     let v_queue1 = gst::ElementFactory::make("queue", Some("encode-vqueue1"))?;
     let v_queue2 = gst::ElementFactory::make("queue", Some("encode-vqueue2"))?;
     let audio_output_data = crate::audio::OutputData {
-        cursor: Cursor::new(&audio, Time::from_micros(0), SAMPLE_RATE),
+        cursor: Cursor::new(audio.snippet_spans(), 0, 0),
         snips: audio,
         forwards: true,
     };

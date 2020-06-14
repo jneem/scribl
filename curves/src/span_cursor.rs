@@ -7,6 +7,11 @@ pub struct Span<T: Ord + Copy, Id: Copy> {
     pub id: Id,
 }
 
+/// A cursor allows for efficiently scanning through a collection of overlapping intervals (which
+/// we call "spans"). It is optimized for the case where you need to repeatedly move the current
+/// position by a little bit in either direction; in this case, the complexity is O(n + log m),
+/// where `n` is the number of "active" spans that overlap the times you're interested in and `m`
+/// is the total number of spans.
 #[derive(Debug)]
 pub struct Cursor<T: Ord + Copy, Id: Copy + Eq> {
     // Spans, ordered by their start times.
@@ -14,14 +19,22 @@ pub struct Cursor<T: Ord + Copy, Id: Copy + Eq> {
     // Spans, ordered by their end times.
     spans_end: Vec<Span<T, Id>>,
 
+    // The set of active spans (unordered). This is the set of spans that have a non-zero
+    // intersection with the current interval.
     active: Vec<Span<T, Id>>,
+
+    // An interval of times, inclusive of both ends.
     current: (T, T),
+
+    // The index (into `spans_start`) of the first element having `start > current.1`
     next_start_idx: usize,
+    // The index (into `span_end`) of the first element with `end >= current.0`. Note that this is
+    // an active element (unlike with next_start_idx).
     next_end_idx: usize,
 }
 
-// This is the same as `Option`, but option has none before some.
-// We could consider making this public and using it in `Span`.
+// This is the same as `Option`, but option has none before some. We could consider making this
+// public and using it in `Span`.
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 enum MaybeInfinite<T> {
     Finite(T),
@@ -56,12 +69,15 @@ impl<T: PartialOrd> PartialOrd<T> for MaybeInfinite<T> {
 }
 
 impl<T: Ord + Copy, Id: Copy + Eq> Span<T, Id> {
-    pub fn is_active(&self, time: T) -> bool {
-        self.start <= time && MaybeInfinite::from(self.end) >= time
+    /// A span is active if its time interval overlaps with `[start_time, end_time]`.
+    pub fn is_active(&self, start_time: T, end_time: T) -> bool {
+        self.start <= end_time && MaybeInfinite::from(self.end) >= start_time
     }
 }
 
 impl<T: Ord + Copy, Id: Copy + Eq> Cursor<T, Id> {
+    /// Creates a new cursor for the given set of spans, and initializes its current position to
+    /// be the interval `[start_time, end_time]` (inclusive of both ends).
     pub fn new<I: IntoIterator<Item = Span<T, Id>>>(
         spans: I,
         start_time: T,
@@ -172,18 +188,27 @@ impl<T: Ord + Copy, Id: Copy + Eq> Cursor<T, Id> {
                     self.active
                         .push(self.spans_end[self.next_end_idx - 1].clone());
                     self.next_end_idx -= 1;
+                } else {
+                    break;
                 }
             }
         } else {
             self.reset_next_end_idx();
         }
 
-        self.active
-            .retain(|sp| sp.is_active(start_time) || sp.is_active(end_time));
+        self.active.retain(|sp| sp.is_active(start_time, end_time));
     }
 
     pub fn active_ids<'a>(&'a self) -> impl Iterator<Item = Id> + 'a {
         self.active.iter().map(|sp| sp.id)
+    }
+
+    pub fn active_spans<'a>(&'a self) -> impl Iterator<Item = Span<T, Id>> + 'a {
+        self.active.iter().cloned()
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.active.is_empty() && self.next_start_idx == self.spans_start.len()
     }
 }
 
@@ -223,5 +248,32 @@ mod tests {
 
         c.advance_to(6, 7);
         assert_eq!(ids(&c.active), vec![0, 2, 3]);
+    }
+
+    #[test]
+    fn backward() {
+        let ids = |spans: &[Span<_, _>]| spans.iter().map(|sp| sp.id).collect::<Vec<_>>();
+
+        let mut c = cursor(
+            &[(0, None), (3, Some(5)), (4, Some(10)), (5, Some(7))],
+            11,
+            11,
+        );
+        assert_eq!(ids(&c.active), vec![0]);
+
+        c.advance_to(10, 11);
+        assert_eq!(ids(&c.active), vec![0, 2]);
+
+        c.advance_to(8, 12);
+        assert_eq!(ids(&c.active), vec![0, 2]);
+
+        c.advance_to(6, 8);
+        assert_eq!(ids(&c.active), vec![0, 2, 3]);
+
+        c.advance_to(0, 2);
+        assert_eq!(ids(&c.active), vec![0]);
+
+        c.advance_to(0, 0);
+        assert_eq!(ids(&c.active), vec![0]);
     }
 }

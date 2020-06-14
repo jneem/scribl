@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 
-use scribl_curves::{Time, TimeDiff};
+use scribl_curves::{Cursor, Span, Time, TimeDiff};
 
 /// This is in charge of the audio event loop, and various other things. There should only be one
 /// of these alive at any one time, and it is intended to be long-lived (i.e., create it at startup
@@ -33,7 +33,7 @@ pub struct AudioState {
 /// mutates `snips`.
 pub struct OutputData {
     pub snips: AudioSnippetsData,
-    pub cursor: Cursor,
+    pub cursor: Cursor<usize, AudioSnippetId>,
     pub forwards: bool,
 }
 
@@ -70,206 +70,13 @@ pub struct AudioSnippetsData {
     snippets: OrdMap<AudioSnippetId, AudioSnippetData>,
 }
 
-// Represents a single snippet within the cursor.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct CursorSnippet {
-    id: AudioSnippetId,
-    start: usize,
-    end: usize,
-}
-
-/// A `Cursor` is in charge of taking a bunch of short, possibly overlapping,
-/// audio buffers and presenting them as a single logical sequence of samples. It
-/// does not actually store a reference to the buffers, instead working entirely
-/// with indices.
-// TODO: we should be able to replace this with span_cursor
-#[derive(Default, Debug)]
-pub struct Cursor {
-    start_idx: usize,
-    end_idx: usize,
-
-    // A cursor for every snippet, sorted by start index (increasing).
-    forward_cursors: Vec<CursorSnippet>,
-    // The index in forward_cursors of the first snippet starting after `end_idx`.
-    next_forward_cursor: usize,
-
-    // A cursor for every snippet, sorted by end index (decreasing).
-    backward_cursors: Vec<CursorSnippet>,
-    // The index in backward_cursors of the first snippet ending before `start_idx`.
-    next_backward_cursor: usize,
-
-    // The set of cursors for which `cur_idx` is in the interval [start, end).
-    active_cursors: Vec<CursorSnippet>,
-}
-
-impl CursorSnippet {
-    fn new(id: AudioSnippetId, snip: &AudioSnippetData, sample_rate: u32) -> CursorSnippet {
-        let start = snip.start_time.as_audio_idx(sample_rate);
-        CursorSnippet {
-            id,
-            start,
-            end: start + snip.buf.len(),
-        }
-    }
-}
-
-impl Cursor {
-    /// Creates a new cursor.
-    ///
-    /// - `snippets` are the snippets that the new cursor will curse over.
-    /// - `time` gives the initial position of the cursor.
-    /// - `sample_rate` is the sample rate of the audio data (TODO: maybe this
-    ///     should be contained in `AudioSnippetsData`?)
-    /// - `forwards` is true if the audio should be played forwards.
-    ///
-    /// Note that we're currently a bit wasteful when it comes to creating cursors.
-    /// We don't support any kind of seeking, so we just keep creating and
-    /// destroying cursors.
-    pub fn new(snippets: &AudioSnippetsData, time: Time, sample_rate: u32) -> Cursor {
-        let mut forward_cursors = Vec::new();
-        let cur_idx = time.as_audio_idx(sample_rate);
-
-        for (id, snip) in snippets.snippets.iter() {
-            forward_cursors.push(CursorSnippet::new(*id, snip, sample_rate));
-        }
-
-        let mut backward_cursors = forward_cursors.clone();
-        forward_cursors.sort_by_key(|c| c.start);
-        backward_cursors.sort_by_key(|c| -(c.end as isize));
-
-        let active_cursors = forward_cursors
-            .iter()
-            .copied()
-            .filter(|c| c.start < cur_idx && cur_idx < c.end)
-            .collect();
-
-        let mut ret = Cursor {
-            start_idx: cur_idx,
-            end_idx: cur_idx,
-            forward_cursors,
-            next_forward_cursor: 0,
-            backward_cursors,
-            next_backward_cursor: 0,
-            active_cursors,
-        };
-        ret.reset_next_forward_cursor();
-        ret.reset_next_backward_cursor();
-        ret
-    }
-
-    fn reset_next_forward_cursor(&mut self) {
-        match self
-            .forward_cursors
-            .binary_search_by_key(&self.end_idx, |c| c.start)
-        {
-            Ok(mut i) => {
-                // We found a cursor starting at exactly end_idx, but there might be more, so find
-                // the first one.
-                while i > 0 && self.forward_cursors[i - 1].start == self.end_idx {
-                    i -= 1;
-                }
-                self.next_forward_cursor = i;
-            }
-            Err(i) => {
-                self.next_forward_cursor = i;
-            }
-        }
-    }
-
-    fn reset_next_backward_cursor(&mut self) {
-        match self
-            .backward_cursors
-            .binary_search_by_key(&-(self.start_idx as isize), |c| -(c.end as isize))
-        {
-            Ok(mut i) => {
-                // We found a cursor ending exactly at start_idx, but there might be more so find
-                // the first one.
-                while i > 0 && self.backward_cursors[i - 1].end == self.start_idx {
-                    i -= 1;
-                }
-                self.next_backward_cursor = i;
-            }
-            Err(i) => {
-                self.next_backward_cursor = i;
-            }
-        }
-    }
-
-    fn advance_forwards(&mut self, len: usize) {
-        self.start_idx = self.end_idx;
-        self.end_idx += len;
-
-        let mut i = self.next_forward_cursor;
-        while i < self.forward_cursors.len() && self.forward_cursors[i].start <= self.end_idx {
-            self.active_cursors.push(self.forward_cursors[i]);
-            i += 1;
-        }
-        self.next_forward_cursor = i;
-        self.remove_inactive();
-    }
-
-    fn advance_backwards(&mut self, len: usize) {
-        self.end_idx = self.start_idx;
-        self.start_idx = self.start_idx.saturating_sub(len);
-
-        let mut i = self.next_backward_cursor;
-        while i < self.backward_cursors.len() && self.start_idx < self.backward_cursors[i].end {
-            self.active_cursors.push(self.backward_cursors[i]);
-            i += 1;
-        }
-        self.next_backward_cursor = i;
-
-        self.remove_inactive();
-    }
-
-    fn remove_inactive(&mut self) {
-        let start_idx = self.start_idx;
-        let end_idx = self.end_idx;
-        self.active_cursors
-            .retain(|c| c.end > start_idx && c.start < end_idx);
-    }
-
-    /// Fills the provided buffer with samples from the cursor.
-    pub fn advance_and_mix<B: DerefMut<Target = [i16]>>(
-        &mut self,
-        data: &AudioSnippetsData,
-        mut buf: B,
-        forwards: bool,
-    ) {
-        if forwards {
-            self.advance_forwards(buf.len());
-        } else {
-            self.advance_backwards(buf.len());
-        }
-
-        for c in &self.active_cursors {
-            let buf: &mut [i16] = &mut buf;
-            let snip = data.snippet(c.id);
-            let multiplier = snip.multiplier;
-
-            let snip_start = self.start_idx.saturating_sub(c.start);
-            let snip_end = self.end_idx.saturating_sub(c.start).min(snip.buf.len());
-            let buf_offset = c.start.saturating_sub(self.start_idx);
-
-            for (idx, sample) in snip.buf[snip_start..snip_end].iter().enumerate() {
-                buf[buf_offset + idx] += (*sample as f32 * multiplier) as i16;
-            }
-        }
-    }
-
-    /// Has this cursor finished producing non-zero samples?
-    pub fn is_finished(&self) -> bool {
-        self.active_cursors.is_empty() && self.next_forward_cursor == self.forward_cursors.len()
-    }
-}
-
 impl AudioState {
     /// Initializes the audio and spawns the audio thread. Returns an object that can be used
     /// to control the audio.
     pub fn init() -> AudioState {
         let output_data = Arc::new(Mutex::new(OutputData {
             snips: AudioSnippetsData::default(),
-            cursor: Cursor::default(),
+            cursor: Cursor::empty(0),
             forwards: true,
         }));
         let output_pipeline = create_output_pipeline(Arc::clone(&output_data));
@@ -358,7 +165,8 @@ impl AudioState {
     pub fn start_playing(&mut self, data: AudioSnippetsData, time: Time, velocity: f64) {
         {
             let mut lock = self.output_data.lock().unwrap();
-            lock.cursor = Cursor::new(&data, time, SAMPLE_RATE);
+            let idx = time.as_audio_idx(SAMPLE_RATE);
+            lock.cursor = Cursor::new(data.snippet_spans(), idx, idx);
             lock.snips = data;
             lock.forwards = velocity > 0.0;
         }
@@ -442,6 +250,40 @@ impl AudioSnippetsData {
             .map(|snip| snip.end_time())
             .max()
             .unwrap_or(Time::ZERO)
+    }
+
+    /// Fills the provided buffer with samples from the cursor, and advance the cursor.
+    pub fn mix_to<B: DerefMut<Target = [i16]>>(
+        &self,
+        cursor: &Cursor<usize, AudioSnippetId>,
+        mut buf: B,
+    ) {
+        for sp in cursor.active_spans() {
+            let buf: &mut [i16] = &mut buf;
+            let snip = self.snippet(sp.id);
+            let multiplier = snip.multiplier;
+
+            let (curs_start, curs_end) = cursor.current();
+            let snip_start = curs_start.saturating_sub(sp.start);
+            let snip_end = curs_end.saturating_sub(sp.start).min(snip.buf.len());
+            let buf_offset = sp.start.saturating_sub(curs_start);
+
+            for (idx, sample) in snip.buf[snip_start..snip_end].iter().enumerate() {
+                buf[buf_offset + idx] += (*sample as f32 * multiplier) as i16;
+            }
+        }
+    }
+
+    pub fn snippet_spans<'a>(&'a self) -> impl Iterator<Item = Span<usize, AudioSnippetId>> + 'a {
+        self.snippets.iter().map(|(&id, snip)| {
+            let start = snip.start_time().as_audio_idx(SAMPLE_RATE);
+            let end = start + snip.buf.len();
+            Span {
+                start,
+                end: Some(end),
+                id,
+            }
+        })
     }
 }
 
@@ -529,9 +371,16 @@ pub fn create_appsrc(data: Arc<Mutex<OutputData>>, name: &str) -> Result<gst::El
             let mut buf = vec![0i16; size as usize / 2];
             let forwards = lock.forwards;
             let data: &mut OutputData = &mut lock;
-            data.cursor
-                .advance_and_mix(&data.snips, &mut buf[..], forwards);
-            let time = Time::from_audio_idx(data.cursor.start_idx, SAMPLE_RATE);
+            if forwards {
+                let prev_end = data.cursor.current().1;
+                data.cursor.advance_to(prev_end, prev_end + buf.len());
+            } else {
+                let prev_start = data.cursor.current().0;
+                data.cursor
+                    .advance_to(prev_start.saturating_sub(buf.len()), prev_start);
+            }
+            data.snips.mix_to(&data.cursor, &mut buf[..]);
+            let time = Time::from_audio_idx(data.cursor.current().0, SAMPLE_RATE);
 
             let mut gst_buffer = gst::Buffer::with_size(size as usize)?;
             {
@@ -652,7 +501,7 @@ mod tests {
                 let mut ret = AudioSnippetsData::default();
                 $(
                     let buf: &[i16] = $buf;
-                    let time = Time::from_micros($time * 1000000);
+                    let time = Time::from_audio_idx($time, SAMPLE_RATE);
                     ret = ret.with_new_snippet(AudioSnippetData::new(buf.to_owned(), time));
                 )*
 
@@ -664,49 +513,42 @@ mod tests {
     #[test]
     fn forward() {
         let snips = snips!(0 => &[1, 2, 3, 4, 5]);
-        // a sample rate of 1 is silly, but it lets us get the indices right without any rounding issues.
-        let mut c = Cursor::new(&snips, Time::ZERO, 1);
+        let mut c = Cursor::new(snips.snippet_spans(), 0, 0);
         let mut out = vec![0; 5];
-        c.advance_and_mix(&snips, &mut out[..], true);
+        c.advance_to(0, 5);
+        snips.mix_to(&c, &mut out[..]);
         assert_eq!(out, vec![1, 2, 3, 4, 5]);
     }
 
     #[test]
     fn forward_offset() {
         let snips = snips!(5 => &[1, 2, 3, 4, 5]);
-        let mut c = Cursor::new(&snips, Time::ZERO, 1);
+        let c = Cursor::new(snips.snippet_spans(), 0, 15);
         let mut out = vec![0; 15];
-        c.advance_and_mix(&snips, &mut out[..], true);
-        assert_eq!(out, vec![0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 0, 0, 0, 0, 0]);
+        snips.mix_to(&c, &mut out[..]);
+        assert_eq!(out, vec![0, 0, 0, 0, 1, 2, 3, 4, 5, 0, 0, 0, 0, 0, 0]);
     }
 
     #[test]
     fn backward() {
-        let snips = snips!(2 => &[1, 2, 3, 4, 5]);
-        let mut c = Cursor::new(&snips, Time::from_micros(9 * 1000000), 1);
+        let snips = snips!(3 => &[1, 2, 3, 4, 5]);
+        let mut c = Cursor::new(snips.snippet_spans(), 9, 9);
         let mut out = vec![0; 10];
-        c.advance_and_mix(&snips, &mut out[..], false);
+        c.advance_to(0, 10);
+        snips.mix_to(&c, &mut out[..]);
+        // 2 leading zeros, not 3, because of rounding in audio/index conversion.
         assert_eq!(out, vec![0, 0, 1, 2, 3, 4, 5, 0, 0, 0]);
-    }
-
-    #[test]
-    fn backward_already_finished() {
-        let snips = snips!(0 => &[1, 2, 3, 4, 5]);
-        let mut c = Cursor::new(&snips, Time::from_micros(0), 1);
-        let mut out = vec![0; 10];
-        c.advance_and_mix(&snips, &mut out[..], false);
-        assert_eq!(out, vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
 
     #[test]
     fn multiple_snippets() {
         let snips = snips!(
             0 => &[1, 2, 3],
-            2 => &[1, 2, 3]
+            3 => &[1, 2, 3]
         );
-        let mut c = Cursor::new(&snips, Time::ZERO, 1);
+        let c = Cursor::new(snips.snippet_spans(), 0, 10);
         let mut out = vec![0; 10];
-        c.advance_and_mix(&snips, &mut out[..], true);
+        snips.mix_to(&c, &mut out[..]);
         assert_eq!(out, vec![1, 2, 4, 2, 3, 0, 0, 0, 0, 0]);
     }
 
@@ -714,11 +556,12 @@ mod tests {
     fn multiple_snippets_backwards() {
         let snips = snips!(
             0 => &[1, 2, 3],
-            2 => &[1, 2, 3]
+            3 => &[1, 2, 3]
         );
-        let mut c = Cursor::new(&snips, Time::from_micros(10 * 1000000), 1);
+        let mut c = Cursor::new(snips.snippet_spans(), 10, 20);
         let mut out = vec![0; 10];
-        c.advance_and_mix(&snips, &mut out[..], false);
+        c.advance_to(0, 10);
+        snips.mix_to(&c, &mut out[..]);
         assert_eq!(out, vec![1, 2, 4, 2, 3, 0, 0, 0, 0, 0]);
     }
 
@@ -728,13 +571,14 @@ mod tests {
             0 => &[1, 2, 3],
             12 => &[1, 2, 3]
         );
-        let mut c = Cursor::new(&snips, Time::ZERO, 1);
+        let mut c = Cursor::new(snips.snippet_spans(), 0, 10);
         let mut out = vec![0; 10];
-        c.advance_and_mix(&snips, &mut out[..], true);
+        snips.mix_to(&c, &mut out[..]);
         assert_eq!(out, vec![1, 2, 3, 0, 0, 0, 0, 0, 0, 0]);
 
         let mut out = vec![0; 10];
-        c.advance_and_mix(&snips, &mut out[..], true);
+        c.advance_to(10, 20);
+        snips.mix_to(&c, &mut out[..]);
         assert_eq!(out, vec![0, 0, 1, 2, 3, 0, 0, 0, 0, 0]);
     }
 }
