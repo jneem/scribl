@@ -10,6 +10,7 @@ mod autosave;
 mod cmd;
 mod editor_state;
 mod encode;
+mod imagebuf;
 mod menus;
 mod save_state;
 mod snippet_layout;

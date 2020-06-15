@@ -1,6 +1,6 @@
-use druid::kurbo::{BezPath, ParamCurve, PathEl, PathSeg, Point};
+use druid::kurbo::{BezPath, ParamCurve, PathEl, PathSeg, Point, Shape};
 use druid::piet::{self, LineCap, LineJoin};
-use druid::{Color, RenderContext};
+use druid::{Color, Rect, RenderContext};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -256,6 +256,57 @@ pub struct Stroke<'a> {
 
     /// The style for drawing this stroke.
     pub style: StrokeStyle,
+}
+
+impl<'a> Stroke<'a> {
+    /// Suppose that we advance time from `start_time` to `end_time`. Returns a bounding box for
+    /// the region that needs to be repainted.
+    pub fn changes_bbox(&self, start_time: Time, end_time: Time) -> Rect {
+        let start_idx = match self.times.binary_search(&start_time) {
+            Ok(idx) => idx,
+            Err(idx) => {
+                if idx < self.times.len() {
+                    // If the start time is in the middle of a segment, round it down to the
+                    // beginning (to get a more conservative bounding box).
+                    idx.saturating_sub(1)
+                } else {
+                    // If the start time comes after this stroke ends, we don't need to round
+                    // anything.
+                    idx
+                }
+            }
+        };
+        let end_idx = match self.times.binary_search(&end_time) {
+            Ok(idx) => idx + 1,
+            Err(idx) => {
+                if idx == 0 {
+                    idx
+                } else {
+                    (idx + 1).min(self.times.len())
+                }
+            }
+        };
+        let active_elts = if let Some(fade) = self.style.effects.fade() {
+            // If a fade is active between start_time and end_time, the whole stroke needs to be
+            // repainted.
+            let fade_start = *self.times.last().unwrap_or(&Time::ZERO) + fade.pause;
+            let fade_end = fade_start + fade.fade;
+            if fade_start < end_time && fade_end > start_time {
+                &self.elements[..]
+            } else {
+                &self.elements[start_idx..end_idx]
+            }
+        } else {
+            &self.elements[start_idx..end_idx]
+        };
+
+        let bbox = active_elts.bounding_box();
+        if bbox.area() != 0.0 {
+            bbox.inset(self.style.thickness / 2.0)
+        } else {
+            Rect::ZERO
+        }
+    }
 }
 
 // We do manual serialization for curves (and strokes), mainly to ensure that

@@ -1,6 +1,5 @@
 use anyhow::anyhow;
-use druid::piet::{Device, ImageFormat, RenderContext};
-use druid::{Affine, Data};
+use druid::Data;
 use gst::prelude::*;
 use gstreamer as gst;
 use gstreamer_app as gst_app;
@@ -13,6 +12,7 @@ use scribl_curves::{Cursor, SnippetsData, Time, TimeDiff};
 
 use crate::audio::AudioSnippetsData;
 use crate::editor_state::StatusMsg;
+use crate::imagebuf::ImageBuf;
 
 const FPS: f64 = 30.0;
 // Note that the aspect ratio here needs to match the aspect ratio
@@ -99,6 +99,7 @@ fn create_pipeline(
 
     // This will be called every time the video source requests data.
     let mut frame_counter = 0;
+    let mut image = ImageBuf::new(WIDTH as usize, HEIGHT as usize, &anim);
     let mut need_data_inner = move |src: &gst_app::AppSrc| -> anyhow::Result<()> {
         // We track encoding progress by the fraction of video frames that we've rendered.  This
         // isn't perfect (what with gstreamer's buffering, etc.), but it's probably good enough.
@@ -110,33 +111,10 @@ fn create_pipeline(
         }
 
         let time = Time::from_video_frame(frame_counter, FPS);
+        image.render(&anim, time);
 
-        // Create a cairo surface and render to it.
-        // On windows (at least), Device is not send. So we create it every frame...
-        let mut device = Device::new().map_err(|_| anyhow!("couldn't open Device"))?;
-        let mut bitmap = device
-            .bitmap_target(WIDTH as usize, HEIGHT as usize, 1.0)
-            .map_err(|_| anyhow!("couldn't create bitmap"))?;
-        {
-            let mut ctx = bitmap.render_context();
-            ctx.clear(druid::Color::WHITE);
-            ctx.with_save(|ctx| {
-                // scribl's internal coordinates are always with respect to a drawing width of 1.0.
-                ctx.transform(Affine::scale(WIDTH as f64));
-                for (_, snip) in anim.snippets() {
-                    snip.render(ctx, time);
-                }
-                Ok(())
-                // FIXME: piet's errors are not Send + Sync, so we'll need to wrap them or something.
-            })
-            .map_err(|_| anyhow!("error saving ctx"))?;
-            ctx.finish()
-                .map_err(|_| anyhow!("error finishing render"))?;
-        }
-
-        // Create a gst buffer and copy the cairo surface over to it. (TODO: it would be nice to render
-        // directly into this buffer, but cairo doesn't seem to safely support rendering into borrowed
-        // buffers.)
+        // Create a gst buffer and copy our data into it (TODO: it would be nice to render directly
+        // into this buffer, but druid doesn't seem to support rendering into borrowed buffers).
         let mut gst_buffer = gst::Buffer::with_size(video_info.size())?;
         {
             let gst_buffer_ref = gst_buffer
@@ -146,12 +124,7 @@ fn create_pipeline(
             gst_buffer_ref.set_pts(time.as_gst_clock_time());
 
             let mut data = gst_buffer_ref.map_writable()?;
-            // Note that piet-cairo currently only supports RgbaPremul. It shouldn't
-            // make a difference, because we start with an opaque background.
-            let pixels = bitmap
-                .into_raw_pixels(ImageFormat::RgbaPremul)
-                .map_err(|_| anyhow!("couldn't get pixels"))?;
-            data.as_mut_slice().copy_from_slice(&pixels[..]);
+            data.as_mut_slice().copy_from_slice(image.pixel_data());
         }
 
         // Ignore the error, since appsrc is supposed to handle it.

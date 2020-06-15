@@ -209,7 +209,7 @@ impl Editor {
         let (tx, rx) = std::sync::mpsc::channel();
         let autosave_tx = crate::autosave::spawn_autosave_thread(tx.clone());
         Editor {
-            inner: Box::new(TooltipHost::new(Align::centered(column))),
+            inner: Box::new(TooltipHost::new(Align::centered(column)).debug_invalidation()),
             status_rx: rx,
             status_tx: tx,
             timer_id: TimerToken::INVALID,
