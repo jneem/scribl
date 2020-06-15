@@ -62,7 +62,7 @@ impl Widget<EditorState> for DrawingPane {
                     let mut invalid = Rect::from_origin_size(ev.pos, (0.0, 0.0));
                     let last_point = state.new_stroke.as_ref().and_then(|s| s.last_point());
                     if let Some(last_point) = last_point {
-                        invalid = invalid.union_pt(last_point);
+                        invalid = invalid.union_pt(self.from_image_coords() * last_point);
                     }
                     let pen_width = state.pen_size.size_fraction() * self.from_image_scale();
                     ctx.request_paint_rect(invalid.inset(pen_width).expand());
