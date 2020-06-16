@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Error};
 use druid::kurbo::TranslateScale;
 use druid::piet::{self, Device, ImageFormat, InterpolationMode, RenderContext};
 use druid::{Color, Rect, Size};
@@ -21,7 +22,7 @@ impl ImageBuf {
         }
     }
 
-    pub fn render(&mut self, snippets: &SnippetsData, time: Time) {
+    pub fn render(&mut self, snippets: &SnippetsData, time: Time) -> Result<(), Error> {
         let last_time = self.cursor.current().0;
         let mut bbox = Rect::ZERO;
 
@@ -30,39 +31,28 @@ impl ImageBuf {
         // of these.
         self.cursor
             .advance_to(time.min(last_time), time.max(last_time));
-        for snip in self.cursor.active_ids().map(|id| snippets.snippet(id)) {
-            let last_local_time = snip.lerp().unlerp_clamped(self.cursor.current().0);
-            let local_time = snip.lerp().unlerp_clamped(time);
-            let (last_local_time, local_time) = (
-                last_local_time.min(local_time),
-                last_local_time.max(local_time),
-            );
-            // TODO: this is linear in the number of strokes, but probably most strokes will be
-            // uninteresting. Using some extra cached computations in SnippetData, this could be
-            // made (linear in useful strokes + logarithmic in total strokes).
-            for stroke in snip.strokes() {
-                let b = (TranslateScale::scale(self.width as f64)
-                    * stroke.changes_bbox(last_local_time, local_time))
-                .expand();
-                if b.area() != 0.0 {
-                    if bbox.area() == 0.0 {
-                        bbox = b;
-                    } else {
-                        // TODO: maybe if there are only a few bboxes, we should avoid unioning
-                        // them.
-                        bbox = bbox.union(b);
-                    }
-                }
+        for b in self.cursor.bboxes(snippets) {
+            let b = (TranslateScale::scale(self.width as f64) * b).expand();
+            if bbox.area() == 0.0 {
+                bbox = b;
+            } else {
+                // TODO: maybe if there are only a few bboxes, we should avoid unioning
+                // them.
+                bbox = bbox.union(b);
             }
         }
         if bbox.area() == 0.0 {
-            return;
+            return Ok(());
         }
 
-        let mut device = Device::new().unwrap(); // FIXME
-        let mut bitmap = device.bitmap_target(self.width, self.height, 1.0).unwrap(); // FIXME
+        let mut device = Device::new().map_err(|e| anyhow!("failed to get device: {}", e))?;
+        let mut bitmap = device
+            .bitmap_target(self.width, self.height, 1.0)
+            .map_err(|e| anyhow!("failed to get bitmap: {}", e))?;
         let mut ctx = bitmap.render_context();
-        let old_image = self.make_image(&mut ctx).unwrap();
+        let old_image = self
+            .make_image(&mut ctx)
+            .map_err(|e| anyhow!("failed to make image: {}", e))?;
         ctx.draw_image(
             &old_image,
             Size::new(self.width as f64, self.height as f64).to_rect(),
@@ -78,11 +68,15 @@ impl ImageBuf {
             }
             Ok(())
         })
-        .unwrap();
-        ctx.finish().unwrap();
+        .map_err(|e| anyhow!("failed to render: {}", e))?;
+        ctx.finish()
+            .map_err(|e| anyhow!("failed to finish context: {}", e))?;
         // Note that piet-cairo (and probably other backends too) currently only supports
         // RgbaPremul.
-        self.buf = bitmap.into_raw_pixels(ImageFormat::RgbaPremul).unwrap();
+        self.buf = bitmap
+            .into_raw_pixels(ImageFormat::RgbaPremul)
+            .map_err(|e| anyhow!("failed to get raw pixels: {}", e))?;
+        Ok(())
     }
 
     pub fn make_image<R: RenderContext>(&self, ctx: &mut R) -> Result<R::Image, piet::Error> {

@@ -111,7 +111,7 @@ fn create_pipeline(
         }
 
         let time = Time::from_video_frame(frame_counter, FPS);
-        image.render(&anim, time);
+        image.render(&anim, time)?;
 
         // Create a gst buffer and copy our data into it (TODO: it would be nice to render directly
         // into this buffer, but druid doesn't seem to support rendering into borrowed buffers).

@@ -1,6 +1,6 @@
 use druid::im::OrdMap;
-use druid::kurbo::PathEl;
-use druid::{Data, RenderContext};
+use druid::kurbo::{PathEl, Shape};
+use druid::{Data, Rect, RenderContext};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::Arc;
 
@@ -201,6 +201,45 @@ impl SnippetsData {
             id: *id,
         });
         span_cursor::Cursor::new(spans, time, time)
+    }
+}
+
+impl SnippetsCursor {
+    pub fn bboxes<'a, 'b: 'a, 'c: 'a>(
+        &'b self,
+        snippets: &'c SnippetsData,
+    ) -> impl Iterator<Item = Rect> + 'a {
+        self.active_ids()
+            .map(move |id| snippets.snippet(id))
+            // TODO: if the start and end times span the snippet's end time, need to redraw the
+            // whole thing. Below, we're taking this into account by returning all the individual
+            // bboxes, but we could be more efficient.
+            .flat_map(move |snip| {
+                let start = snip.lerp().unlerp_clamped(self.current().0);
+                let end = snip.lerp().unlerp_clamped(self.current().1);
+                let (start, end) = (start.min(end), start.max(end));
+                // TODO: this is linear in the number of strokes, but probably most strokes will be
+                // uninteresting. Using some extra cached computations in SnippetData, this could
+                // be made (linear in useful strokes + logarithmic in total strokes).
+                snip.strokes().filter_map(move |stroke| {
+                    if let Some(snip_end) = snip.end_time() {
+                        if self.current().0 <= snip_end && self.current().1 > snip_end {
+                            return Some(
+                                stroke
+                                    .elements
+                                    .bounding_box()
+                                    .inset(stroke.style.thickness / 2.0),
+                            );
+                        }
+                    }
+                    let bbox = stroke.changes_bbox(start, end);
+                    if bbox.area() == 0.0 {
+                        None
+                    } else {
+                        Some(bbox)
+                    }
+                })
+            })
     }
 }
 
