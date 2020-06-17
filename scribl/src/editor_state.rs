@@ -498,14 +498,6 @@ impl EditorState {
         }
     }
 
-    pub fn to_save_file(&self) -> SaveFileData {
-        SaveFileData {
-            version: 0,
-            snippets: self.snippets.clone(),
-            audio_snippets: self.audio_snippets.clone(),
-        }
-    }
-
     pub fn undo_state(&self) -> UndoState {
         UndoState {
             new_curve: self.new_stroke_seq.clone(),

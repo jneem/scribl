@@ -448,12 +448,12 @@ impl Editor {
                 }
                 Some("scb") => {
                     data.status.in_progress.saving = Some(path.clone());
-                    self.spawn_async_save(data.to_save_file(), path);
+                    self.spawn_async_save(SaveFileData::from_editor_state(data), path);
                 }
                 _ => {
                     log::error!("unknown extension! Trying to save anyway");
                     data.status.in_progress.saving = Some(path.clone());
-                    self.spawn_async_save(data.to_save_file(), path);
+                    self.spawn_async_save(SaveFileData::from_editor_state(data), path);
                 }
             }
             true
@@ -550,7 +550,7 @@ impl Widget<EditorState> for Editor {
                 ctx.set_handled();
             }
             Event::Timer(tok) if tok == &self.autosave_timer_id => {
-                let autosave_data = data.to_save_file();
+                let autosave_data = SaveFileData::from_editor_state(data);
                 if !self.last_autosave_data.same(&Some(autosave_data.clone())) {
                     let autosave_data = AutosaveData {
                         data: autosave_data.clone(),

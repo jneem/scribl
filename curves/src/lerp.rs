@@ -53,8 +53,8 @@ use crate::time::{Time, TimeDiff, TimeSpan};
 /// ```
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Lerp {
-    original_values: Vec<Time>,
-    lerped_values: Vec<Time>,
+    pub(crate) original_values: Vec<Time>,
+    pub(crate) lerped_values: Vec<Time>,
 }
 
 impl Lerp {

@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use druid::Data;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -6,29 +7,73 @@ use std::path::Path;
 use scribl_curves::SnippetsData;
 
 use crate::audio::AudioSnippetsData;
+use crate::EditorState;
 
-/// Our save file format is simply to serialize this struct as CBOR.
-///
-/// In particular, it's very important that the serializion format of this struct
-/// doesn't change unexpectedly.
+/// This is the data that we put into the saved files.
 #[derive(Clone, Data, Deserialize, Serialize)]
 pub struct SaveFileData {
-    /// This is currently always set to zero, but it's here in case we need to make
-    /// changes.
-    pub version: u64,
+    /// This is the version of the save file format. Every time we change the format, this gets
+    /// incremented. We retain support for reading (but not writing) old versions.
+    ///
+    /// The current version is 1.
+    pub version: u8,
 
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,
 }
 
+pub mod v0 {
+    #[derive(serde::Deserialize)]
+    pub struct SaveFileData {
+        pub version: u8,
+        pub snippets: scribl_curves::save::v0::SnippetsData,
+        pub audio_snippets: crate::audio::AudioSnippetsData,
+    }
+
+    impl From<SaveFileData> for super::SaveFileData {
+        fn from(d: SaveFileData) -> super::SaveFileData {
+            super::SaveFileData {
+                version: 1,
+                snippets: d.snippets.into(),
+                audio_snippets: d.audio_snippets,
+            }
+        }
+    }
+}
+
 impl SaveFileData {
+    pub fn from_editor_state(data: &EditorState) -> SaveFileData {
+        SaveFileData {
+            version: 1,
+            snippets: data.snippets.clone(),
+            audio_snippets: data.audio_snippets.clone(),
+        }
+    }
+
     pub fn load_from_path<P: AsRef<Path>>(path: P) -> anyhow::Result<SaveFileData> {
         let file = File::open(path.as_ref())?;
         SaveFileData::load_from(file)
     }
 
-    pub fn load_from<R: std::io::Read>(read: R) -> anyhow::Result<SaveFileData> {
-        Ok(serde_cbor::from_reader(read)?)
+    pub fn load_from<R: std::io::Read>(mut read: R) -> anyhow::Result<SaveFileData> {
+        let mut buf = Vec::new();
+        read.read_to_end(&mut buf)?;
+        // The version number is at byte 9 (the first two bytes are some CBOR tags, followed by the
+        // string "version", followed by the version number.
+        if buf.len() < 10 {
+            return Err(anyhow!("file too short!"));
+        }
+        let version = buf[9];
+        log::info!("Found file format version {}", version);
+
+        match version {
+            0 => {
+                let data: v0::SaveFileData = serde_cbor::from_slice(&buf[..])?;
+                Ok(data.into())
+            }
+            1 => Ok(serde_cbor::from_slice(&buf[..])?),
+            n => Err(anyhow!("unsupported file format version: {}", n)),
+        }
     }
 
     pub fn save_to_path<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {

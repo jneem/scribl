@@ -39,7 +39,7 @@ impl PartialEq for StrokeStyle {
 /// A `StrokeSeq` is a sequence of strokes, each of which is a continuous curve. Each stroke can
 /// have its own style (thickness, color, effects). The strokes in a `StrokeSeq` are non-decreasing
 /// in time: one stroke ends before another begins.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct StrokeSeq {
     path: BezPath,
     pub times: Vec<Time>,
@@ -55,12 +55,7 @@ pub struct StrokeSeq {
 
 impl StrokeSeq {
     pub fn new() -> StrokeSeq {
-        StrokeSeq {
-            path: BezPath::new(),
-            times: Vec::new(),
-            stroke_boundaries: Vec::new(),
-            stroke_styles: Vec::new(),
-        }
+        StrokeSeq::default()
     }
 
     /// Returns all the elements in this `StrokeSeq`. The return value will contain only `MoveTo`
@@ -69,7 +64,7 @@ impl StrokeSeq {
         self.path.elements()
     }
 
-    fn append_path(&mut self, p: BezPath, times: Vec<Time>, style: StrokeStyle) {
+    pub(crate) fn append_path(&mut self, p: BezPath, times: Vec<Time>, style: StrokeStyle) {
         assert_eq!(p.elements().len(), times.len());
         self.stroke_boundaries.push(self.times.len());
         self.stroke_styles.push(style);

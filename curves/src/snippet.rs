@@ -9,7 +9,7 @@ use crate::{span_cursor, Lerp, StrokeSeq, Time};
 /// Snippets are identified by unique ids.
 #[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct SnippetId(u64);
+pub struct SnippetId(pub(crate) u64);
 
 /// A snippet is a sequence of strokes, each one possibly with a time distortion (provided by
 /// [`Lerp`]).
@@ -21,13 +21,12 @@ pub struct SnippetId(u64);
 /// [`druid::Data`]: ../druid/trait.Data.html
 #[derive(Deserialize, Serialize, Data, Debug, Clone)]
 pub struct SnippetData {
-    #[serde(rename = "curve")]
-    strokes: Arc<StrokeSeq>,
-    lerp: Arc<Lerp>,
+    pub(crate) strokes: Arc<StrokeSeq>,
+    pub(crate) lerp: Arc<Lerp>,
 
     /// Controls whether the snippet ever ends. If `None`, it means that the snippet will remain
     /// forever; if `Some(t)` it means that the snippet will disappear at time `t`.
-    end: Option<Time>,
+    pub(crate) end: Option<Time>,
 }
 
 /// A collection of `SnippetData`s, which can be accessed using their [id].
@@ -39,8 +38,8 @@ pub struct SnippetData {
 /// [`druid::Data`]: ../druid/trait.Data.html
 #[derive(Clone, Data, Default)]
 pub struct SnippetsData {
-    last_id: u64,
-    snippets: OrdMap<SnippetId, SnippetData>,
+    pub(crate) last_id: u64,
+    pub(crate) snippets: OrdMap<SnippetId, SnippetData>,
 }
 
 pub type SnippetsCursor = span_cursor::Cursor<Time, SnippetId>;
