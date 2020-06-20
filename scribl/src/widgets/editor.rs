@@ -2,17 +2,15 @@ use druid::widget::{Align, Flex};
 use druid::{
     theme, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, ExtEventSink, KeyCode,
     KeyEvent, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget,
-    WidgetExt, WidgetId,
+    WidgetExt, WidgetId, WindowId,
 };
 use std::path::PathBuf;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use crate::autosave::AutosaveData;
 use crate::cmd;
-use crate::editor_state::{
-    CurrentAction, EditorState, MaybeSnippetId, PenSize, RecordingSpeed, StatusMsg,
-};
+use crate::editor_state::{CurrentAction, EditorState, MaybeSnippetId, PenSize, RecordingSpeed};
 use crate::save_state::SaveFileData;
 use crate::widgets::tooltip::{TooltipExt, TooltipHost};
 use crate::widgets::{
@@ -31,16 +29,9 @@ pub struct Editor {
     // We won't save the current file if it hasn't changed since the last autosave.
     last_autosave_data: Option<SaveFileData>,
     // We send the autosave data on this channel.
-    autosave_tx: Sender<AutosaveData>,
+    autosave_tx: Option<Sender<AutosaveData>>,
 
-    // The channel that we keep for receiving asynchronous messages.
-    status_rx: Receiver<StatusMsg>,
-
-    // The sending end of `status_rx`.  We never actually send on this, but we keep it around for
-    // handing out copies.
-    status_tx: Sender<StatusMsg>,
-
-    // An command sender that we can hand out to other threads, in order that they can send us
+    // A command sender that we can hand out to other threads, in order that they can send us
     // commands. It's a bit tricky to initialize this (we need to create the `AppLauncher` before
     // we can get one, but that needs a `WindowDesc`, which needs the widget tree). Therefore, we
     // make it an option and we initialize it by using the `ExtEventSink` to send a command
@@ -213,16 +204,12 @@ impl Editor {
             .with_child(timeline)
             .with_child(make_status_bar());
 
-        let (tx, rx) = std::sync::mpsc::channel();
-        let autosave_tx = crate::autosave::spawn_autosave_thread(tx.clone());
         Editor {
             inner: Box::new(TooltipHost::new(Align::centered(column)).debug_invalidation()),
-            status_rx: rx,
-            status_tx: tx,
             timer_id: TimerToken::INVALID,
             autosave_timer_id: TimerToken::INVALID,
             last_autosave_data: None,
-            autosave_tx,
+            autosave_tx: None,
             ext_cmd: None,
         }
     }
@@ -347,9 +334,19 @@ impl Editor {
 
             if data.status.in_progress.encoding.is_some() {
                 log::warn!("already encoding, not doing another one");
-            } else {
+            } else if let Some(ext_cmd) = self.ext_cmd.as_ref().cloned() {
+                // This is a little wasteful, but it's probably fine. We spin up a thread to
+                // translate between the Receiver that encode_blocking sends to, and the
+                // ExtEventSink that sends commands to us.
                 let export = export.clone();
-                let tx = self.status_tx.clone();
+                let (tx, rx) = std::sync::mpsc::channel();
+                let window_id = ctx.window_id();
+                std::thread::spawn(move || {
+                    while let Ok(msg) = rx.recv() {
+                        let _ =
+                            ext_cmd.submit_command(cmd::ENCODING_STATUS, Box::new(msg), window_id);
+                    }
+                });
                 std::thread::spawn(move || crate::encode::encode_blocking(export, tx));
             }
 
@@ -456,12 +453,20 @@ impl Editor {
                 }
                 Some("scb") => {
                     data.status.in_progress.saving = Some(path.clone());
-                    self.spawn_async_save(SaveFileData::from_editor_state(data), path);
+                    self.spawn_async_save(
+                        SaveFileData::from_editor_state(data),
+                        path,
+                        ctx.window_id(),
+                    );
                 }
                 _ => {
                     log::error!("unknown extension! Trying to save anyway");
                     data.status.in_progress.saving = Some(path.clone());
-                    self.spawn_async_save(SaveFileData::from_editor_state(data), path);
+                    self.spawn_async_save(
+                        SaveFileData::from_editor_state(data),
+                        path,
+                        ctx.window_id(),
+                    );
                 }
             }
             true
@@ -471,7 +476,7 @@ impl Editor {
             } else {
                 let info = cmd.get_unchecked(druid::commands::OPEN_FILE);
                 data.status.in_progress.loading = Some(info.path().to_owned());
-                self.spawn_async_load(info.path().to_owned());
+                self.spawn_async_load(info.path().to_owned(), ctx.window_id());
                 data.set_loading();
             }
             true
@@ -479,7 +484,31 @@ impl Editor {
             log::info!("close window command");
             true
         } else if cmd.is(cmd::INITIALIZE_EVENT_SINK) {
-            self.ext_cmd = Some(cmd.get_unchecked(cmd::INITIALIZE_EVENT_SINK).clone());
+            let ext_cmd = cmd.get_unchecked(cmd::INITIALIZE_EVENT_SINK);
+            self.ext_cmd = Some(ext_cmd.clone());
+            self.autosave_tx = Some(crate::autosave::spawn_autosave_thread(
+                ext_cmd.clone(),
+                ctx.window_id(),
+            ));
+            true
+        } else if cmd.is(cmd::FINISHED_ASYNC_LOAD) {
+            let result = cmd.get_unchecked(cmd::FINISHED_ASYNC_LOAD);
+            data.update_load_status(result);
+            if let Ok(save_data) = &result.save_data {
+                *data = EditorState::from_save_file(save_data.clone());
+                data.save_path = Some(result.path.clone());
+            }
+            true
+        } else if cmd.is(cmd::FINISHED_ASYNC_SAVE) {
+            let result = cmd.get_unchecked(cmd::FINISHED_ASYNC_SAVE);
+            data.update_save_status(result);
+            if !result.autosave && result.error.is_none() {
+                data.save_path = Some(result.path.clone());
+            }
+            true
+        } else if cmd.is(cmd::ENCODING_STATUS) {
+            let status = cmd.get_unchecked(cmd::ENCODING_STATUS);
+            data.update_encoding_status(status);
             true
         } else {
             false
@@ -491,24 +520,33 @@ impl Editor {
         ret
     }
 
-    fn spawn_async_save(&mut self, save_data: SaveFileData, path: PathBuf) {
-        let tx = self.status_tx.clone();
-        std::thread::spawn(move || {
-            let result = save_data.save_to_path(&path);
-            let _ = tx.send(StatusMsg::DoneSaving {
-                path,
-                result,
-                autosave: false,
+    fn spawn_async_save(&mut self, save_data: SaveFileData, path: PathBuf, id: WindowId) {
+        if let Some(ext_cmd) = self.ext_cmd.as_ref().cloned() {
+            std::thread::spawn(move || {
+                let result = save_data.save_to_path(&path);
+                let _ = ext_cmd.submit_command(
+                    cmd::FINISHED_ASYNC_SAVE,
+                    Box::new(cmd::AsyncSaveResult {
+                        path,
+                        error: result.err().map(|e| e.to_string()),
+                        autosave: false,
+                    }),
+                    id,
+                );
             });
-        });
+        }
     }
 
-    fn spawn_async_load(&mut self, path: PathBuf) {
-        let tx = self.status_tx.clone();
-        std::thread::spawn(move || {
-            let data = SaveFileData::load_from_path(&path);
-            let _ = tx.send(StatusMsg::Load(path, data));
-        });
+    fn spawn_async_load(&mut self, path: PathBuf, id: WindowId) {
+        if let Some(ext_cmd) = self.ext_cmd.as_ref().cloned() {
+            std::thread::spawn(move || {
+                let data = cmd::AsyncLoadResult {
+                    path: path.clone(),
+                    save_data: SaveFileData::load_from_path(&path).map_err(|e| e.to_string()),
+                };
+                let _ = ext_cmd.submit_command(cmd::FINISHED_ASYNC_LOAD, Box::new(data), id);
+            });
+        }
     }
 }
 
@@ -529,29 +567,6 @@ impl Widget<EditorState> for Editor {
             Event::KeyDown(ev) => self.handle_key_down(ctx, ev, data, env),
             Event::KeyUp(ev) => self.handle_key_up(ctx, ev, data, env),
             Event::Timer(tok) if tok == &self.timer_id => {
-                // Handle any status messages.
-                for msg in self.status_rx.try_iter() {
-                    data.update_status(&msg);
-                    match msg {
-                        StatusMsg::Load(path, save_data) => {
-                            if let Ok(save_data) = save_data {
-                                *data = EditorState::from_save_file(save_data);
-                                data.save_path = Some(path.clone());
-                            }
-                        }
-                        StatusMsg::DoneSaving {
-                            path,
-                            result,
-                            autosave,
-                        } => {
-                            if !autosave && result.is_ok() {
-                                data.save_path = Some(path.clone());
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-
                 // TODO: we should handing ticking using animation instead of timers?
                 // The issue with that is that `lifecycle` doesn't get to mutate the data.
 
@@ -567,8 +582,10 @@ impl Widget<EditorState> for Editor {
                         data: autosave_data.clone(),
                         path: data.save_path.clone(),
                     };
-                    if let Err(e) = self.autosave_tx.send(autosave_data) {
-                        log::error!("failed to send autosave data: {}", e);
+                    if let Some(tx) = &self.autosave_tx {
+                        if let Err(e) = tx.send(autosave_data) {
+                            log::error!("failed to send autosave data: {}", e);
+                        }
                     }
                 }
                 self.last_autosave_data = Some(autosave_data);

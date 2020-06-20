@@ -57,7 +57,7 @@ pub const ENCODING_STATUS: Selector<EncodingStatus> = Selector::new("scribl.enco
 
 /// Reading and parsing of save-files is done asynchronously. When a file is done being read and
 /// parsed, one of these commands gets sent.
-pub const FINISHED_ASYNC_LOAD: Selector<Result<SaveFileData, anyhow::Error>> =
+pub const FINISHED_ASYNC_LOAD: Selector<AsyncLoadResult> =
     Selector::new("scribl.finished-async-load");
 
 /// Writing save-files is done asynchronously. When a file is done being written one of these
@@ -70,10 +70,16 @@ pub const INITIALIZE_EVENT_SINK: Selector<ExtEventSink> =
     Selector::new("scribl.initialize-event-sink");
 
 #[derive(Clone)]
+pub struct AsyncLoadResult {
+    pub path: PathBuf,
+    pub save_data: Result<SaveFileData, String>,
+}
+
+#[derive(Clone)]
 pub struct AsyncSaveResult {
-    path: PathBuf,
-    error: Option<String>,
-    autosave: bool,
+    pub path: PathBuf,
+    pub error: Option<String>,
+    pub autosave: bool,
 }
 
 #[derive(Clone)]

@@ -1,9 +1,10 @@
 use directories_next::ProjectDirs;
+use druid::{ExtEventSink, WindowId};
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::Sender;
 
-use crate::editor_state::StatusMsg;
+use crate::cmd::{AsyncSaveResult, FINISHED_ASYNC_SAVE};
 use crate::save_state::SaveFileData;
 
 pub struct AutosaveData {
@@ -31,8 +32,8 @@ impl AutosaveData {
     }
 }
 
-pub fn spawn_autosave_thread(status: Sender<StatusMsg>) -> Sender<AutosaveData> {
-    let (tx, rx) = channel::<AutosaveData>();
+pub fn spawn_autosave_thread(ext_cmd: ExtEventSink, id: WindowId) -> Sender<AutosaveData> {
+    let (tx, rx) = std::sync::mpsc::channel::<AutosaveData>();
     std::thread::spawn(move || {
         while let Ok(autosave) = rx.recv() {
             // We save only the most recent requested file (so as not to fall behind in case saving
@@ -40,11 +41,15 @@ pub fn spawn_autosave_thread(status: Sender<StatusMsg>) -> Sender<AutosaveData> 
             let autosave = rx.try_iter().last().unwrap_or(autosave);
             if let Some(path) = autosave.autosave_path() {
                 let result = autosave.data.save_to_path(&path);
-                let _ = status.send(StatusMsg::DoneSaving {
-                    path,
-                    result,
-                    autosave: true,
-                });
+                let _ = ext_cmd.submit_command(
+                    FINISHED_ASYNC_SAVE,
+                    Box::new(AsyncSaveResult {
+                        path,
+                        error: result.err().map(|e| e.to_string()),
+                        autosave: true,
+                    }),
+                    id,
+                );
             } else {
                 log::warn!("not autosaving, couldn't determine the path");
             }

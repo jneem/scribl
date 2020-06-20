@@ -1,4 +1,3 @@
-use anyhow::Error;
 use druid::kurbo::BezPath;
 use druid::{Data, Lens, Point, RenderContext};
 use std::cell::RefCell;
@@ -568,57 +567,52 @@ impl EditorState {
         }
     }
 
-    /// We've just received this message; update the `status` field to reflect it.
-    pub fn update_status(&mut self, msg: &StatusMsg) {
-        match msg {
-            StatusMsg::Encoding(s) => match s {
-                EncodingStatus::Encoding(x) => {
-                    self.status.in_progress.encoding = Some(*x);
-                }
-                EncodingStatus::Finished(path) => {
-                    self.status.in_progress.encoding = None;
-                    self.status.last_finished = Some(FinishedStatus::Encoded {
-                        path: path.clone(),
-                        time: Instant::now(),
-                    });
-                }
-                EncodingStatus::Error(s) => {
-                    self.status.in_progress.encoding = None;
-                    self.status.last_finished = Some(FinishedStatus::Error(s.clone()));
-                }
-            },
-            StatusMsg::Load(path, save_data) => {
-                self.status.in_progress.loading = None;
-                self.status.last_finished = match save_data {
-                    Ok(_) => Some(FinishedStatus::Loaded {
-                        path: path.clone(),
-                        time: Instant::now(),
-                    }),
-                    Err(e) => {
-                        log::error!("error loading: '{}'", e);
-                        Some(FinishedStatus::Error(e.to_string()))
-                    }
-                };
+    pub fn update_encoding_status(&mut self, enc_status: &EncodingStatus) {
+        match enc_status {
+            EncodingStatus::Encoding(x) => {
+                self.status.in_progress.encoding = Some(*x);
             }
-            StatusMsg::DoneSaving {
-                path,
-                result,
-                autosave: _autosave,
-            } => {
-                self.status.in_progress.saving = None;
-                self.status.last_finished = match result {
-                    Ok(()) => {
-                        Some(FinishedStatus::Saved {
-                            path: path.clone(),
-                            // TODO: time should be when it started saving?
-                            time: Instant::now(),
-                        })
-                    }
-                    Err(e) => {
-                        log::error!("error saving: '{}'", e);
-                        Some(FinishedStatus::Error(e.to_string()))
-                    }
-                }
+            EncodingStatus::Finished(path) => {
+                self.status.in_progress.encoding = None;
+                self.status.last_finished = Some(FinishedStatus::Encoded {
+                    path: path.clone(),
+                    time: Instant::now(),
+                });
+            }
+            EncodingStatus::Error(s) => {
+                self.status.in_progress.encoding = None;
+                self.status.last_finished = Some(FinishedStatus::Error(s.clone()));
+            }
+        }
+    }
+
+    pub fn update_load_status(&mut self, load: &crate::cmd::AsyncLoadResult) {
+        self.status.in_progress.loading = None;
+        self.status.last_finished = match &load.save_data {
+            Ok(_) => Some(FinishedStatus::Loaded {
+                path: load.path.clone(),
+                time: Instant::now(),
+            }),
+            Err(e) => {
+                log::error!("error loading: '{}'", e);
+                Some(FinishedStatus::Error(e.to_string()))
+            }
+        };
+    }
+
+    pub fn update_save_status(&mut self, save: &crate::cmd::AsyncSaveResult) {
+        self.status.in_progress.saving = None;
+        self.status.last_finished = match &save.error {
+            None => {
+                Some(FinishedStatus::Saved {
+                    path: save.path.clone(),
+                    // TODO: time should be when it started saving?
+                    time: Instant::now(),
+                })
+            }
+            Some(e) => {
+                log::error!("error saving: '{}'", e);
+                Some(FinishedStatus::Error(e.clone()))
             }
         }
     }
@@ -746,26 +740,5 @@ impl PenSize {
             PenSize::Medium => 0.004,
             PenSize::Big => 0.012,
         }
-    }
-}
-
-/// We do various operations asynchronously, so the editor keeps a channel open for getting
-/// updates. These are the types of messages that can come on the channel.
-pub enum StatusMsg {
-    // While we're encoding a file, we get these regular status updates from the encoder.
-    Encoding(EncodingStatus),
-    // We load files asynchronously; when loading is done, we get one of these messages.
-    Load(PathBuf, Result<SaveFileData, Error>),
-    // When a file is done saving, we get one of these messages.
-    DoneSaving {
-        path: PathBuf,
-        result: Result<(), Error>,
-        autosave: bool,
-    },
-}
-
-impl From<EncodingStatus> for StatusMsg {
-    fn from(e: EncodingStatus) -> StatusMsg {
-        StatusMsg::Encoding(e)
     }
 }

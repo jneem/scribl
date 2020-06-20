@@ -11,7 +11,6 @@ use std::sync::{Arc, Mutex};
 use scribl_curves::{Cursor, SnippetsData, Time, TimeDiff};
 
 use crate::audio::AudioSnippetsData;
-use crate::editor_state::StatusMsg;
 use crate::imagebuf::ImageBuf;
 
 const FPS: f64 = 30.0;
@@ -48,7 +47,7 @@ fn create_pipeline(
     audio: AudioSnippetsData,
     frame_count: u32,
     path: &Path,
-    progress: Sender<StatusMsg>,
+    progress: Sender<EncodingStatus>,
 ) -> Result<gst::Pipeline, anyhow::Error> {
     let pipeline = gst::Pipeline::new(None);
     let v_src = gst::ElementFactory::make("appsrc", Some("encode-vsource"))?;
@@ -103,8 +102,9 @@ fn create_pipeline(
     let mut need_data_inner = move |src: &gst_app::AppSrc| -> anyhow::Result<()> {
         // We track encoding progress by the fraction of video frames that we've rendered.  This
         // isn't perfect (what with gstreamer's buffering, etc.), but it's probably good enough.
-        let _ = progress
-            .send(EncodingStatus::Encoding(frame_counter as f64 / frame_count as f64).into());
+        let _ = progress.send(EncodingStatus::Encoding(
+            frame_counter as f64 / frame_count as f64,
+        ));
         if frame_counter == frame_count {
             let _ = src.end_of_stream();
             return Ok(());
@@ -184,7 +184,7 @@ pub enum EncodingStatus {
 
 pub fn do_encode_blocking(
     cmd: crate::cmd::ExportCmd,
-    progress: Sender<StatusMsg>,
+    progress: Sender<EncodingStatus>,
 ) -> Result<(), anyhow::Error> {
     let end_time = cmd
         .snippets
@@ -201,12 +201,12 @@ pub fn do_encode_blocking(
     )?)
 }
 
-pub fn encode_blocking(cmd: crate::cmd::ExportCmd, progress: Sender<StatusMsg>) {
+pub fn encode_blocking(cmd: crate::cmd::ExportCmd, progress: Sender<EncodingStatus>) {
     let path = cmd.filename.clone();
     if let Err(e) = do_encode_blocking(cmd, progress.clone()) {
         log::error!("error {}", e);
-        let _ = progress.send(EncodingStatus::Error(e.to_string()).into());
+        let _ = progress.send(EncodingStatus::Error(e.to_string()));
     } else {
-        let _ = progress.send(EncodingStatus::Finished(path).into());
+        let _ = progress.send(EncodingStatus::Finished(path));
     }
 }
