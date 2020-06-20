@@ -1,8 +1,8 @@
 use druid::widget::{Align, Flex};
 use druid::{
-    theme, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, KeyCode, KeyEvent,
-    LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget, WidgetExt,
-    WidgetId,
+    theme, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, ExtEventSink, KeyCode,
+    KeyEvent, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget,
+    WidgetExt, WidgetId,
 };
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
@@ -39,6 +39,13 @@ pub struct Editor {
     // The sending end of `status_rx`.  We never actually send on this, but we keep it around for
     // handing out copies.
     status_tx: Sender<StatusMsg>,
+
+    // An command sender that we can hand out to other threads, in order that they can send us
+    // commands. It's a bit tricky to initialize this (we need to create the `AppLauncher` before
+    // we can get one, but that needs a `WindowDesc`, which needs the widget tree). Therefore, we
+    // make it an option and we initialize it by using the `ExtEventSink` to send a command
+    // containing a copy of the `ExtEventSink` :)
+    ext_cmd: Option<ExtEventSink>,
 
     inner: Box<dyn Widget<EditorState>>,
 }
@@ -216,6 +223,7 @@ impl Editor {
             autosave_timer_id: TimerToken::INVALID,
             last_autosave_data: None,
             autosave_tx,
+            ext_cmd: None,
         }
     }
 }
@@ -287,7 +295,7 @@ impl Editor {
         data: &mut EditorState,
         _env: &Env,
     ) -> bool {
-        // TODO: change to match when that is supported.
+        // TODO: change to match if/when that is supported.
         let ret = if cmd.is(cmd::ADD_SNIPPET) {
             let prev_state = data.undo_state();
             let snip = cmd.get_unchecked(cmd::ADD_SNIPPET);
@@ -469,6 +477,9 @@ impl Editor {
             true
         } else if cmd.is(druid::commands::CLOSE_WINDOW) {
             log::info!("close window command");
+            true
+        } else if cmd.is(cmd::INITIALIZE_EVENT_SINK) {
+            self.ext_cmd = Some(cmd.get_unchecked(cmd::INITIALIZE_EVENT_SINK).clone());
             true
         } else {
             false

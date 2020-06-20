@@ -19,6 +19,7 @@ impl AppDelegate<AppState> for Delegate {
         if cmd.is(druid::commands::NEW_FILE) {
             let window_desc = data.add_editor(EditorState::default());
             ctx.new_window(window_desc);
+            // FIXME: plumb the ExtEventSink into the new window
             false
         } else {
             true

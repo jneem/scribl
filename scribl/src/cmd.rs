@@ -1,10 +1,12 @@
-use druid::{Color, Selector};
+use druid::{Color, ExtEventSink, Selector};
 use std::path::PathBuf;
 
 use scribl_curves::{SnippetData, SnippetsData, Time};
 
 use crate::audio::{AudioSnippetData, AudioSnippetsData};
 use crate::editor_state::{MaybeSnippetId, StrokeInProgress};
+use crate::encode::EncodingStatus;
+use crate::save_state::SaveFileData;
 
 /// Starts recording a drawing.
 pub const DRAW: Selector = Selector::new("scribl.draw");
@@ -49,6 +51,30 @@ pub const EXPORT: Selector<ExportCmd> = Selector::new("scribl.export");
 /// Appends a new segment to the currently-drawing snippet.
 pub const APPEND_NEW_SEGMENT: Selector<StrokeInProgress> =
     Selector::new("scribl.append-new-segment");
+
+/// While the video is encoding asynchronously, it periodically sends these commands.
+pub const ENCODING_STATUS: Selector<EncodingStatus> = Selector::new("scribl.encoding-status");
+
+/// Reading and parsing of save-files is done asynchronously. When a file is done being read and
+/// parsed, one of these commands gets sent.
+pub const FINISHED_ASYNC_LOAD: Selector<Result<SaveFileData, anyhow::Error>> =
+    Selector::new("scribl.finished-async-load");
+
+/// Writing save-files is done asynchronously. When a file is done being written one of these
+/// commands gets sent.
+pub const FINISHED_ASYNC_SAVE: Selector<AsyncSaveResult> =
+    Selector::new("scribl.finished-async-save");
+
+/// This command provides an `ExtEventSink` to widgets that want one.
+pub const INITIALIZE_EVENT_SINK: Selector<ExtEventSink> =
+    Selector::new("scribl.initialize-event-sink");
+
+#[derive(Clone)]
+pub struct AsyncSaveResult {
+    path: PathBuf,
+    error: Option<String>,
+    autosave: bool,
+}
 
 #[derive(Clone)]
 pub struct ExportCmd {

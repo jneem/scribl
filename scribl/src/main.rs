@@ -89,8 +89,9 @@ fn main() {
 
     let mut initial_state = AppState::default();
     let editor_window_desc = initial_state.add_editor(initial_editor);
+    let editor_window_id = editor_window_desc.id;
 
-    AppLauncher::with_window(editor_window_desc)
+    let launcher = AppLauncher::with_window(editor_window_desc)
         .delegate(app_delegate::Delegate::default())
         .configure_env(|e, _| {
             e.set(theme::BUTTON_LIGHT, Color::rgb8(0x70, 0x70, 0x70));
@@ -104,9 +105,21 @@ fn main() {
             e.set(BUTTON_GROUP_BORDER_WIDTH, 1.0);
             e.set(TEXT_SIZE_SMALL, 10.0);
             e.set(FONT_NAME_MONO, "monospace");
-        })
-        .launch(initial_state)
-        .expect("failed to launch");
+        });
+
+    let ext_handle = launcher.get_external_handle();
+    if let Err(e) = ext_handle.submit_command(
+        crate::cmd::INITIALIZE_EVENT_SINK,
+        ext_handle.clone(),
+        editor_window_id,
+    ) {
+        log::error!(
+            "failed to initialize event sink, loading files won't work: {}",
+            e
+        );
+    }
+
+    launcher.launch(initial_state).expect("failed to launch");
 }
 
 fn encode(data: EditorState, path: &str) {
