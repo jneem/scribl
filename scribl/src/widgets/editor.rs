@@ -17,13 +17,10 @@ use crate::widgets::{
     icons, make_status_bar, make_timeline, DrawingPane, LabelledContainer, Palette, ToggleButton,
     ToggleButtonState,
 };
-use crate::FRAME_TIME;
 
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(60);
 
 pub struct Editor {
-    timer_id: TimerToken,
-
     // Every AUTOSAVE_DURATION, we will attempt to save the current file.
     autosave_timer_id: TimerToken,
     // We won't save the current file if it hasn't changed since the last autosave.
@@ -206,7 +203,6 @@ impl Editor {
 
         Editor {
             inner: Box::new(TooltipHost::new(Align::centered(column)).debug_invalidation()),
-            timer_id: TimerToken::INVALID,
             autosave_timer_id: TimerToken::INVALID,
             last_autosave_data: None,
             autosave_tx: None,
@@ -250,6 +246,7 @@ impl Editor {
                 let velocity = speed * dir;
                 if data.action.is_idle() || data.action.is_scanning() {
                     data.scan(velocity);
+                    ctx.request_anim_frame();
                 }
                 ctx.set_handled();
             }
@@ -389,6 +386,7 @@ impl Editor {
         } else if cmd.is(cmd::PLAY) {
             if data.action.is_idle() {
                 data.start_playing();
+                ctx.request_anim_frame();
             } else {
                 log::error!("can't play, current action is {:?}", data.action);
             }
@@ -396,6 +394,8 @@ impl Editor {
         } else if cmd.is(cmd::DRAW) {
             if data.action.is_idle() {
                 data.start_recording(data.recording_speed.factor());
+            // We don't request_anim_frame here because recording starts paused. Instead, we do
+            // it in `DrawingPane` when the time actually starts.
             } else {
                 log::error!("can't draw, current action is {:?}", data.action);
             }
@@ -403,6 +403,7 @@ impl Editor {
         } else if cmd.is(cmd::TALK) {
             if data.action.is_idle() {
                 data.start_recording_audio();
+                ctx.request_anim_frame();
             } else {
                 log::error!("can't talk, current action is {:?}", data.action);
             }
@@ -421,6 +422,9 @@ impl Editor {
                 }
                 _ => {}
             }
+            true
+        } else if cmd.is(cmd::UPDATE_TIME) {
+            data.update_time();
             true
         } else if cmd.is(cmd::WARP_TIME_TO) {
             if data.action.is_idle() {
@@ -556,7 +560,6 @@ impl Widget<EditorState> for Editor {
             Event::WindowConnected => {
                 ctx.request_focus();
                 ctx.request_paint();
-                self.timer_id = ctx.request_timer(FRAME_TIME);
             }
             Event::Command(cmd) => {
                 let handled = self.handle_command(ctx, cmd, data, env);
@@ -566,15 +569,6 @@ impl Widget<EditorState> for Editor {
             }
             Event::KeyDown(ev) => self.handle_key_down(ctx, ev, data, env),
             Event::KeyUp(ev) => self.handle_key_up(ctx, ev, data, env),
-            Event::Timer(tok) if tok == &self.timer_id => {
-                // TODO: we should handing ticking using animation instead of timers?
-                // The issue with that is that `lifecycle` doesn't get to mutate the data.
-
-                // Update the current time, if necessary.
-                data.update_time();
-                self.timer_id = ctx.request_timer(FRAME_TIME);
-                ctx.set_handled();
-            }
             Event::Timer(tok) if tok == &self.autosave_timer_id => {
                 let autosave_data = SaveFileData::from_editor_state(data);
                 if !self.last_autosave_data.same(&Some(autosave_data.clone())) {
@@ -613,10 +607,19 @@ impl Widget<EditorState> for Editor {
         data: &EditorState,
         env: &Env,
     ) {
-        if let LifeCycle::WidgetAdded = event {
-            self.autosave_timer_id = ctx.request_timer(AUTOSAVE_INTERVAL);
+        match event {
+            LifeCycle::WidgetAdded => self.autosave_timer_id = ctx.request_timer(AUTOSAVE_INTERVAL),
+            LifeCycle::AnimFrame(_) => {
+                // We're not allowed to update the data in lifecycle, so on each animation frame we
+                // send ourselves a command to update the current time.
+                ctx.submit_command(cmd::UPDATE_TIME, ctx.widget_id());
+            }
+            _ => {}
         }
         self.inner.lifecycle(ctx, event, data, env);
+        if data.action.time_factor() != 0.0 {
+            ctx.request_anim_frame();
+        }
     }
 
     fn layout(

@@ -73,6 +73,7 @@ impl Widget<EditorState> for DrawingPane {
             Event::MouseDown(ev) if ev.button.is_left() => {
                 if let CurrentAction::WaitingToRecord(_) = state.action {
                     state.start_actually_recording();
+                    ctx.request_anim_frame();
                 }
                 if state.action.is_recording() {
                     let time = state.accurate_time();

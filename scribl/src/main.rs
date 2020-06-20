@@ -1,7 +1,6 @@
 use clap::{App, Arg};
 use druid::theme;
 use druid::{AppLauncher, Color, Key};
-use std::time::Duration;
 
 mod app_delegate;
 mod app_state;
@@ -25,7 +24,6 @@ const BUTTON_ICON_SELECTED: Key<Color> = Key::new("scribl-radio-button-icon-sele
 const BUTTON_ICON_HOT: Key<Color> = Key::new("scribl-radio-button-icon-hot");
 const BUTTON_ICON_IDLE: Key<Color> = Key::new("scribl-radio-button-icon-idle");
 const BUTTON_GROUP_BORDER_WIDTH: Key<f64> = Key::new("scribl-button-group-border-width");
-pub const FRAME_TIME: Duration = Duration::from_millis(16);
 pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("scribl-text-size-small");
 pub const FONT_NAME_MONO: Key<&str> = Key::new("scribl-font-name-mono");
 
