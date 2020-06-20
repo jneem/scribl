@@ -202,7 +202,7 @@ impl Editor {
             .with_child(make_status_bar());
 
         Editor {
-            inner: Box::new(TooltipHost::new(Align::centered(column)).debug_invalidation()),
+            inner: Box::new(TooltipHost::new(Align::centered(column))),
             autosave_timer_id: TimerToken::INVALID,
             last_autosave_data: None,
             autosave_tx: None,
