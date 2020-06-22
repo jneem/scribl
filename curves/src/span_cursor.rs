@@ -9,9 +9,8 @@ pub struct Span<T: Ord + Copy, Id: Copy> {
 
 /// A cursor allows for efficiently scanning through a collection of overlapping intervals (which
 /// we call "spans"). It is optimized for the case where you need to repeatedly move the current
-/// position by a little bit in either direction; in this case, the complexity is O(n + log m),
-/// where `n` is the number of "active" spans that overlap the times you're interested in and `m`
-/// is the total number of spans.
+/// position by a little bit in either direction; in this case, the complexity is O(n),
+/// where `n` is the number of "active" spans that overlap the times you're interested in.
 #[derive(Debug)]
 pub struct Cursor<T: Ord + Copy, Id: Copy + Eq> {
     // Spans, ordered by their start times.
@@ -98,58 +97,26 @@ impl<T: Ord + Copy, Id: Copy + Eq> Cursor<T, Id> {
             }
         }
 
-        let mut ret = Cursor {
+        let next_start_idx = spans_start
+            .iter()
+            .position(|sp| sp.start > end_time)
+            .unwrap_or(spans_start.len());
+        let next_end_idx = spans_end
+            .iter()
+            .position(|sp| MaybeInfinite::from(sp.end) >= start_time)
+            .unwrap_or(spans_end.len());
+
+        Cursor {
             spans_start,
             spans_end,
             active,
-            next_start_idx: 0,
-            next_end_idx: 0,
+            next_start_idx,
+            next_end_idx,
             current: (start_time, end_time),
-        };
-        ret.reset_next_start_idx();
-        ret.reset_next_end_idx();
-        ret
-    }
-
-    // Resets next_start_idx to the first index with sp.start > current.1.
-    fn reset_next_start_idx(&mut self) {
-        let cur = self.current.1;
-        match self.spans_start.binary_search_by_key(&cur, |c| c.start) {
-            Ok(mut i) => {
-                // We found a span starting exactly at cur, so now find the first thing starting
-                // after cur.
-                while i < self.spans_start.len() && self.spans_start[i].start == cur {
-                    i += 1;
-                }
-                self.next_start_idx = i;
-            }
-            Err(i) => {
-                self.next_start_idx = i;
-            }
         }
     }
 
-    // Resets next_end_idx to the first index with sp.end >= current.0.
-    fn reset_next_end_idx(&mut self) {
-        let cur = MaybeInfinite::Finite(self.current.0);
-        match self
-            .spans_end
-            .binary_search_by_key(&cur, |sp| sp.end.into())
-        {
-            Ok(mut i) => {
-                // We found a span ending exactly at cur, but there might be more so find the first
-                // one.
-                while i > 0 && MaybeInfinite::from(self.spans_end[i - 1].end) == cur {
-                    i -= 1;
-                }
-                self.next_end_idx = i;
-            }
-            Err(i) => {
-                self.next_end_idx = i;
-            }
-        }
-    }
-
+    /// Creates a cursor with no spans, set to the time interval `[time, time]`.
     pub fn empty(time: T) -> Cursor<T, Id> {
         Cursor {
             spans_start: Vec::new(),
@@ -161,6 +128,7 @@ impl<T: Ord + Copy, Id: Copy + Eq> Cursor<T, Id> {
         }
     }
 
+    /// Returns this cursors current time interval.
     pub fn current(&self) -> (T, T) {
         self.current
     }
@@ -179,7 +147,10 @@ impl<T: Ord + Copy, Id: Copy + Eq> Cursor<T, Id> {
                 }
             }
         } else {
-            self.reset_next_start_idx();
+            let before = self.spans_start[0..self.next_start_idx]
+                .iter()
+                .rposition(|sp| sp.start <= end_time);
+            self.next_start_idx = before.map(|x| x + 1).unwrap_or(0);
         }
 
         if start_time < old_start {
@@ -193,7 +164,11 @@ impl<T: Ord + Copy, Id: Copy + Eq> Cursor<T, Id> {
                 }
             }
         } else {
-            self.reset_next_end_idx();
+            self.next_end_idx = self.spans_end[self.next_end_idx..]
+                .iter()
+                .position(|sp| MaybeInfinite::from(sp.end) >= start_time)
+                .map(|x| x + self.next_end_idx)
+                .unwrap_or_else(|| self.spans_end.len());
         }
 
         self.active.retain(|sp| sp.is_active(start_time, end_time));
@@ -210,11 +185,38 @@ impl<T: Ord + Copy, Id: Copy + Eq> Cursor<T, Id> {
     pub fn is_finished(&self) -> bool {
         self.active.is_empty() && self.next_start_idx == self.spans_start.len()
     }
+
+    #[cfg(test)]
+    fn assert_invariants(&self) {
+        for s in &self.spans_start {
+            assert_eq!(
+                s.is_active(self.current.0, self.current.1),
+                self.active.contains(s)
+            );
+        }
+
+        assert_eq!(
+            self.next_start_idx,
+            self.spans_start
+                .iter()
+                .position(|s| s.start > self.current.1)
+                .unwrap_or(self.spans_start.len())
+        );
+
+        assert_eq!(
+            self.next_end_idx,
+            self.spans_end
+                .iter()
+                .position(|s| MaybeInfinite::from(s.end) >= self.current.0)
+                .unwrap_or(self.spans_end.len())
+        );
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     fn cursor(
         intervals: &[(i32, Option<i32>)],
@@ -275,5 +277,37 @@ mod tests {
 
         c.advance_to(0, 0);
         assert_eq!(ids(&c.active), vec![0]);
+    }
+
+    #[test]
+    fn tmp_test() {
+        let mut cursor = cursor(&[(0, Some(95)), (0, Some(0))], 1, 1);
+        cursor.assert_invariants();
+        dbg!(&cursor);
+        cursor.advance_to(1, 1);
+        dbg!(&cursor);
+        cursor.assert_invariants();
+    }
+
+    proptest! {
+        #[test]
+        fn check_invariants(
+            spans in prop::collection::vec((0usize..100, 0usize..100), 1..20),
+            start in (0usize..100, 0usize..150),
+            moves in prop::collection::vec((0usize..100, 0usize..150), 1..10)
+        ) {
+            let spans = spans.into_iter().enumerate().map(|(i, (x, y))| Span {
+                start: x.min(y),
+                end: Some(x.max(y)),
+                id: i,
+            });
+            let mut cursor = Cursor::new(spans, start.0.min(start.1), start.0.max(start.1));
+            cursor.assert_invariants();
+
+            for (a, b) in moves {
+                cursor.advance_to(a.min(b), a.max(b));
+                cursor.assert_invariants();
+            }
+        }
     }
 }
