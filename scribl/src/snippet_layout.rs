@@ -19,7 +19,7 @@ pub struct SnippetLayout<T> {
 impl From<(SnippetId, &SnippetData)> for SnippetBounds<SnippetId> {
     fn from(data: (SnippetId, &SnippetData)) -> SnippetBounds<SnippetId> {
         SnippetBounds {
-            start: data.1.lerp().first(),
+            start: data.1.start_time(),
             end: data.1.end_time(),
             id: data.0,
         }

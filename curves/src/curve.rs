@@ -96,6 +96,14 @@ impl StrokeSeq {
     }
 
     pub fn strokes<'a>(&'a self) -> impl Iterator<Item = Stroke<'a>> + 'a {
+        self.strokes_with_times(&self.times[..])
+    }
+
+    pub fn strokes_with_times<'a, 'b>(
+        &'a self,
+        times: &'a [Time],
+    ) -> impl Iterator<Item = Stroke<'a>> + 'a {
+        assert_eq!(times.len(), self.times.len());
         self.stroke_boundaries
             .iter()
             .enumerate()
@@ -108,7 +116,7 @@ impl StrokeSeq {
                 Stroke {
                     style: self.stroke_styles[idx].clone(),
                     elements: &self.path.elements()[stroke_start_idx..stroke_end_idx],
-                    times: &self.times[stroke_start_idx..stroke_end_idx],
+                    times: &times[stroke_start_idx..stroke_end_idx],
                 }
             })
     }

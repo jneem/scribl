@@ -11,18 +11,21 @@ use crate::{span_cursor, Lerp, StrokeSeq, Time};
 #[serde(transparent)]
 pub struct SnippetId(pub(crate) u64);
 
-/// A snippet is a sequence of strokes, each one possibly with a time distortion (provided by
-/// [`Lerp`]).
+/// A snippet is a sequence of strokes, possibly modified by a time distortion.
 ///
 /// This struct implements [`druid::Data`]. In particular, it is cheap to clone: most of the actual
 /// data lives behind shared references.
 ///
 /// [`Lerp`]: struct.Lerp.html
 /// [`druid::Data`]: ../druid/trait.Data.html
-#[derive(Deserialize, Serialize, Data, Debug, Clone)]
+#[derive(Data, Debug, Clone)]
 pub struct SnippetData {
     pub(crate) strokes: Arc<StrokeSeq>,
+    /// The time-distortion applied to the strokes.
     pub(crate) lerp: Arc<Lerp>,
+    /// The times of the strokes, with distortion applied.
+    #[data(ignore)]
+    times: Arc<Vec<Time>>,
 
     /// Controls whether the snippet ever ends. If `None`, it means that the snippet will remain
     /// forever; if `Some(t)` it means that the snippet will disappear at time `t`.
@@ -44,6 +47,10 @@ pub struct SnippetsData {
 
 pub type SnippetsCursor = span_cursor::Cursor<Time, SnippetId>;
 
+fn lerp_times(input: &[Time], lerp: &Lerp) -> Vec<Time> {
+    input.iter().map(|t| lerp.lerp_clamped(*t)).collect()
+}
+
 impl SnippetData {
     pub fn new(strokes: StrokeSeq) -> SnippetData {
         if strokes.times.is_empty() {
@@ -52,26 +59,49 @@ impl SnippetData {
         let start = *strokes.times.first().unwrap();
         let end = *strokes.times.last().unwrap();
         let lerp = Lerp::identity(start, end);
+        let times = lerp_times(&strokes.times, &lerp);
         SnippetData {
             strokes: Arc::new(strokes),
             lerp: Arc::new(lerp),
+            times: Arc::new(times),
             end: None,
         }
     }
 
-    pub fn strokes<'a>(&'a self) -> impl Iterator<Item = crate::curve::Stroke<'a>> {
-        self.strokes.strokes()
+    pub(crate) fn new_complete(strokes: StrokeSeq, lerp: Lerp, end: Option<Time>) -> SnippetData {
+        let times = lerp_times(&strokes.times, &lerp);
+        SnippetData {
+            strokes: Arc::new(strokes),
+            lerp: Arc::new(lerp),
+            times: Arc::new(times),
+            end,
+        }
     }
 
-    /// Returns the `Lerp` object used for time-distorting this snippet.
-    pub fn lerp(&self) -> &Lerp {
-        &self.lerp
+    pub fn strokes<'a>(&'a self) -> impl Iterator<Item = crate::curve::Stroke<'a>> {
+        self.strokes.strokes_with_times(&self.times[..])
     }
 
     /// Returns the time at which this snippet should cease to be visible, or `None` if the snippet
     /// should always be visible.
     pub fn end_time(&self) -> Option<Time> {
         self.end
+    }
+
+    pub fn with_new_lerp(&self, lerp_from: Time, lerp_to: Time) -> SnippetData {
+        let mut lerp = (*self.lerp).clone();
+        lerp.add_lerp(lerp_from, lerp_to);
+        let times = lerp_times(&self.strokes.times[..], &lerp);
+        SnippetData {
+            strokes: Arc::clone(&self.strokes),
+            lerp: Arc::new(lerp),
+            times: Arc::new(times),
+            end: self.end,
+        }
+    }
+
+    pub fn key_times(&self) -> &[Time] {
+        self.lerp.times()
     }
 
     /// Has this snippet drawn anything by `time`?
@@ -92,8 +122,7 @@ impl SnippetData {
             return &[];
         }
 
-        let local_time = self.lerp.unlerp_clamped(time);
-        let idx = match self.strokes.times.binary_search(&local_time) {
+        let idx = match self.times.binary_search(&time) {
             Ok(i) => i + 1,
             Err(i) => i,
         };
@@ -110,13 +139,11 @@ impl SnippetData {
             return &[];
         }
 
-        let local_start = self.lerp.unlerp_clamped(start);
-        let local_end = self.lerp.unlerp_clamped(end);
-        let start_idx = match self.strokes.times.binary_search(&local_start) {
+        let start_idx = match self.times.binary_search(&start) {
             Ok(i) => i,
             Err(i) => i,
         };
-        let end_idx = match self.strokes.times.binary_search(&local_end) {
+        let end_idx = match self.times.binary_search(&end) {
             Ok(i) => i + 1,
             Err(i) => i,
         };
@@ -124,12 +151,12 @@ impl SnippetData {
     }
 
     pub fn start_time(&self) -> Time {
-        self.lerp.first()
+        *self.times.first().unwrap()
     }
 
     /// The last time at which the snippet changed.
     pub fn last_draw_time(&self) -> Time {
-        self.lerp.last()
+        *self.times.last().unwrap()
     }
 
     pub fn render(&self, ctx: &mut impl RenderContext, time: Time) {
@@ -166,8 +193,7 @@ impl SnippetsData {
     }
 
     pub fn with_new_lerp(&self, id: SnippetId, lerp_from: Time, lerp_to: Time) -> SnippetsData {
-        let mut snip = self.snippet(id).clone();
-        snip.lerp = Arc::new(snip.lerp.with_new_lerp(lerp_from, lerp_to));
+        let snip = self.snippet(id).with_new_lerp(lerp_from, lerp_to);
         self.with_replacement_snippet(id, snip)
     }
 
@@ -214,9 +240,7 @@ impl SnippetsCursor {
             // whole thing. Below, we're taking this into account by returning all the individual
             // bboxes, but we could be more efficient.
             .flat_map(move |snip| {
-                let start = snip.lerp().unlerp_clamped(self.current().0);
-                let end = snip.lerp().unlerp_clamped(self.current().1);
-                let (start, end) = (start.min(end), start.max(end));
+                let (start, end) = self.current();
                 // TODO: this is linear in the number of strokes, but probably most strokes will be
                 // uninteresting. Using some extra cached computations in SnippetData, this could
                 // be made (linear in useful strokes + logarithmic in total strokes).
@@ -239,6 +263,50 @@ impl SnippetsCursor {
                     }
                 })
             })
+    }
+}
+
+// The serialization of SnippetData is part of our save file format, so we want to keep it stable.
+// Here is the stable version:
+#[derive(Deserialize, Serialize)]
+struct SnippetDataSave {
+    strokes: Arc<StrokeSeq>,
+    lerp: Arc<Lerp>,
+    end: Option<Time>,
+}
+
+impl From<SnippetDataSave> for SnippetData {
+    fn from(save: SnippetDataSave) -> SnippetData {
+        let times = lerp_times(&save.strokes.times[..], &save.lerp);
+        SnippetData {
+            strokes: save.strokes,
+            lerp: save.lerp,
+            times: Arc::new(times),
+            end: save.end,
+        }
+    }
+}
+
+impl From<SnippetData> for SnippetDataSave {
+    fn from(snip: SnippetData) -> SnippetDataSave {
+        SnippetDataSave {
+            strokes: snip.strokes,
+            lerp: snip.lerp,
+            end: snip.end,
+        }
+    }
+}
+
+impl Serialize for SnippetData {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        SnippetDataSave::from(self.clone()).serialize(ser)
+    }
+}
+
+impl<'de> Deserialize<'de> for SnippetData {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<SnippetData, D::Error> {
+        let snip: SnippetDataSave = Deserialize::deserialize(de)?;
+        Ok(snip.into())
     }
 }
 

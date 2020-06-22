@@ -3,7 +3,6 @@ use druid::kurbo::BezPath;
 use druid::Point;
 use serde::Deserialize;
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use crate::{SnippetId, StrokeStyle, Time};
 
@@ -38,11 +37,7 @@ pub mod v0 {
 
     impl From<SnippetData> for crate::SnippetData {
         fn from(data: SnippetData) -> crate::SnippetData {
-            crate::SnippetData {
-                strokes: Arc::new(data.curve.into()),
-                lerp: Arc::new(data.lerp.into()),
-                end: data.end,
-            }
+            crate::SnippetData::new_complete(data.curve.into(), data.lerp.into(), data.end)
         }
     }
 

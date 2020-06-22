@@ -136,11 +136,9 @@ impl DrawingWaveform {
             if stroke.times.is_empty() {
                 continue;
             }
-            let first_time = *stroke.times.first().unwrap();
-            let last_time = *stroke.times.last().unwrap();
             strokes.push((
-                data.lerp().lerp_clamped(first_time),
-                data.lerp().lerp_clamped(last_time),
+                *stroke.times.first().unwrap(),
+                *stroke.times.last().unwrap(),
                 stroke.style.color,
             ));
         }
@@ -171,7 +169,7 @@ impl Snip {
         match self {
             Snip::Audio(_) => Vec::new(),
             Snip::Drawing(d) => {
-                let lerps = d.lerp().times();
+                let lerps = d.key_times();
                 let first_idx = lerps
                     .iter()
                     .position(|&x| x != lerps[0])
