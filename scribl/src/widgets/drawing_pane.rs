@@ -1,3 +1,4 @@
+use druid::kurbo::TranslateScale;
 use druid::{
     Affine, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle,
     LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
@@ -16,12 +17,18 @@ pub const DRAWING_HEIGHT: f64 = 0.75;
 
 const ASPECT_RATIO: f64 = DRAWING_WIDTH / DRAWING_HEIGHT;
 const PAPER_COLOR: Color = Color::rgb8(0xff, 0xff, 0xff);
-const PAPER_BDY_COLOR: Color = Color::rgb8(0x00, 0x00, 0x00);
-const PAPER_BDY_THICKNESS: f64 = 1.0;
 
 pub struct DrawingPane {
     paper_rect: Rect,
     cursor: SnippetsCursor,
+    /// A zoom of 1.0 gives the best fit of the drawing into the pane.
+    zoom: f64,
+    /// Which point of the image should be visible at the top-left of the region?
+    /// (This is used to derive `paper_rect`, which is then the authoritative source for answering
+    /// this question, because it might contain some adjustments due to aspect ratio).
+    offset: Vec2,
+    /// The last interesting position of the mouse (used for figuring out how much to pan by).
+    last_mouse_pos: Point,
 }
 
 impl DrawingPane {
@@ -39,6 +46,37 @@ impl DrawingPane {
     fn from_image_scale(&self) -> f64 {
         self.paper_rect.width() / DRAWING_WIDTH
     }
+
+    fn recompute_paper_rect(&mut self, size: Size) {
+        // Find the largest rectangle of the correct aspect ratio that will fit in the size.
+        let paper_width = size.width.min(ASPECT_RATIO * size.height);
+        let paper_height = paper_width / ASPECT_RATIO;
+        let mut rect = Size::new(paper_width, paper_height).to_rect();
+
+        rect = TranslateScale::scale(self.zoom) * rect;
+
+        // The basic translate puts `self.offset` at the top-left of the view, however...
+        let mut translate = -self.offset * self.zoom;
+        // ...we don't want to leave blank space near the top-left...
+        translate.x = translate.x.min(0.0);
+        translate.y = translate.y.min(0.0);
+        // ...or near the bottom-right...
+        translate.x = translate.x.max(size.width - rect.width());
+        translate.y = translate.y.max(size.height - rect.height());
+        // ...and if there is spare room in either dimension, center it in that dimension.
+        if rect.width() < size.width {
+            translate.x = (size.width - rect.width()) / 2.0;
+        }
+        if rect.height() < size.height {
+            translate.y = (size.height - rect.height()) / 2.0;
+        }
+
+        self.offset = -translate / self.zoom;
+        rect = TranslateScale::translate(translate) * rect;
+
+        // Rounding helps us align better with the pixels.
+        self.paper_rect = rect.round();
+    }
 }
 
 impl Default for DrawingPane {
@@ -46,6 +84,9 @@ impl Default for DrawingPane {
         DrawingPane {
             paper_rect: Rect::ZERO,
             cursor: SnippetsCursor::empty(Time::ZERO),
+            zoom: 1.0,
+            offset: Vec2::ZERO,
+            last_mouse_pos: Point::ZERO,
         }
     }
 }
@@ -54,23 +95,34 @@ impl Widget<EditorState> for DrawingPane {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, state: &mut EditorState, _env: &Env) {
         match event {
             Event::MouseMove(ev) => {
-                if ctx.is_active() && state.action.is_recording() {
-                    let time = state.accurate_time();
+                if ctx.is_active() {
+                    if state.action.is_recording() {
+                        let time = state.accurate_time();
 
-                    // Compute the rectangle that needs to be invalidated in order to draw this new
-                    // point.
-                    let mut invalid = Rect::from_origin_size(ev.pos, (0.0, 0.0));
-                    let last_point = state.new_stroke.as_ref().and_then(|s| s.last_point());
-                    if let Some(last_point) = last_point {
-                        invalid = invalid.union_pt(self.from_image_coords() * last_point);
+                        // Compute the rectangle that needs to be invalidated in order to draw this new
+                        // point.
+                        let mut invalid = Rect::from_origin_size(ev.pos, (0.0, 0.0));
+                        let last_point = state.new_stroke.as_ref().and_then(|s| s.last_point());
+                        if let Some(last_point) = last_point {
+                            invalid = invalid.union_pt(self.from_image_coords() * last_point);
+                        }
+                        let pen_width = state.pen_size.size_fraction() * self.from_image_scale();
+                        ctx.request_paint_rect(invalid.inset(pen_width).expand());
+
+                        state.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
+                    } else {
+                        // Pan the view.
+                        self.offset -= (ev.pos - self.last_mouse_pos) / self.zoom;
+                        self.recompute_paper_rect(ctx.size());
+                        ctx.request_paint();
+                        // TODO: change the mouse cursor
                     }
-                    let pen_width = state.pen_size.size_fraction() * self.from_image_scale();
-                    ctx.request_paint_rect(invalid.inset(pen_width).expand());
-
-                    state.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
+                    self.last_mouse_pos = ev.pos;
                 }
             }
             Event::MouseDown(ev) if ev.button.is_left() => {
+                ctx.set_active(true);
+                self.last_mouse_pos = ev.pos;
                 if let CurrentAction::WaitingToRecord(_) = state.action {
                     state.start_actually_recording();
                     ctx.request_anim_frame();
@@ -78,17 +130,28 @@ impl Widget<EditorState> for DrawingPane {
                 if state.action.is_recording() {
                     let time = state.accurate_time();
                     state.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
-
-                    ctx.set_active(true);
                 }
             }
             Event::MouseUp(ev) => {
+                ctx.set_active(false);
                 if ev.button.is_left() && state.action.is_recording() {
-                    ctx.set_active(false);
                     if let Some(seg) = state.finish_cur_segment() {
                         ctx.submit_command(Command::new(cmd::APPEND_NEW_SEGMENT, seg), None);
                     }
                 }
+            }
+            Event::Wheel(ev) => {
+                let zoom = (self.zoom * (-ev.wheel_delta.y / 500.0).exp())
+                    .max(1.0)
+                    .min(8.0);
+                let zoom_factor = zoom / self.zoom;
+
+                // Try to translate so that the mouse stays over whatever part of the drawing it's
+                // currently over.
+                self.offset += ev.pos.to_vec2() / self.zoom * (zoom_factor - 1.0);
+                self.zoom = zoom;
+                self.recompute_paper_rect(ctx.size());
+                ctx.request_paint();
             }
             Event::WindowConnected => {
                 ctx.request_paint();
@@ -136,23 +199,16 @@ impl Widget<EditorState> for DrawingPane {
         _env: &Env,
     ) -> Size {
         let size = bc.max();
-
-        // Find the largest rectangle of the correct aspect ratio that will fit in the box.
-        let paper_width = size.width.min(ASPECT_RATIO * size.height);
-        let paper_height = paper_width / ASPECT_RATIO;
-        self.paper_rect = Rect::from_origin_size(Point::ZERO, (paper_width, paper_height));
-        self.paper_rect =
-            self.paper_rect + size.to_vec2() / 2.0 - self.paper_rect.center().to_vec2();
-        self.paper_rect = self.paper_rect.inset(PAPER_BDY_THICKNESS).round();
-
+        self.recompute_paper_rect(size);
         size
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &EditorState, _env: &Env) {
-        ctx.stroke(&self.paper_rect, &PAPER_BDY_COLOR, PAPER_BDY_THICKNESS);
-        ctx.fill(&self.paper_rect, &PAPER_COLOR);
-
+        let size = ctx.size();
         ctx.with_save(|ctx| {
+            ctx.clip(size.to_rect());
+            ctx.fill(&self.paper_rect, &PAPER_COLOR);
+
             ctx.transform(self.from_image_coords());
             for id in self.cursor.active_ids() {
                 data.snippets
