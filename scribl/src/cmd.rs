@@ -73,6 +73,10 @@ pub const FINISHED_ASYNC_SAVE: Selector<AsyncSaveResult> =
 pub const INITIALIZE_EVENT_SINK: Selector<ExtEventSink> =
     Selector::new("scribl.initialize-event-sink");
 
+pub const ZOOM_IN: Selector<()> = Selector::new("scribl.zoom-in");
+pub const ZOOM_OUT: Selector<()> = Selector::new("scribl.zoom-out");
+pub const ZOOM_RESET: Selector<()> = Selector::new("scribl.zoom-reset");
+
 #[derive(Clone)]
 pub struct AsyncLoadResult {
     pub path: PathBuf,

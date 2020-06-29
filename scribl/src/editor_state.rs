@@ -16,6 +16,9 @@ use crate::save_state::SaveFileData;
 use crate::undo::{UndoStack, UndoState};
 use crate::widgets::ToggleButtonState;
 
+/// How far are they allowed to zoom in?
+pub const MAX_ZOOM: f64 = 8.0;
+
 /// While drawing, this stores one continuous poly-line (from pen-down to
 /// pen-up). Because we expect lots of fast changes to this, it uses interior
 /// mutability to avoid repeated allocations.
@@ -180,6 +183,13 @@ pub struct EditorState {
     #[lens(name = "time_lens")]
     time: Time,
 
+    /// Zoom level of the drawing pane. A zoom of 1.0 gives the best fit of the drawing into the
+    /// drawing pane; we only allow zooming in from there.
+    ///
+    /// This is stored here (rather than just in the drawing pane widget) in order
+    /// to support menu entries.
+    pub zoom: f64,
+
     /// Here is how our time-keeping works: whenever something changes the
     /// current "speed" (e.g, starting to scan, draw command, etc.), we store the
     /// current wall clock time and the current logical time. Then on every
@@ -222,6 +232,7 @@ impl Default for EditorState {
 
             time_snapshot: (Instant::now(), Time::ZERO),
             time: Time::ZERO,
+            zoom: 1.0,
             fade_enabled: false,
             pen_size: PenSize::Medium,
             audio: Arc::new(RefCell::new(AudioState::init())),

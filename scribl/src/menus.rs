@@ -187,8 +187,33 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
         .append(delete)
 }
 
+fn view_menu(data: &EditorState) -> MenuDesc<AppState> {
+    let zoom_in = MenuItem::new(
+        LocalizedString::new("scribl-menu-view-zoom-in").with_placeholder("Zoom in"),
+        cmd::ZOOM_IN,
+    )
+    .disabled_if(|| data.zoom >= crate::editor_state::MAX_ZOOM);
+
+    let zoom_out = MenuItem::new(
+        LocalizedString::new("scribl-menu-view-zoom-out").with_placeholder("Zoom out"),
+        cmd::ZOOM_OUT,
+    )
+    .disabled_if(|| data.zoom <= 1.0);
+
+    let zoom_reset = MenuItem::new(
+        LocalizedString::new("scribl-menu-view-zoom-reset").with_placeholder("Reset zoom"),
+        cmd::ZOOM_RESET,
+    );
+
+    MenuDesc::new(LocalizedString::new("scribl-menu-view-menu").with_placeholder("View"))
+        .append(zoom_in)
+        .append(zoom_out)
+        .append(zoom_reset)
+}
+
 pub fn make_menu(data: &EditorState) -> MenuDesc<AppState> {
     MenuDesc::empty()
         .append(file_menu(data))
         .append(edit_menu(data))
+        .append(view_menu(data))
 }

@@ -21,8 +21,6 @@ const PAPER_COLOR: Color = Color::rgb8(0xff, 0xff, 0xff);
 pub struct DrawingPane {
     paper_rect: Rect,
     cursor: SnippetsCursor,
-    /// A zoom of 1.0 gives the best fit of the drawing into the pane.
-    zoom: f64,
     /// Which point of the image should be visible at the top-left of the region?
     /// (This is used to derive `paper_rect`, which is then the authoritative source for answering
     /// this question, because it might contain some adjustments due to aspect ratio).
@@ -47,16 +45,16 @@ impl DrawingPane {
         self.paper_rect.width() / DRAWING_WIDTH
     }
 
-    fn recompute_paper_rect(&mut self, size: Size) {
+    fn recompute_paper_rect(&mut self, size: Size, zoom: f64) {
         // Find the largest rectangle of the correct aspect ratio that will fit in the size.
         let paper_width = size.width.min(ASPECT_RATIO * size.height);
         let paper_height = paper_width / ASPECT_RATIO;
         let mut rect = Size::new(paper_width, paper_height).to_rect();
 
-        rect = TranslateScale::scale(self.zoom) * rect;
+        rect = TranslateScale::scale(zoom) * rect;
 
         // The basic translate puts `self.offset` at the top-left of the view, however...
-        let mut translate = -self.offset * self.zoom;
+        let mut translate = -self.offset * zoom;
         // ...we don't want to leave blank space near the top-left...
         translate.x = translate.x.min(0.0);
         translate.y = translate.y.min(0.0);
@@ -71,7 +69,7 @@ impl DrawingPane {
             translate.y = (size.height - rect.height()) / 2.0;
         }
 
-        self.offset = -translate / self.zoom;
+        self.offset = -translate / zoom;
         rect = TranslateScale::translate(translate) * rect;
 
         // Rounding helps us align better with the pixels.
@@ -84,7 +82,6 @@ impl Default for DrawingPane {
         DrawingPane {
             paper_rect: Rect::ZERO,
             cursor: SnippetsCursor::empty(Time::ZERO),
-            zoom: 1.0,
             offset: Vec2::ZERO,
             last_mouse_pos: Point::ZERO,
         }
@@ -92,28 +89,28 @@ impl Default for DrawingPane {
 }
 
 impl Widget<EditorState> for DrawingPane {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, state: &mut EditorState, _env: &Env) {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut EditorState, _env: &Env) {
         match event {
             Event::MouseMove(ev) => {
                 if ctx.is_active() {
-                    if state.action.is_recording() {
-                        let time = state.accurate_time();
+                    if data.action.is_recording() {
+                        let time = data.accurate_time();
 
                         // Compute the rectangle that needs to be invalidated in order to draw this new
                         // point.
                         let mut invalid = Rect::from_origin_size(ev.pos, (0.0, 0.0));
-                        let last_point = state.new_stroke.as_ref().and_then(|s| s.last_point());
+                        let last_point = data.new_stroke.as_ref().and_then(|s| s.last_point());
                         if let Some(last_point) = last_point {
                             invalid = invalid.union_pt(self.from_image_coords() * last_point);
                         }
-                        let pen_width = state.pen_size.size_fraction() * self.from_image_scale();
+                        let pen_width = data.pen_size.size_fraction() * self.from_image_scale();
                         ctx.request_paint_rect(invalid.inset(pen_width).expand());
 
-                        state.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
+                        data.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
                     } else {
                         // Pan the view.
-                        self.offset -= (ev.pos - self.last_mouse_pos) / self.zoom;
-                        self.recompute_paper_rect(ctx.size());
+                        self.offset -= (ev.pos - self.last_mouse_pos) / data.zoom;
+                        self.recompute_paper_rect(ctx.size(), data.zoom);
                         ctx.request_paint();
                         // TODO: change the mouse cursor
                     }
@@ -123,34 +120,34 @@ impl Widget<EditorState> for DrawingPane {
             Event::MouseDown(ev) if ev.button.is_left() => {
                 ctx.set_active(true);
                 self.last_mouse_pos = ev.pos;
-                if let CurrentAction::WaitingToRecord(_) = state.action {
-                    state.start_actually_recording();
+                if let CurrentAction::WaitingToRecord(_) = data.action {
+                    data.start_actually_recording();
                     ctx.request_anim_frame();
                 }
-                if state.action.is_recording() {
-                    let time = state.accurate_time();
-                    state.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
+                if data.action.is_recording() {
+                    let time = data.accurate_time();
+                    data.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
                 }
             }
             Event::MouseUp(ev) => {
                 ctx.set_active(false);
-                if ev.button.is_left() && state.action.is_recording() {
-                    if let Some(seg) = state.finish_cur_segment() {
+                if ev.button.is_left() && data.action.is_recording() {
+                    if let Some(seg) = data.finish_cur_segment() {
                         ctx.submit_command(Command::new(cmd::APPEND_NEW_SEGMENT, seg), None);
                     }
                 }
             }
             Event::Wheel(ev) => {
-                let zoom = (self.zoom * (-ev.wheel_delta.y / 500.0).exp())
+                let zoom = (data.zoom * (-ev.wheel_delta.y / 500.0).exp())
                     .max(1.0)
-                    .min(8.0);
-                let zoom_factor = zoom / self.zoom;
+                    .min(crate::editor_state::MAX_ZOOM);
+                let zoom_factor = zoom / data.zoom;
 
                 // Try to translate so that the mouse stays over whatever part of the drawing it's
                 // currently over.
-                self.offset += ev.pos.to_vec2() / self.zoom * (zoom_factor - 1.0);
-                self.zoom = zoom;
-                self.recompute_paper_rect(ctx.size());
+                self.offset += ev.pos.to_vec2() / data.zoom * (zoom_factor - 1.0);
+                data.zoom = zoom;
+                self.recompute_paper_rect(ctx.size(), zoom);
                 ctx.request_paint();
             }
             Event::WindowConnected => {
@@ -177,6 +174,11 @@ impl Widget<EditorState> for DrawingPane {
             self.cursor = data.snippets.create_cursor(data.time());
             ctx.request_paint();
         }
+
+        if old_data.zoom != data.zoom {
+            self.recompute_paper_rect(ctx.size(), data.zoom);
+            ctx.request_paint();
+        }
     }
 
     fn lifecycle(
@@ -195,11 +197,11 @@ impl Widget<EditorState> for DrawingPane {
         &mut self,
         _ctx: &mut LayoutCtx,
         bc: &BoxConstraints,
-        _data: &EditorState,
+        data: &EditorState,
         _env: &Env,
     ) -> Size {
         let size = bc.max();
-        self.recompute_paper_rect(size);
+        self.recompute_paper_rect(size, data.zoom);
         size
     }
 

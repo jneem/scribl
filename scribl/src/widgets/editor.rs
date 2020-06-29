@@ -514,6 +514,15 @@ impl Editor {
             let status = cmd.get_unchecked(cmd::ENCODING_STATUS);
             data.update_encoding_status(status);
             true
+        } else if cmd.is(cmd::ZOOM_IN) {
+            data.zoom = (data.zoom * 1.25).min(crate::editor_state::MAX_ZOOM);
+            true
+        } else if cmd.is(cmd::ZOOM_OUT) {
+            data.zoom = (data.zoom / 1.25).max(1.0);
+            true
+        } else if cmd.is(cmd::ZOOM_RESET) {
+            data.zoom = 1.0;
+            true
         } else {
             false
         };
