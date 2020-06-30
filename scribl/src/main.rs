@@ -7,6 +7,7 @@ mod app_state;
 mod audio;
 mod autosave;
 mod cmd;
+mod config;
 mod editor_state;
 mod encode;
 mod imagebuf;
@@ -121,10 +122,12 @@ fn main() {
 }
 
 fn encode(data: EditorState, path: &str) {
+    let config = crate::config::load_config();
     let export = cmd::ExportCmd {
         snippets: data.snippets,
         audio_snippets: data.audio_snippets,
         filename: path.into(),
+        config: config.export,
     };
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || crate::encode::encode_blocking(export, tx));

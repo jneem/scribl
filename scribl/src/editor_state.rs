@@ -11,6 +11,7 @@ use scribl_curves::{
 };
 
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData, AudioState};
+use crate::config::Config;
 use crate::encode::EncodingStatus;
 use crate::save_state::SaveFileData;
 use crate::undo::{UndoStack, UndoState};
@@ -214,6 +215,9 @@ pub struct EditorState {
 
     #[data(ignore)]
     pub save_path: Option<PathBuf>,
+
+    #[data(ignore)]
+    pub config: Config,
 }
 
 impl Default for EditorState {
@@ -241,6 +245,7 @@ impl Default for EditorState {
             status: AsyncOpsStatus::default(),
 
             save_path: None,
+            config: crate::config::load_config(),
         }
     }
 }

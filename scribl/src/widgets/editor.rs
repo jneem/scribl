@@ -452,6 +452,7 @@ impl Editor {
                         snippets: data.snippets.clone(),
                         audio_snippets: data.audio_snippets.clone(),
                         filename: path.to_owned(),
+                        config: data.config.export.clone(),
                     };
                     ctx.submit_command(Command::new(cmd::EXPORT, export), None);
                 }
@@ -621,7 +622,9 @@ impl Widget<EditorState> for Editor {
             LifeCycle::AnimFrame(_) => {
                 // We're not allowed to update the data in lifecycle, so on each animation frame we
                 // send ourselves a command to update the current time.
-                ctx.submit_command(cmd::UPDATE_TIME, ctx.widget_id());
+                if data.action.time_factor() != 0.0 {
+                    ctx.submit_command(cmd::UPDATE_TIME, ctx.widget_id());
+                }
             }
             _ => {}
         }

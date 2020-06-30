@@ -95,4 +95,5 @@ pub struct ExportCmd {
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,
     pub filename: PathBuf,
+    pub config: crate::config::Export,
 }

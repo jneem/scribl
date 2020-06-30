@@ -13,11 +13,9 @@ use scribl_curves::{Cursor, SnippetsData, Time, TimeDiff};
 use crate::audio::AudioSnippetsData;
 use crate::imagebuf::ImageBuf;
 
-const FPS: f64 = 30.0;
 // Note that the aspect ratio here needs to match the aspect ratio
 // of the drawing, which is currently fixed at 4:3 in widgets/drawing_pane.rs.
-const WIDTH: i32 = 800;
-const HEIGHT: i32 = 600;
+const ASPECT_RATIO: f64 = 4.0 / 3.0;
 
 // We make a custom error here because the default display for gst::message::Error isn't very
 // helpful in narrowing down the problem.
@@ -47,6 +45,7 @@ fn create_pipeline(
     audio: AudioSnippetsData,
     frame_count: u32,
     path: &Path,
+    config: crate::config::Export,
     progress: Sender<EncodingStatus>,
 ) -> Result<gst::Pipeline, anyhow::Error> {
     let pipeline = gst::Pipeline::new(None);
@@ -85,20 +84,27 @@ fn create_pipeline(
             .to_value(),
     )?;
 
-    let video_info =
-        gst_video::VideoInfo::new(gst_video::VideoFormat::Rgba, WIDTH as u32, HEIGHT as u32)
-            .fps(gst::Fraction::new(FPS as i32, 1))
-            .build()?;
+    let height = config.height;
+    let width = (height as f64 * ASPECT_RATIO).round() as u32;
+    let (fps_frac, fps) = if let Some(f) = gst::Fraction::approximate_f64(config.fps) {
+        (f, config.fps)
+    } else {
+        log::warn!("invalid fps value {}, defaulting to 30.0", config.fps);
+        (gst::Fraction::new(30, 1), 30.0)
+    };
+    let video_info = gst_video::VideoInfo::new(gst_video::VideoFormat::Rgba, width, height)
+        .fps(fps_frac)
+        .build()?;
 
     let v_src = v_src
         .dynamic_cast::<gst_app::AppSrc>()
         .map_err(|_| anyhow!("bug: couldn't cast v_src to an AppSrc"))?;
     v_src.set_caps(Some(&video_info.to_caps()?));
-    v_src.set_property_format(gst::Format::Time); // FIXME: what does this mean?
+    v_src.set_property_format(gst::Format::Time);
 
     // This will be called every time the video source requests data.
     let mut frame_counter = 0;
-    let mut image = ImageBuf::new(WIDTH as usize, HEIGHT as usize, &anim);
+    let mut image = ImageBuf::new(width as usize, height as usize, &anim);
     let mut need_data_inner = move |src: &gst_app::AppSrc| -> anyhow::Result<()> {
         // We track encoding progress by the fraction of video frames that we've rendered.  This
         // isn't perfect (what with gstreamer's buffering, etc.), but it's probably good enough.
@@ -110,7 +116,7 @@ fn create_pipeline(
             return Ok(());
         }
 
-        let time = Time::from_video_frame(frame_counter, FPS);
+        let time = Time::from_video_frame(frame_counter, fps);
         image.render(&anim, time)?;
 
         // Create a gst buffer and copy our data into it (TODO: it would be nice to render directly
@@ -191,12 +197,13 @@ pub fn do_encode_blocking(
         .last_draw_time()
         .max(cmd.audio_snippets.end_time())
         + TimeDiff::from_micros(200000);
-    let num_frames = end_time.as_video_frame(FPS);
+    let num_frames = end_time.as_video_frame(cmd.config.fps);
     main_loop(create_pipeline(
         cmd.snippets,
         cmd.audio_snippets,
         num_frames as u32,
         &cmd.filename,
+        cmd.config,
         progress,
     )?)
 }

@@ -1,0 +1,12 @@
+# This is an example configuration file for scribl, showing the various options
+# and their default settings.
+
+
+[export]
+
+# Height of the exported video, in pixels. (The width is derived from the height
+# and the aspect ratio of the animation.)
+height = 1080
+
+# The exported video will have this many frames per second.
+fps = 30
