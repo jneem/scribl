@@ -1,6 +1,7 @@
 use clap::{App, Arg};
 use druid::theme;
 use druid::{AppLauncher, Color, Key};
+use std::io::Write;
 
 mod app_delegate;
 mod app_state;
@@ -132,11 +133,14 @@ fn encode(data: EditorState, path: &str) {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || crate::encode::encode_blocking(export, tx));
 
+    let mut term = console::Term::stderr();
     for msg in rx.iter() {
         use crate::encode::EncodingStatus;
         match msg {
-            // TODO: nicer display
-            EncodingStatus::Encoding(pct) => eprintln!("{}", pct),
+            EncodingStatus::Encoding { frame, out_of } => {
+                let _ = term.clear_line();
+                let _ = write!(term, "Encoding frame {} of {}", frame, out_of);
+            }
             EncodingStatus::Error(s) => eprintln!("Encoding error: {}", s),
             EncodingStatus::Finished(_) => eprintln!("Finished!"),
         }

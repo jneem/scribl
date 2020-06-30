@@ -585,8 +585,8 @@ impl EditorState {
 
     pub fn update_encoding_status(&mut self, enc_status: &EncodingStatus) {
         match enc_status {
-            EncodingStatus::Encoding(x) => {
-                self.status.in_progress.encoding = Some(*x);
+            EncodingStatus::Encoding { frame, out_of } => {
+                self.status.in_progress.encoding = Some(*frame as f64 / *out_of as f64);
             }
             EncodingStatus::Finished(path) => {
                 self.status.in_progress.encoding = None;

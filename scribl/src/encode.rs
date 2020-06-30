@@ -108,9 +108,10 @@ fn create_pipeline(
     let mut need_data_inner = move |src: &gst_app::AppSrc| -> anyhow::Result<()> {
         // We track encoding progress by the fraction of video frames that we've rendered.  This
         // isn't perfect (what with gstreamer's buffering, etc.), but it's probably good enough.
-        let _ = progress.send(EncodingStatus::Encoding(
-            frame_counter as f64 / frame_count as f64,
-        ));
+        let _ = progress.send(EncodingStatus::Encoding {
+            frame: frame_counter as u64,
+            out_of: frame_count as u64,
+        });
         if frame_counter == frame_count {
             let _ = src.end_of_stream();
             return Ok(());
@@ -179,7 +180,7 @@ fn main_loop(pipeline: gst::Pipeline) -> Result<(), anyhow::Error> {
 pub enum EncodingStatus {
     /// We are still encoding, and the parameter is the progress (0.0 at the beginning, 1.0 at the
     /// end).
-    Encoding(f64),
+    Encoding { frame: u64, out_of: u64 },
 
     /// We finished encoding successfully.
     Finished(#[data(same_fn = "PartialEq::eq")] PathBuf),
