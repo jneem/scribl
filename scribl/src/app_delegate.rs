@@ -1,10 +1,17 @@
-use druid::{AppDelegate, Command, DelegateCtx, Env, Target, WindowId};
+use druid::{AppDelegate, Command, DelegateCtx, Env, ExtEventSink, Target, WindowId};
 
 use crate::app_state::AppState;
 use crate::editor_state::EditorState;
 
-#[derive(Debug, Default)]
-pub struct Delegate;
+pub struct Delegate {
+    ext_handle: ExtEventSink,
+}
+
+impl Delegate {
+    pub fn new(ext_handle: ExtEventSink) -> Delegate {
+        Delegate { ext_handle }
+    }
+}
 
 impl AppDelegate<AppState> for Delegate {
     fn command(
@@ -18,8 +25,21 @@ impl AppDelegate<AppState> for Delegate {
         log::info!("command {:?}", cmd);
         if cmd.is(druid::commands::NEW_FILE) {
             let window_desc = data.add_editor(EditorState::default());
+            let id = window_desc.id;
             ctx.new_window(window_desc);
-            // FIXME: plumb the ExtEventSink into the new window
+
+            // Plumb the ExtEventSink into the new window.
+            if let Err(e) = self.ext_handle.submit_command(
+                crate::cmd::INITIALIZE_EVENT_SINK,
+                self.ext_handle.clone(),
+                id,
+            ) {
+                log::error!(
+                    "failed to initialize event sink, loading files won't work: {}",
+                    e
+                );
+            }
+
             false
         } else {
             true

@@ -91,21 +91,19 @@ fn main() {
     let editor_window_desc = initial_state.add_editor(initial_editor);
     let editor_window_id = editor_window_desc.id;
 
-    let launcher = AppLauncher::with_window(editor_window_desc)
-        .delegate(app_delegate::Delegate::default())
-        .configure_env(|e, _| {
-            e.set(theme::BUTTON_LIGHT, Color::rgb8(0x70, 0x70, 0x70));
-            e.set(BUTTON_BACKGROUND_DISABLED, Color::rgb8(0x55, 0x55, 0x55));
-            e.set(BUTTON_FOREGROUND_DISABLED, Color::rgb8(0x33, 0x33, 0x33));
-            e.set(BUTTON_ICON_DISABLED, Color::rgb8(0x33, 0x33, 0x33));
-            e.set(BUTTON_ICON_SELECTED, UI_DARK_GREEN);
-            e.set(BUTTON_ICON_HOT, UI_LIGHT_GREEN);
-            e.set(BUTTON_ICON_IDLE, Color::rgb8(0x70, 0x70, 0x70));
-            e.set(BUTTON_ICON_PADDING, 2.0);
-            e.set(BUTTON_GROUP_BORDER_WIDTH, 1.0);
-            e.set(TEXT_SIZE_SMALL, 10.0);
-            e.set(FONT_NAME_MONO, "monospace");
-        });
+    let launcher = AppLauncher::with_window(editor_window_desc).configure_env(|e, _| {
+        e.set(theme::BUTTON_LIGHT, Color::rgb8(0x70, 0x70, 0x70));
+        e.set(BUTTON_BACKGROUND_DISABLED, Color::rgb8(0x55, 0x55, 0x55));
+        e.set(BUTTON_FOREGROUND_DISABLED, Color::rgb8(0x33, 0x33, 0x33));
+        e.set(BUTTON_ICON_DISABLED, Color::rgb8(0x33, 0x33, 0x33));
+        e.set(BUTTON_ICON_SELECTED, UI_DARK_GREEN);
+        e.set(BUTTON_ICON_HOT, UI_LIGHT_GREEN);
+        e.set(BUTTON_ICON_IDLE, Color::rgb8(0x70, 0x70, 0x70));
+        e.set(BUTTON_ICON_PADDING, 2.0);
+        e.set(BUTTON_GROUP_BORDER_WIDTH, 1.0);
+        e.set(TEXT_SIZE_SMALL, 10.0);
+        e.set(FONT_NAME_MONO, "monospace");
+    });
 
     let ext_handle = launcher.get_external_handle();
     if let Err(e) = ext_handle.submit_command(
@@ -119,7 +117,10 @@ fn main() {
         );
     }
 
-    launcher.launch(initial_state).expect("failed to launch");
+    launcher
+        .delegate(app_delegate::Delegate::new(ext_handle))
+        .launch(initial_state)
+        .expect("failed to launch");
 }
 
 fn encode(data: EditorState, path: &str) {
