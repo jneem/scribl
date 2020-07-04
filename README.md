@@ -14,7 +14,7 @@ Here's a short video created with scribl:
 
 Here's a screenshot of its user interface:
 
-![Screenshot](scribl/master/scribl/sample/screenshot.png)
+![Screenshot](scribl/sample/screenshot.png)
 
 # This is BETA software.
 
