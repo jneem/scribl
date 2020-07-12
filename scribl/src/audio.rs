@@ -7,6 +7,7 @@ use gst::prelude::*;
 use gstreamer as gst;
 use gstreamer_app as gst_app;
 use gstreamer_audio as gst_audio;
+use nnnoiseless::DenoiseState;
 use serde::de::Deserializer;
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
@@ -42,6 +43,9 @@ struct InputData {
 }
 
 pub const SAMPLE_RATE: u32 = 48000;
+// We truncate the beginning and end of the audio, to avoid capturing the sound of them
+// clicking the "record" button.
+const TRUNCATION_LEN: TimeDiff = TimeDiff::from_micros(100_000);
 
 /// Each audio snippet is uniquely identified by one of these ids.
 // This is serialized as part of saving files, so its serialization format needs to remain
@@ -159,7 +163,11 @@ impl AudioState {
                 log::error!("failed to pause recording: {}", e);
             }
         }
-        process_audio(buf)
+        let trunc = buf
+            .len()
+            .saturating_sub(TRUNCATION_LEN.as_audio_idx(SAMPLE_RATE) as usize);
+        buf.truncate(trunc);
+        buf
     }
 
     pub fn start_playing(&mut self, data: AudioSnippetsData, time: Time, velocity: f64) {
@@ -301,6 +309,12 @@ fn create_input_pipeline(data: Arc<Mutex<InputData>>) -> Result<gst::Pipeline> {
         gst_audio::AudioInfo::new(gst_audio::AudioFormat::S16le, SAMPLE_RATE as u32, 1).build()?;
     sink.set_caps(Some(&audio_info.to_caps()?));
 
+    let mut truncation_remaining: usize = TRUNCATION_LEN.as_audio_idx(SAMPLE_RATE) as usize;
+    let mut denoise_state = DenoiseState::new();
+    let mut denoise_in_buf = Vec::with_capacity(DenoiseState::FRAME_SIZE);
+    let mut denoise_out_buf = vec![0.0; DenoiseState::FRAME_SIZE];
+    let mut i16_buf = Vec::with_capacity(DenoiseState::FRAME_SIZE);
+
     let new_sample = move |sink: &gst_app::AppSink| -> Result<gst::FlowSuccess, gst::FlowError> {
         let sample = match sink.pull_sample() {
             Ok(s) => s,
@@ -326,11 +340,35 @@ fn create_input_pipeline(data: Arc<Mutex<InputData>>) -> Result<gst::Pipeline> {
             }
         };
 
-        let buffer = buffer.as_slice();
-        let mut lock = data.lock().unwrap();
-        for sample in buffer.chunks(2) {
-            lock.buf.push(i16::from_le_bytes([sample[0], sample[1]]));
+        // The buffer is in bytes; each sample is two bytes.
+        let mut buffer = buffer.as_slice();
+        if truncation_remaining > 0 {
+            let trunc = truncation_remaining.min(buffer.len() / 2);
+            truncation_remaining -= trunc;
+            buffer = &buffer[(2 * trunc)..];
         }
+
+        while !buffer.is_empty() {
+            let cap_remaining = DenoiseState::FRAME_SIZE - denoise_in_buf.len();
+            let size = (buffer.len() / 2).min(cap_remaining);
+            for sample in buffer[..(size * 2)].chunks_exact(2) {
+                denoise_in_buf.push(i16::from_le_bytes([sample[0], sample[1]]) as f32);
+            }
+            buffer = &buffer[(size * 2)..];
+
+            denoise_state.process_frame(&mut denoise_out_buf, &denoise_in_buf);
+            denoise_in_buf.clear();
+
+            for &sample in &denoise_out_buf {
+                i16_buf.push(sample as i16);
+            }
+        }
+
+        {
+            let mut lock = data.lock().unwrap();
+            lock.buf.extend_from_slice(&i16_buf);
+        }
+        i16_buf.clear();
         Ok(gst::FlowSuccess::Ok)
     };
     sink.set_callbacks(
@@ -428,44 +466,6 @@ fn create_output_pipeline(data: Arc<Mutex<OutputData>>) -> Result<gst::Pipeline>
     gst::Element::link_many(&[&src, &scale, &resample, &sink])?;
 
     Ok(pipeline)
-}
-
-// Processes the recorded audio.
-// - Truncates the beginning and end a little bit (to remove to sound of the user pressing the keyboard to start/stop recording).
-// - Runs noise removal using RNNoise.
-const TRUNCATION_LEN: TimeDiff = TimeDiff::from_micros(100_000);
-fn process_audio(mut buf: Vec<i16>) -> Vec<i16> {
-    let trunc_samples = TRUNCATION_LEN.as_audio_idx(SAMPLE_RATE) as usize;
-    if buf.len() <= 4 * trunc_samples {
-        return Vec::new();
-    }
-    // We truncate the end of the buffer, but instead of truncating the beginning we set
-    // it all to zero (because if we truncate it, it messes with the synchronization between
-    // audio and animation).
-    for i in 0..trunc_samples {
-        buf[i] = 0;
-    }
-
-    // Truncate the buffer and convert it to f32 also, since that's what RNNoise wants.
-    let buf_end = buf.len() - trunc_samples;
-    let mut float_buf: Vec<f32> = buf[..buf_end].iter().map(|x| *x as f32).collect();
-    // Do some fade-in and fade-out.
-    for i in 0..trunc_samples {
-        let factor = i as f32 / trunc_samples as f32;
-        float_buf[trunc_samples + i] *= factor;
-        float_buf[buf_end - 1 - i] *= factor;
-    }
-
-    // RNNoise likes the input to be a multiple of FRAME_SIZE.
-    let fs = rnnoise_c::FRAME_SIZE;
-    let new_size = ((float_buf.len() + (fs - 1)) / fs) * fs;
-    float_buf.resize(new_size, 0.0);
-    let mut out_buf = vec![0.0f32; float_buf.len()];
-    let mut state = rnnoise_c::DenoiseState::new();
-    for (in_chunk, out_chunk) in float_buf.chunks_exact(fs).zip(out_buf.chunks_exact_mut(fs)) {
-        state.process_frame_mut(in_chunk, out_chunk);
-    }
-    out_buf.into_iter().map(|x| x as i16).collect()
 }
 
 // Here is the serialization for audio. Note that the serialization format needs to remain

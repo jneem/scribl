@@ -5,3 +5,5 @@ members = [
     "scribl",
 ]
 
+[profile.dev.package.nnnoiseless]
+opt-level = 3
