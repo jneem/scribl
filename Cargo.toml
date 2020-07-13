@@ -5,5 +5,8 @@ members = [
     "scribl",
 ]
 
+[profile.release]
+debug = true
+
 [profile.dev.package.nnnoiseless]
 opt-level = 3

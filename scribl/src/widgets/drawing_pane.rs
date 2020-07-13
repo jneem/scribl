@@ -164,13 +164,16 @@ impl Widget<EditorState> for DrawingPane {
         data: &EditorState,
         _env: &Env,
     ) {
-        if old_data.time() != data.time() {
+        if !old_data.snippets.same(&data.snippets) {
+            self.cursor = data.snippets.create_cursor(data.time());
+            ctx.request_paint();
+        } else if old_data.time() != data.time() {
             self.cursor.advance_to(
                 old_data.time().min(data.time()),
                 old_data.time().max(data.time()),
             );
             // It doesn't matter whether we use the new snippets or the old snippets, because if
-            // they differ then we'll invalidate everything anyway.
+            // they differ then we didn't get here.
             // TODO: consider invalidating everything if there are many bboxes.
             let transform = self.from_image_coords();
             for bbox in self.cursor.bboxes(&data.snippets) {
@@ -178,11 +181,6 @@ impl Widget<EditorState> for DrawingPane {
             }
 
             self.cursor.advance_to(data.time(), data.time());
-        }
-
-        if !old_data.snippets.same(&data.snippets) {
-            self.cursor = data.snippets.create_cursor(data.time());
-            ctx.request_paint();
         }
 
         if old_data.zoom != data.zoom {
