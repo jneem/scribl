@@ -11,7 +11,7 @@ description = "Some data structures for the `scribl` animation program"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-druid = { version = "0.6.0", features = ["im"] }
+druid = { git = "https://github.com/jneem/druid.git", branch = "scribl", features = ["im"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 gstreamer = "0.15.4"
 log = "0.4.8"

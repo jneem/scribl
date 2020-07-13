@@ -1,6 +1,6 @@
 use druid::widget::{Align, Flex};
 use druid::{
-    theme, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, ExtEventSink, KeyCode,
+    theme, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, ExtEventSink, KbKey,
     KeyEvent, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget,
     WidgetExt, WidgetId, WindowId,
 };
@@ -222,23 +222,23 @@ impl Editor {
         // If they push another key while holding down the arrow, cancel the scanning.
         if let CurrentAction::Scanning(speed) = data.action {
             let direction = if speed > 0.0 {
-                KeyCode::ArrowRight
+                KbKey::ArrowRight
             } else {
-                KeyCode::ArrowLeft
+                KbKey::ArrowLeft
             };
-            if ev.key_code != direction {
+            if ev.key != direction {
                 data.stop_scanning();
             }
             ctx.set_handled();
-            if ev.key_code == KeyCode::ArrowRight || ev.key_code == KeyCode::ArrowLeft {
+            if ev.key == KbKey::ArrowRight || ev.key == KbKey::ArrowLeft {
                 return;
             }
         }
 
-        match ev.key_code {
-            KeyCode::ArrowRight | KeyCode::ArrowLeft => {
-                let speed = if ev.mods.shift { 3.0 } else { 1.5 };
-                let dir = if ev.key_code == KeyCode::ArrowRight {
+        match ev.key {
+            KbKey::ArrowRight | KbKey::ArrowLeft => {
+                let speed = if ev.mods.shift() { 3.0 } else { 1.5 };
+                let dir = if ev.key == KbKey::ArrowRight {
                     1.0
                 } else {
                     -1.0
@@ -261,8 +261,8 @@ impl Editor {
         data: &mut EditorState,
         _env: &Env,
     ) {
-        match ev.key_code {
-            KeyCode::ArrowRight | KeyCode::ArrowLeft => {
+        match ev.key {
+            KbKey::ArrowRight | KbKey::ArrowLeft => {
                 if data.action.is_scanning() {
                     data.stop_scanning();
                 }

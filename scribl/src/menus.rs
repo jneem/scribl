@@ -1,7 +1,7 @@
 use druid::commands;
 use druid::platform_menus;
 use druid::{
-    Command, FileDialogOptions, FileSpec, KeyCode, LocalizedString, MenuDesc, MenuItem, SysMods,
+    Command, FileDialogOptions, FileSpec, KbKey, LocalizedString, MenuDesc, MenuItem, SysMods,
 };
 
 use crate::cmd;
@@ -106,7 +106,7 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
         cmd::DRAW,
     );
     let draw = if data.action.rec_toggle() == ToggleButtonState::ToggledOff {
-        draw.hotkey(SysMods::None, KeyCode::Space)
+        draw.hotkey(SysMods::None, " ")
     } else {
         draw.disabled()
     };
@@ -116,7 +116,7 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
         cmd::TALK,
     );
     let talk = if data.action.rec_audio_toggle() == ToggleButtonState::ToggledOff {
-        talk.hotkey(SysMods::Shift, KeyCode::Space)
+        talk.hotkey(SysMods::Shift, " ")
     } else {
         talk.disabled()
     };
@@ -139,9 +139,9 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
     let stop = match data.action {
         CurrentAction::Playing => stop.hotkey(SysMods::None, "p"),
         CurrentAction::Recording(_) | CurrentAction::WaitingToRecord(_) => {
-            stop.hotkey(SysMods::None, KeyCode::Space)
+            stop.hotkey(SysMods::None, " ")
         }
-        CurrentAction::RecordingAudio(_) => stop.hotkey(SysMods::Shift, KeyCode::Space),
+        CurrentAction::RecordingAudio(_) => stop.hotkey(SysMods::Shift, " "),
         _ => stop.disabled(),
     };
 
@@ -149,27 +149,27 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
         LocalizedString::new("scribl-menu-edit-mark").with_placeholder("Set mark"),
         Command::new(cmd::SET_MARK, None),
     )
-    .hotkey(SysMods::Cmd, KeyCode::KeyM);
+    .hotkey(SysMods::Cmd, "m");
 
     let warp = MenuItem::new(
         LocalizedString::new("scribl-menu-edit-warp").with_placeholder("Warp snippet"),
         cmd::LERP_SNIPPET,
     )
-    .hotkey(SysMods::Cmd, KeyCode::KeyW)
+    .hotkey(SysMods::Cmd, "w")
     .disabled_if(|| data.mark.is_none());
 
     let trunc = MenuItem::new(
         LocalizedString::new("scribl-menu-edit-truncate").with_placeholder("Truncate snippet"),
         cmd::TRUNCATE_SNIPPET,
     )
-    .hotkey(SysMods::Cmd, KeyCode::KeyT)
+    .hotkey(SysMods::Cmd, "t")
     .disabled_if(|| data.selected_snippet.is_none());
 
     let delete = MenuItem::new(
         LocalizedString::new("scribl-menu-edit-delete").with_placeholder("Delete selected"),
         Command::new(cmd::DELETE_SNIPPET, MaybeSnippetId::None),
     )
-    .hotkey(SysMods::None, KeyCode::Delete)
+    .hotkey(SysMods::None, KbKey::Delete)
     .disabled_if(|| data.selected_snippet.is_none());
 
     MenuDesc::new(LocalizedString::new("common-menu-edit-menu"))

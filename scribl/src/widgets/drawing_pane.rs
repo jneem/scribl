@@ -1,7 +1,7 @@
 use druid::kurbo::TranslateScale;
 use druid::{
-    Affine, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle,
-    LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
+    BoxConstraints, Color, Command, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
+    PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
 };
 
 use scribl_curves::{SnippetsCursor, Time};
@@ -30,15 +30,15 @@ pub struct DrawingPane {
 }
 
 impl DrawingPane {
-    fn to_image_coords(&self) -> Affine {
+    fn to_image_coords(&self) -> TranslateScale {
         let top_left = Vec2::new(self.paper_rect.x0, self.paper_rect.y0);
         let size_ratio = DRAWING_WIDTH / self.paper_rect.width();
-        Affine::scale(size_ratio) * Affine::translate(-top_left)
+        TranslateScale::scale(size_ratio) * TranslateScale::translate(-top_left)
     }
 
-    fn from_image_coords(&self) -> Affine {
+    fn from_image_coords(&self) -> TranslateScale {
         let top_left = Vec2::new(self.paper_rect.x0, self.paper_rect.y0);
-        Affine::translate(top_left) * Affine::scale(self.from_image_scale())
+        TranslateScale::translate(top_left) * TranslateScale::scale(self.from_image_scale())
     }
 
     fn from_image_scale(&self) -> f64 {
@@ -165,9 +165,19 @@ impl Widget<EditorState> for DrawingPane {
         _env: &Env,
     ) {
         if old_data.time() != data.time() {
+            self.cursor.advance_to(
+                old_data.time().min(data.time()),
+                old_data.time().max(data.time()),
+            );
+            // It doesn't matter whether we use the new snippets or the old snippets, because if
+            // they differ then we'll invalidate everything anyway.
+            // TODO: consider invalidating everything if there are many bboxes.
+            let transform = self.from_image_coords();
+            for bbox in self.cursor.bboxes(&data.snippets) {
+                ctx.request_paint_rect(transform * bbox);
+            }
+
             self.cursor.advance_to(data.time(), data.time());
-            // TODO: figure out the region that changed
-            ctx.request_paint();
         }
 
         if !old_data.snippets.same(&data.snippets) {
@@ -211,7 +221,7 @@ impl Widget<EditorState> for DrawingPane {
             ctx.clip(size.to_rect());
             ctx.fill(&self.paper_rect, &PAPER_COLOR);
 
-            ctx.transform(self.from_image_coords());
+            ctx.transform(self.from_image_coords().into());
             for id in self.cursor.active_ids() {
                 data.snippets
                     .snippet(id)

@@ -487,7 +487,7 @@ impl Widget<EditorState> for TimelineSnippet {
         // our rectangle to be just a little bit bigger than the drawing region.
         let bounding_rect = ctx
             .region()
-            .to_rect()
+            .bounding_box()
             .inflate(radius + 1.0, std::f64::INFINITY);
         let stroke_thick = if ctx.is_hot() && !is_selected {
             SNIPPET_STROKE_THICKNESS
@@ -506,7 +506,7 @@ impl Widget<EditorState> for TimelineSnippet {
         let fill_color = self.fill_color(data);
 
         ctx.with_save(|ctx| {
-            let clip = ctx.region().to_rect();
+            let clip = ctx.region().bounding_box();
             ctx.clip(clip);
             ctx.fill(&rect, &fill_color);
             if stroke_thick > 0.0 {
@@ -620,7 +620,7 @@ impl Widget<EditorState> for TimelineInner {
         // Note that the width here may well be infinite. Intersecting with the
         // paint region will prevent us from trying to fill an infinite rect.
         let size = ctx.size();
-        let rect = Rect::from_origin_size(Point::ZERO, size).intersect(ctx.region().to_rect());
+        let rect = Rect::from_origin_size(Point::ZERO, size).intersect(ctx.region().bounding_box());
         ctx.fill(rect, &TIMELINE_BG_COLOR);
 
         for child in self.children.values_mut() {
