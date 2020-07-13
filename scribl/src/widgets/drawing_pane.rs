@@ -229,6 +229,7 @@ impl Widget<EditorState> for DrawingPane {
                 curve.render(ctx.render_ctx, data.time());
             }
             if let Some(snip) = data.new_stroke.as_ref() {
+                // FIXME: there's an invalidation bug with fade on the new stroke.
                 snip.render(ctx.render_ctx, data.cur_style(), data.time());
             }
         });

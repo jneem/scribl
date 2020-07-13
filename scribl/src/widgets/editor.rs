@@ -287,6 +287,7 @@ impl Editor {
             data.snippets = new_snippets;
             data.selected_snippet = new_id.into();
             data.push_undo_state(prev_state.with_time(snip.start_time()), "add drawing");
+            ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::DELETE_SNIPPET) {
             let id = cmd.get_unchecked(cmd::DELETE_SNIPPET);
@@ -298,6 +299,7 @@ impl Editor {
                     data.selected_snippet = MaybeSnippetId::None;
                 }
                 data.push_undo_state(prev_state, "delete drawing");
+                ctx.set_menu(crate::menus::make_menu(data));
             } else if let Some(id) = id.as_audio().or(data.selected_snippet.as_audio()) {
                 let prev_state = data.undo_state();
                 let new_snippets = data.audio_snippets.without_snippet(id);
@@ -306,6 +308,7 @@ impl Editor {
                     data.selected_snippet = MaybeSnippetId::None;
                 }
                 data.push_undo_state(prev_state, "delete audio");
+                ctx.set_menu(crate::menus::make_menu(data));
             } else {
                 log::error!("No snippet id to delete");
             }
@@ -315,12 +318,14 @@ impl Editor {
             let snip = cmd.get_unchecked(cmd::ADD_AUDIO_SNIPPET);
             data.audio_snippets = data.audio_snippets.with_new_snippet(snip.clone());
             data.push_undo_state(prev_state.with_time(snip.start_time()), "add audio");
+            ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::APPEND_NEW_SEGMENT) {
             let prev_state = data.undo_state();
             let seg = cmd.get_unchecked(cmd::APPEND_NEW_SEGMENT);
             data.add_segment_to_snippet(seg.clone());
             data.push_transient_undo_state(prev_state, "add stroke");
+            ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::CHOOSE_COLOR) {
             let color = cmd.get_unchecked(cmd::CHOOSE_COLOR);
@@ -353,12 +358,14 @@ impl Editor {
             let time = cmd.get_unchecked(cmd::SET_MARK).unwrap_or(data.time());
             data.mark = Some(time);
             data.push_undo_state(prev_state, "set mark");
+            ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::TRUNCATE_SNIPPET) {
             if let Some(id) = data.selected_snippet.as_draw() {
                 let prev_state = data.undo_state();
                 data.snippets = data.snippets.with_truncated_snippet(id, data.time());
                 data.push_undo_state(prev_state, "truncate drawing");
+                ctx.set_menu(crate::menus::make_menu(data));
             } else {
                 log::error!("cannot truncate, nothing selected");
             }
@@ -369,6 +376,7 @@ impl Editor {
                 data.snippets = data.snippets.with_new_lerp(id, data.time(), mark_time);
                 data.warp_time_to(mark_time);
                 data.push_undo_state(prev_state, "warp drawing");
+                ctx.set_menu(crate::menus::make_menu(data));
             } else {
                 log::error!(
                     "cannot lerp, mark time {:?}, selected {:?}",
@@ -379,9 +387,11 @@ impl Editor {
             true
         } else if cmd.is(druid::commands::UNDO) {
             data.undo();
+            ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(druid::commands::REDO) {
             data.redo();
+            ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::PLAY) {
             if data.action.is_idle() {
@@ -390,6 +400,7 @@ impl Editor {
             } else {
                 log::error!("can't play, current action is {:?}", data.action);
             }
+            ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::DRAW) {
             if data.action.is_idle() {
@@ -399,6 +410,7 @@ impl Editor {
             } else {
                 log::error!("can't draw, current action is {:?}", data.action);
             }
+            ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::TALK) {
             if data.action.is_idle() {
@@ -407,6 +419,7 @@ impl Editor {
             } else {
                 log::error!("can't talk, current action is {:?}", data.action);
             }
+            ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::STOP) {
             match data.action {
@@ -422,6 +435,7 @@ impl Editor {
                 }
                 _ => {}
             }
+            ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::UPDATE_TIME) {
             data.update_time();
@@ -527,10 +541,6 @@ impl Editor {
         } else {
             false
         };
-        // This might be a little conservative, but there are lots of state
-        // changes that cause the menus to change, so the easiest thing is just
-        // to rebuild the menus on every command.
-        ctx.set_menu(crate::menus::make_menu(data));
         ret
     }
 
