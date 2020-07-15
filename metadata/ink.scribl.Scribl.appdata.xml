@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2020 Joe Neeman <joeneeman@gmail.com> -->
+<component type="desktop-application">
+    <id>ink.scribl.Scribl</id>
+    <metadata_license>FSFAP</metadata_license>
+    <project_license>Apache-2.0 OR MIT</project_license>
+    <name>Scribl</name>
+    <summary>Create simple instructional videos</summary>
+
+    <description>
+        <p>
+            Scribl is a program for creating simple video lectures
+            that combine audio with hand-drawn animation.
+        </p>
+    </description>
+
+    <launchable type="desktop-id">ink.scribl.Scribl.desktop</launchable>
+
+    <!-- TODO: a proper web page -->
+    <url type="homepage">https://github.com/jneem/scribl</url>
+    <developer_name>Joe Neeman</developer_name>
+    <update_contact>joeneeman@gmail.com</update_contact>
+</component>

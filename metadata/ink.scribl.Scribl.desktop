@@ -1,0 +1,7 @@
+[Desktop Entry]
+Version=1.1
+Type=Application
+Name=Scribl
+Comment=Create simple instructional videos
+Exec=scribl
+Categories=AudioVideo;Video
