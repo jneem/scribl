@@ -1,17 +1,18 @@
-use anyhow::anyhow;
-use druid::Data;
+use anyhow::{anyhow, Error};
+use druid::kurbo::TranslateScale;
+use druid::piet::{Device, ImageFormat};
+use druid::{Color, Data, Rect, RenderContext};
 use gst::prelude::*;
 use gstreamer as gst;
 use gstreamer_app as gst_app;
 use gstreamer_video as gst_video;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
 use scribl_curves::{Cursor, SnippetsData, Time, TimeDiff};
 
 use crate::audio::AudioSnippetsData;
-use crate::imagebuf::ImageBuf;
 
 // Note that the aspect ratio here needs to match the aspect ratio
 // of the drawing, which is currently fixed at 4:3 in widgets/drawing_pane.rs.
@@ -102,51 +103,30 @@ fn create_pipeline(
     v_src.set_caps(Some(&video_info.to_caps()?));
     v_src.set_property_format(gst::Format::Time);
 
-    // This will be called every time the video source requests data.
-    let mut frame_counter = 0;
-    let mut image = ImageBuf::new(width as usize, height as usize, &anim);
-    let mut need_data_inner = move |src: &gst_app::AppSrc| -> anyhow::Result<()> {
-        // We track encoding progress by the fraction of video frames that we've rendered.  This
-        // isn't perfect (what with gstreamer's buffering, etc.), but it's probably good enough.
-        let _ = progress.send(EncodingStatus::Encoding {
-            frame: frame_counter as u64,
-            out_of: frame_count as u64,
-        });
-        if frame_counter == frame_count {
-            let _ = src.end_of_stream();
-            return Ok(());
-        }
+    let (tx, rx) = std::sync::mpsc::channel();
+    // gstreamer's callbacks need Sync, not just Send.
+    let tx = Arc::new(std::sync::Mutex::new(tx));
+    let tx_clone = Arc::clone(&tx);
+    v_src.connect_need_data(move |_, _| {
+        let _ = tx.lock().unwrap().send(RenderLoopCmd::NeedsData);
+    });
+    v_src.connect_enough_data(move |_| {
+        let _ = tx_clone.lock().unwrap().send(RenderLoopCmd::EnoughData);
+    });
+    std::thread::spawn(move || {
+        render_loop(
+            rx,
+            progress,
+            v_src,
+            anim,
+            width,
+            height,
+            fps,
+            frame_count,
+            video_info,
+        )
+    });
 
-        let time = Time::from_video_frame(frame_counter, fps);
-        image.render(&anim, time)?;
-
-        // Create a gst buffer and copy our data into it (TODO: it would be nice to render directly
-        // into this buffer, but druid doesn't seem to support rendering into borrowed buffers).
-        let mut gst_buffer = gst::Buffer::with_size(video_info.size())?;
-        {
-            let gst_buffer_ref = gst_buffer
-                .get_mut()
-                .ok_or(anyhow!("failed to get mutable buffer"))?;
-            // Presentation time stamp (i.e. when should this frame be displayed).
-            gst_buffer_ref.set_pts(time.as_gst_clock_time());
-
-            let mut data = gst_buffer_ref.map_writable()?;
-            data.as_mut_slice().copy_from_slice(image.pixel_data());
-        }
-
-        // Ignore the error, since appsrc is supposed to handle it.
-        let _ = src.push_buffer(gst_buffer);
-        frame_counter += 1;
-        Ok(())
-    };
-
-    let need_data = move |src: &gst_app::AppSrc, _: u32| {
-        if let Err(e) = need_data_inner(src) {
-            log::error!("error rendering frame: {}", e);
-        }
-    };
-
-    v_src.set_callbacks(gst_app::AppSrcCallbacks::new().need_data(need_data).build());
     Ok(pipeline)
 }
 
@@ -173,6 +153,107 @@ fn main_loop(pipeline: gst::Pipeline) -> Result<(), anyhow::Error> {
 
     pipeline.set_state(gst::State::Null)?;
     dbg!("finished encoding loop");
+    Ok(())
+}
+
+enum RenderLoopCmd {
+    EnoughData,
+    NeedsData,
+}
+
+fn render_loop(
+    cmd: Receiver<RenderLoopCmd>,
+    progress: Sender<EncodingStatus>,
+    app_src: gst_app::AppSrc,
+    snippets: SnippetsData,
+    width: u32,
+    height: u32,
+    fps: f64,
+    frame_count: u32,
+    video_info: gst_video::VideoInfo,
+) -> Result<(), Error> {
+    let mut device = Device::new().map_err(|e| anyhow!("failed to get device: {}", e))?;
+    let mut bitmap = device
+        .bitmap_target(width as usize, height as usize, 1.0)
+        .map_err(|e| anyhow!("failed to get bitmap: {}", e))?;
+    let mut cursor = snippets.create_cursor(Time::ZERO);
+    let transform = TranslateScale::scale(width as f64);
+
+    bitmap.render_context().clear(Color::WHITE);
+
+    for frame_counter in 0..frame_count {
+        while let Ok(msg) = cmd.try_recv() {
+            match msg {
+                RenderLoopCmd::EnoughData => while let RenderLoopCmd::EnoughData = cmd.recv()? {},
+                RenderLoopCmd::NeedsData => {}
+            }
+        }
+
+        // We track encoding progress by the fraction of video frames that we've rendered.  This
+        // isn't perfect (what with gstreamer's buffering, etc.), but it's probably good enough.
+        let _ = progress.send(EncodingStatus::Encoding {
+            frame: frame_counter as u64,
+            out_of: frame_count as u64,
+        });
+
+        let time = Time::from_video_frame(frame_counter, fps);
+        let last_time = cursor.current().0;
+
+        // TODO: we have a cursor for visible snippets, but we could also have a cursor for
+        // snippets that might potentially cause a change in the visibility. There should be less
+        // of these.
+        cursor.advance_to(time.min(last_time), time.max(last_time));
+        let mut bbox = Rect::ZERO;
+        for b in cursor.bboxes(&snippets) {
+            let b = (transform * b).expand();
+            if bbox.area() == 0.0 {
+                bbox = b;
+            } else {
+                // TODO: could be more efficient about redrawing.
+                bbox = bbox.union(b);
+            }
+        }
+
+        cursor.advance_to(time, time);
+        {
+            let mut ctx = bitmap.render_context();
+            ctx.with_save(|ctx| {
+                ctx.clip(bbox);
+                ctx.transform(transform.into());
+                ctx.clear(Color::WHITE);
+                for id in cursor.active_ids() {
+                    snippets.snippet(id).render(ctx, time);
+                }
+                Ok(())
+            })
+            .map_err(|e| anyhow!("failed to render: {}", e))?;
+            ctx.finish()
+                .map_err(|e| anyhow!("failed to finish context: {}", e))?;
+        }
+
+        // Create a gst buffer and copy our data into it (it would be nice to render directly
+        // into this buffer, but druid doesn't seem to support rendering into borrowed buffers).
+        let mut gst_buffer = gst::Buffer::with_size(video_info.size())?;
+        {
+            let gst_buffer_ref = gst_buffer
+                .get_mut()
+                .ok_or(anyhow!("failed to get mutable buffer"))?;
+            // Presentation time stamp (i.e. when should this frame be displayed).
+            gst_buffer_ref.set_pts(time.as_gst_clock_time());
+
+            let mut data = gst_buffer_ref.map_writable()?;
+            bitmap
+                .copy_raw_pixels(ImageFormat::RgbaPremul, &mut data)
+                .map_err(|e| anyhow!("failed to get raw pixels: {}", e))?;
+        }
+
+        // Ignore the error, since appsrc is supposed to handle it.
+        let _ = app_src.push_buffer(gst_buffer);
+        // Note that piet-cairo (and probably other backends too) currently only supports
+        // RgbaPremul.
+    }
+
+    let _ = app_src.end_of_stream();
     Ok(())
 }
 
