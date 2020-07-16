@@ -168,16 +168,23 @@ impl Widget<EditorState> for DrawingPane {
             self.cursor = data.snippets.create_cursor(data.time());
             ctx.request_paint();
         } else if old_data.time() != data.time() {
-            self.cursor.advance_to(
-                old_data.time().min(data.time()),
-                old_data.time().max(data.time()),
-            );
+            let start_time = old_data.time().min(data.time());
+            let end_time = old_data.time().max(data.time());
+            self.cursor.advance_to(start_time, end_time);
             // It doesn't matter whether we use the new snippets or the old snippets, because if
             // they differ then we didn't get here.
             // TODO: consider invalidating everything if there are many bboxes.
             let transform = self.from_image_coords();
             for bbox in self.cursor.bboxes(&data.snippets) {
                 ctx.request_paint_rect(transform * bbox);
+            }
+            if let Some(strokes) = &data.new_stroke_seq {
+                for stroke in strokes.strokes() {
+                    let rect = stroke.changes_bbox(start_time, end_time);
+                    if rect.area() != 0.0 {
+                        ctx.request_paint_rect(transform * rect);
+                    }
+                }
             }
 
             self.cursor.advance_to(data.time(), data.time());
@@ -229,7 +236,6 @@ impl Widget<EditorState> for DrawingPane {
                 curve.render(ctx.render_ctx, data.time());
             }
             if let Some(snip) = data.new_stroke.as_ref() {
-                // FIXME: there's an invalidation bug with fade on the new stroke.
                 snip.render(ctx.render_ctx, data.cur_style(), data.time());
             }
         });
