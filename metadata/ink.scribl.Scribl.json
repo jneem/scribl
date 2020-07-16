@@ -14,7 +14,7 @@
     "build-options": {
         "append-path": "/usr/lib/sdk/rust-stable/bin",
         "env": {
-            "CARGO_HOME": "/run/build/scribl/cargo",
+            "CARGO_HOME": "/run/build/scribl/cargo"
         }
     },
     "modules": [{
@@ -34,6 +34,6 @@
             "install -D metadata/ink.scribl.Scribl.appdata.xml /app/share/metainfo/ink.scribl.Scribl.appdata.xml",
             "install -D metadata/ink.scribl.Scribl.svg /app/share/icons/scalable/apps/ink.scribl.Scribl.svg",
             "install -D metadata/ink.scribl.Scribl.desktop /app/share/applicatons/ink.scribl.Scribl.desktop"
-        ],
+        ]
     }]
 }
