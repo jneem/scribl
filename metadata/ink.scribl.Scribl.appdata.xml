@@ -16,8 +16,7 @@
 
     <launchable type="desktop-id">ink.scribl.Scribl.desktop</launchable>
 
-    <!-- TODO: a proper web page -->
-    <url type="homepage">https://github.com/jneem/scribl</url>
+    <url type="homepage">https://www.scribl.ink</url>
     <developer_name>Joe Neeman</developer_name>
     <update_contact>joeneeman@gmail.com</update_contact>
 </component>
