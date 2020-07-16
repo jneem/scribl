@@ -395,7 +395,7 @@ pub fn create_appsrc(data: Arc<Mutex<OutputData>>, name: &str) -> Result<gst::El
     let need_audio_data_inner =
         move |src: &gst_app::AppSrc, size_hint: u32| -> anyhow::Result<()> {
             let mut lock = data.lock().unwrap();
-            if lock.cursor.is_finished() {
+            if lock.forwards && lock.cursor.is_finished() {
                 let _ = src.end_of_stream();
                 return Ok(());
             }
