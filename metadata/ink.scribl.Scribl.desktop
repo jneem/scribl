@@ -5,3 +5,4 @@ Name=Scribl
 Comment=Create simple instructional videos
 Exec=scribl
 Categories=AudioVideo;Video
+Icon=ink.scribl.Scribl
