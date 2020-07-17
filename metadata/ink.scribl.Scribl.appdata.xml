@@ -16,7 +16,20 @@
 
     <launchable type="desktop-id">ink.scribl.Scribl.desktop</launchable>
 
+    <screenshots>
+        <screenshot type="default">
+            <caption>The main user interface</caption>
+            <image>https://raw.githubusercontent.com/jneem/scribl/trunk/metadata/screenshot.png</image>
+        </screenshot>
+    </screenshots>
+
+    <content_rating type="oars-1.0" />
+
     <url type="homepage">https://www.scribl.ink</url>
     <developer_name>Joe Neeman</developer_name>
     <update_contact>joeneeman@gmail.com</update_contact>
+
+    <releases>
+        <release version="0.1.0" date="2020-06-08" type="development">
+    </releases>
 </component>
