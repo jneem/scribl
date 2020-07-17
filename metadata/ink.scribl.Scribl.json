@@ -22,7 +22,7 @@
         "sources": [{
                 "type": "git",
                 "url": "https://github.com/jneem/scribl",
-                "branch": "trunk"
+                "tag": "flatpak-v0.2.0-alpha1"
             },
             "generated-sources.json"
         ],
