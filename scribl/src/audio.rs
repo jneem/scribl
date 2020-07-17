@@ -221,7 +221,16 @@ impl AudioSnippetData {
     /// Normalize this audio signal to have a target loudness.
     pub fn set_multiplier(&mut self, target_lufs: f32) {
         let orig_lufs = lufs::loudness(self.buf.iter().map(|&x| (x as f32) / (i16::MAX as f32)));
-        self.multiplier = lufs::multiplier(orig_lufs, target_lufs)
+        let peak = self
+            .buf
+            .iter()
+            .map(|&x| (x as f32).abs())
+            .fold(0.0f32, |x, y| x.max(y));
+        self.multiplier = lufs::multiplier(orig_lufs, target_lufs);
+        if self.multiplier * peak >= i16::MAX as f32 {
+            log::info!("Reducing loudness to avoid clipping");
+            self.multiplier = i16::MAX as f32 / peak;
+        }
     }
 
     pub fn multiplier(&self) -> f32 {

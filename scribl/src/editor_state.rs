@@ -411,10 +411,10 @@ impl EditorState {
             let buf = self.audio.borrow_mut().stop_recording();
             let mut ret = AudioSnippetData::new(buf, rec_start);
 
-            // By default, we normalize to loudness -24. For some reason (possibly to do with
-            // incorrectness in the lufs crate), this seems like a good value for avoiding
-            // clipping.
-            ret.set_multiplier(-24.0);
+            // By default, we normalize to loudness -20. This is quieter than many sources ask for
+            // (e.g. youtube recommends -13 to -15), but going louder tends to introduce clipping.
+            // Maybe some sort of dynamic range compression would be appropriate?
+            ret.set_multiplier(-20.0);
             ret
         } else {
             panic!("not recording");
