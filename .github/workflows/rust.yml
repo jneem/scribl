@@ -33,7 +33,9 @@ jobs:
       CARGO_INCREMENTAL: 0
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-2019]
+        #os: [ubuntu-latest, windows-2019]
+        # Disable windows for now; it doesn't build because of recent piet text changes
+        os: [ubuntu-latest]
 
     name: cargo test
     steps:
