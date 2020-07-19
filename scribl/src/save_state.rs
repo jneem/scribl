@@ -20,6 +20,14 @@ pub struct SaveFileData {
 
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,
+
+    /// The aspect ratio of the animation. Currently this is fixed at 4:3, but eventually we'll
+    /// want to support other values, so let's put it in the save file format.
+    pub aspect_ratio: (u32, u32),
+    /// The "width" of the animation, in some arbitrary and meaningless unit. Currently this is
+    /// fixed at 1.0 but eventually we may want to allow them to resize the canvas, so let's put it
+    /// in the save file format.
+    pub width: f64,
 }
 
 pub mod v0 {
@@ -36,6 +44,8 @@ pub mod v0 {
                 version: 1,
                 snippets: d.snippets.into(),
                 audio_snippets: d.audio_snippets,
+                aspect_ratio: (4, 3),
+                width: 1.0,
             }
         }
     }
@@ -47,6 +57,8 @@ impl SaveFileData {
             version: 1,
             snippets: data.snippets.clone(),
             audio_snippets: data.audio_snippets.clone(),
+            aspect_ratio: (4, 3),
+            width: 1.0,
         }
     }
 
@@ -107,10 +119,7 @@ impl SaveFileData {
 mod tests {
     use super::*;
 
-    #[test]
-    fn save_load() {
-        let data = include_bytes!("../sample/intro.scb");
-
+    fn check_round_trip(data: &[u8]) {
         // Check that we can read our sample file.
         let save_data = SaveFileData::load_from(&data[..]).unwrap();
 
@@ -128,5 +137,15 @@ mod tests {
         let mut written_again = Vec::new();
         read_again.save_to(&mut written_again).unwrap();
         assert_eq!(written, written_again);
+    }
+
+    #[test]
+    fn save_load() {
+        check_round_trip(&include_bytes!("../sample/intro.scb")[..]);
+    }
+
+    #[test]
+    fn save_load_v0() {
+        check_round_trip(&include_bytes!("../sample/intro_v0.scb")[..]);
     }
 }
