@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use crate::autosave::AutosaveData;
 use crate::cmd;
-use crate::editor_state::{CurrentAction, EditorState, MaybeSnippetId, PenSize, RecordingSpeed};
+use crate::editor_state::{
+    CurrentAction, DenoiseSetting, EditorState, MaybeSnippetId, PenSize, RecordingSpeed,
+};
 use crate::save_state::SaveFileData;
 use crate::widgets::tooltip::{TooltipExt, TooltipHost};
 use crate::widgets::{
@@ -132,25 +134,59 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
     draw_button_group
 }
 
+fn make_audio_button_group() -> impl Widget<EditorState> {
+    let rec_audio_button = ToggleButton::new(
+        &icons::MICROPHONE,
+        24.0,
+        |state: &EditorState| state.action.rec_audio_toggle(),
+        |ctx, _, _| ctx.submit_command(cmd::TALK, None),
+        |ctx, _, _| ctx.submit_command(cmd::STOP, None),
+    )
+    .tooltip(|state: &EditorState, _env: &Env| {
+        if state.action.rec_audio_toggle() == ToggleButtonState::ToggledOn {
+            "Stop recording (Shift+Space)"
+        } else {
+            "Start recording audio (Shift+Space)"
+        }
+        .to_owned()
+    });
+
+    let noise_group = crate::widgets::radio_icon::make_radio_icon_group(
+        24.0,
+        vec![
+            (
+                &icons::NOISE,
+                DenoiseSetting::DenoiseOff,
+                "Disable denoising".into(),
+            ),
+            (
+                &icons::REMOVE_NOISE,
+                DenoiseSetting::DenoiseOn,
+                "Enable denoising but not speech detection".into(),
+            ),
+            (
+                &icons::SPEECH,
+                DenoiseSetting::Vad,
+                "Enable denoising and speech detection".into(),
+            ),
+        ],
+    );
+
+    let audio_button_group = Flex::row()
+        .with_child(rec_audio_button)
+        .with_spacer(10.0)
+        .with_child(noise_group.lens(EditorState::denoise_setting))
+        .padding(5.0);
+
+    LabelledContainer::new(audio_button_group, "Talk")
+        .border_color(Color::WHITE)
+        .corner_radius(druid::theme::BUTTON_BORDER_RADIUS)
+        .padding(5.0)
+}
+
 impl Editor {
     pub fn new() -> Editor {
         let drawing = DrawingPane::default();
-        let rec_audio_button = ToggleButton::new(
-            &icons::MICROPHONE,
-            24.0,
-            |state: &EditorState| state.action.rec_audio_toggle(),
-            |ctx, _, _| ctx.submit_command(cmd::TALK, None),
-            |ctx, _, _| ctx.submit_command(cmd::STOP, None),
-        )
-        .tooltip(|state: &EditorState, _env: &Env| {
-            if state.action.rec_audio_toggle() == ToggleButtonState::ToggledOn {
-                "Stop recording (Shift+Space)"
-            } else {
-                "Start recording audio (Space)"
-            }
-            .to_owned()
-        });
-
         let play_button = ToggleButton::new(
             &icons::PLAY,
             24.0,
@@ -168,12 +204,7 @@ impl Editor {
         });
 
         let draw_button_group = make_draw_button_group();
-
-        let audio_button_group = Flex::row().with_child(rec_audio_button).padding(5.0);
-        let audio_button_group = LabelledContainer::new(audio_button_group, "Talk")
-            .border_color(Color::WHITE)
-            .corner_radius(druid::theme::BUTTON_BORDER_RADIUS)
-            .padding(5.0);
+        let audio_button_group = make_audio_button_group();
 
         let watch_button_group = Flex::row().with_child(play_button).padding(5.0);
         let watch_button_group = LabelledContainer::new(watch_button_group, "Watch")

@@ -298,7 +298,8 @@ impl AudioSnippetData {
             .iter()
             .map(|&x| (x as f32).abs())
             .fold(0.0f32, |x, y| x.max(y));
-        self.multiplier = lufs::multiplier(orig_lufs, target_lufs);
+        // Truncate the multiplier so it doesn't get ridiculous.
+        self.multiplier = lufs::multiplier(orig_lufs, target_lufs).min(50.0);
         if self.multiplier * peak >= i16::MAX as f32 {
             log::info!("Reducing loudness to avoid clipping");
             self.multiplier = i16::MAX as f32 / peak;

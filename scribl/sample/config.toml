@@ -3,7 +3,8 @@
 
 [audio_input]
 
-# Should we automatically remove noise from the incoming audio?
+# Should we automatically remove noise from the incoming audio? This can be overridden
+# from within the user interface; this setting just affects the value on start-up.
 remove_noise = true
 
 # How aggressively should we remove non-speech sounds? If noise removal is off,

@@ -204,6 +204,7 @@ pub struct EditorState {
     pub fade_enabled: bool,
 
     pub pen_size: PenSize,
+    pub denoise_setting: DenoiseSetting,
 
     pub audio: Arc<RefCell<AudioState>>,
 
@@ -222,6 +223,14 @@ pub struct EditorState {
 
 impl Default for EditorState {
     fn default() -> EditorState {
+        let config = crate::config::load_config();
+        let denoise_setting = if !config.audio_input.remove_noise {
+            DenoiseSetting::DenoiseOff
+        } else if config.audio_input.vad_threshold <= 0.0 {
+            DenoiseSetting::DenoiseOn
+        } else {
+            DenoiseSetting::Vad
+        };
         EditorState {
             new_stroke: None,
             new_stroke_seq: None,
@@ -239,13 +248,14 @@ impl Default for EditorState {
             zoom: 1.0,
             fade_enabled: false,
             pen_size: PenSize::Medium,
+            denoise_setting,
             audio: Arc::new(RefCell::new(AudioState::init())),
             palette: crate::widgets::PaletteData::default(),
 
             status: AsyncOpsStatus::default(),
 
             save_path: None,
-            config: crate::config::load_config(),
+            config,
         }
     }
 }
@@ -400,9 +410,22 @@ impl EditorState {
         assert_eq!(self.action, CurrentAction::Idle);
         self.action = CurrentAction::RecordingAudio(self.time);
         self.take_time_snapshot();
-        self.audio
-            .borrow_mut()
-            .start_recording(self.config.audio_input.clone());
+        let mut config = self.config.audio_input.clone();
+
+        // We allow the UI to override what's in the config file.
+        match self.denoise_setting {
+            DenoiseSetting::DenoiseOn => {
+                config.remove_noise = true;
+                config.vad_threshold = 0.0;
+            }
+            DenoiseSetting::DenoiseOff => {
+                config.remove_noise = false;
+            }
+            DenoiseSetting::Vad => {
+                config.remove_noise = true;
+            }
+        }
+        self.audio.borrow_mut().start_recording(config);
     }
 
     /// Stops recording audio, returning the audio snippet that we just recorded.
@@ -759,4 +782,11 @@ impl PenSize {
             PenSize::Big => 0.012,
         }
     }
+}
+
+#[derive(Clone, Copy, Data, PartialEq, Eq)]
+pub enum DenoiseSetting {
+    DenoiseOff,
+    DenoiseOn,
+    Vad,
 }
