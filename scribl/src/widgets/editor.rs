@@ -419,10 +419,12 @@ impl Editor {
         } else if cmd.is(druid::commands::UNDO) {
             data.undo();
             ctx.set_menu(crate::menus::make_menu(data));
+            ctx.request_paint();
             true
         } else if cmd.is(druid::commands::REDO) {
             data.redo();
             ctx.set_menu(crate::menus::make_menu(data));
+            ctx.request_paint();
             true
         } else if cmd.is(cmd::PLAY) {
             if data.action.is_idle() {
