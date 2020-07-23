@@ -400,7 +400,9 @@ impl EditorState {
         assert_eq!(self.action, CurrentAction::Idle);
         self.action = CurrentAction::RecordingAudio(self.time);
         self.take_time_snapshot();
-        self.audio.borrow_mut().start_recording();
+        self.audio
+            .borrow_mut()
+            .start_recording(self.config.audio_input.clone());
     }
 
     /// Stops recording audio, returning the audio snippet that we just recorded.

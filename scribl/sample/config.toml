@@ -1,6 +1,21 @@
 # This is an example configuration file for scribl, showing the various options
 # and their default settings.
 
+[audio_input]
+
+# Should we automatically remove noise from the incoming audio?
+remove_noise = true
+
+# How aggressively should we remove non-speech sounds? If noise removal is off,
+# this has no effect.
+#
+# A value of 0.0 means that we don't attempt to delete non-speech noises.
+# Higher values make us more likely to decide that a particular sound is not
+# speech. 1.0 means that we delete everything.
+#
+# (VAD stands for "voice activity detection.")
+vad_threshold = 0.3
+
 
 [export]
 

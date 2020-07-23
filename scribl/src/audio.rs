@@ -40,12 +40,19 @@ pub struct OutputData {
 
 struct InputData {
     buf: Vec<i16>,
-    // The denoiser does VAD (voice activity detection): it estimates the probability that speech
-    // is happening. As long as that probability is below this threshold, we mute the input.
-    vad_threshold: f32,
+    /// For every frame (of size `DenoiseState::FRAME_SIZE`) in `buf`, we store an estimate of how
+    /// likely that frame was to contain speech.
+    vad: Vec<f32>,
+    config: crate::config::AudioInput,
 }
 
 pub const SAMPLE_RATE: u32 = 48000;
+
+// We don't simply drop frames where voice was not detected: doing so tends to cut off consonants
+// like "t". Instead, we do some "smoothing in time": if no voice was detected within
+// `VOICELESS_FRAME_LAG` frames (either forwards or backwards in time) of the current frame, we
+// drop the current frame.
+const VOICELESS_FRAME_LAG: usize = 10;
 
 /// Each audio snippet is uniquely identified by one of these ids.
 // This is serialized as part of saving files, so its serialization format needs to remain
@@ -93,7 +100,8 @@ impl AudioState {
 
         let input_data = Arc::new(Mutex::new(InputData {
             buf: Vec::new(),
-            vad_threshold: 0.3,
+            vad: Vec::new(),
+            config: crate::config::AudioInput::default(),
         }));
         let input_pipeline = create_input_pipeline(Arc::clone(&input_data));
         if let Err(e) = &input_pipeline {
@@ -148,8 +156,13 @@ impl AudioState {
         }
     }
 
-    pub fn start_recording(&mut self) {
-        self.input_data.lock().unwrap().buf.clear();
+    pub fn start_recording(&mut self, config: crate::config::AudioInput) {
+        {
+            let mut lock = self.input_data.lock().unwrap();
+            lock.buf.clear();
+            lock.vad.clear();
+            lock.config = config;
+        }
 
         if let Some(pipe) = self.input_pipeline.as_ref() {
             if let Err(e) = pipe.set_state(gst::State::Playing) {
@@ -160,12 +173,50 @@ impl AudioState {
 
     pub fn stop_recording(&mut self) -> Vec<i16> {
         let mut buf = Vec::new();
-        std::mem::swap(&mut self.input_data.lock().unwrap().buf, &mut buf);
+        let mut vad = Vec::new();
+        let config = {
+            let mut lock = self.input_data.lock().unwrap();
+            std::mem::swap(&mut lock.buf, &mut buf);
+            std::mem::swap(&mut lock.vad, &mut vad);
+            lock.config.clone()
+        };
         if let Some(pipe) = self.input_pipeline.as_ref() {
             if let Err(e) = pipe.set_state(gst::State::Paused) {
                 log::error!("failed to pause recording: {}", e);
             }
         }
+
+        // Which frames are worth keeping, according to voice detection?
+        let mut keep: Vec<_> = vad.iter().map(|&v| v > config.vad_threshold).collect();
+        convolve_bools(&mut keep[..], VOICELESS_FRAME_LAG);
+
+        // Windows for fading in and out when voice is detected or not.
+        let present = vec![1.0; DenoiseState::FRAME_SIZE];
+        let absent = vec![0.0; DenoiseState::FRAME_SIZE];
+        let fade_out: Vec<_> = (0..DenoiseState::FRAME_SIZE)
+            .rev()
+            .map(|x| x as f32 / DenoiseState::FRAME_SIZE as f32)
+            .collect();
+        let fade_in: Vec<_> = (0..DenoiseState::FRAME_SIZE)
+            .map(|x| x as f32 / DenoiseState::FRAME_SIZE as f32)
+            .collect();
+
+        keep.push(false);
+        for (frame, k) in buf
+            .chunks_exact_mut(DenoiseState::FRAME_SIZE)
+            .zip(keep.windows(2))
+        {
+            let window = match (k[0], k[1]) {
+                (true, true) => &present,
+                (false, false) => &absent,
+                (true, false) => &fade_out,
+                (false, true) => &fade_in,
+            };
+            for (x, &w) in frame.iter_mut().zip(window) {
+                *x = (*x as f32 * w).round() as i16;
+            }
+        }
+
         buf
     }
 
@@ -191,6 +242,28 @@ impl AudioState {
             if let Err(e) = pipe.set_state(gst::State::Paused) {
                 log::error!("failed to stop audio: {}", e);
             }
+        }
+    }
+}
+
+/// Given a slice of bools, modifies it so that everything within `width` of a `true` is set to
+/// `true`.
+fn convolve_bools(xs: &mut [bool], width: usize) {
+    let mut count = width;
+    let next_count = |x, count| if x { 0 } else { count + 1 };
+
+    for x in &mut xs[..] {
+        count = next_count(*x, count);
+        if count <= width {
+            *x = true;
+        }
+    }
+
+    count = width;
+    for x in xs.iter_mut().rev() {
+        count = next_count(*x, count);
+        if count <= width {
+            *x = true;
         }
     }
 }
@@ -322,18 +395,6 @@ fn create_input_pipeline(data: Arc<Mutex<InputData>>) -> Result<gst::Pipeline> {
     let mut denoise_out_buf = vec![0.0; DenoiseState::FRAME_SIZE];
     let mut i16_buf = Vec::with_capacity(DenoiseState::FRAME_SIZE);
 
-    // Windows for fading in and out when voice is detected or not.
-    let present = vec![1.0; DenoiseState::FRAME_SIZE];
-    let absent = vec![0.0; DenoiseState::FRAME_SIZE];
-    let fade_out: Vec<_> = (0..DenoiseState::FRAME_SIZE)
-        .rev()
-        .map(|x| x as f32 / DenoiseState::FRAME_SIZE as f32)
-        .collect();
-    let fade_in: Vec<_> = (0..DenoiseState::FRAME_SIZE)
-        .map(|x| x as f32 / DenoiseState::FRAME_SIZE as f32)
-        .collect();
-    let mut last_frame_voice = false;
-
     let new_sample = move |sink: &gst_app::AppSink| -> Result<gst::FlowSuccess, gst::FlowError> {
         let sample = match sink.pull_sample() {
             Ok(s) => s,
@@ -361,7 +422,7 @@ fn create_input_pipeline(data: Arc<Mutex<InputData>>) -> Result<gst::Pipeline> {
 
         // The buffer is in bytes; each sample is two bytes.
         let mut buffer = buffer.as_slice();
-        let vad_threshold = data.lock().unwrap().vad_threshold;
+        let config = data.lock().unwrap().config.clone();
 
         while !buffer.is_empty() {
             let cap_remaining = DenoiseState::FRAME_SIZE - denoise_in_buf.len();
@@ -371,20 +432,20 @@ fn create_input_pipeline(data: Arc<Mutex<InputData>>) -> Result<gst::Pipeline> {
             }
             buffer = &buffer[(size * 2)..];
 
-            let vad = denoise_state.process_frame(&mut denoise_out_buf, &denoise_in_buf);
+            let vad = if config.remove_noise {
+                denoise_state.process_frame(&mut denoise_out_buf, &denoise_in_buf)
+            } else {
+                for (&src, dst) in denoise_in_buf.iter().zip(&mut denoise_out_buf[..]) {
+                    *dst = src;
+                }
+                1.0
+            };
             denoise_in_buf.clear();
 
-            let this_frame_voice = vad >= vad_threshold;
-            let window = match (last_frame_voice, this_frame_voice) {
-                (false, false) => &absent,
-                (true, true) => &present,
-                (true, false) => &fade_out,
-                (false, true) => &fade_in,
-            };
-            last_frame_voice = this_frame_voice;
+            data.lock().unwrap().vad.push(vad);
 
-            for (&sample, &w) in denoise_out_buf.iter().zip(window) {
-                i16_buf.push((sample * w).round() as i16);
+            for sample in &denoise_out_buf {
+                i16_buf.push(sample.round() as i16);
             }
         }
 

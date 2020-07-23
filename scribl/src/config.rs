@@ -10,8 +10,17 @@ fn default_video_fps() -> f64 {
     30.0
 }
 
-#[derive(Clone, Debug, Deserialize)]
+fn default_remove_noise() -> bool {
+    true
+}
+
+fn default_vad_threshold() -> f32 {
+    0.3
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct Config {
+    pub audio_input: AudioInput,
     pub export: Export,
 }
 
@@ -26,13 +35,32 @@ pub struct Export {
     pub fps: f64,
 }
 
-impl Default for Config {
-    fn default() -> Config {
-        Config {
-            export: Export {
-                height: default_video_height(),
-                fps: default_video_fps(),
-            },
+#[derive(Clone, Debug, Deserialize)]
+pub struct AudioInput {
+    /// Should we do noise removal on the incoming audio?
+    #[serde(default = "default_remove_noise")]
+    pub remove_noise: bool,
+
+    /// How aggressively should we remove non-speech audio? (0.0 means we don't remove non-speech
+    /// sounds; 1.0 means we remove everything.)
+    #[serde(default = "default_vad_threshold")]
+    pub vad_threshold: f32,
+}
+
+impl Default for AudioInput {
+    fn default() -> AudioInput {
+        AudioInput {
+            remove_noise: default_remove_noise(),
+            vad_threshold: default_vad_threshold(),
+        }
+    }
+}
+
+impl Default for Export {
+    fn default() -> Export {
+        Export {
+            height: default_video_height(),
+            fps: default_video_fps(),
         }
     }
 }
