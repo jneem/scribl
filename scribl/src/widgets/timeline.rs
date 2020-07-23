@@ -245,7 +245,7 @@ impl<W: Widget<EditorState>> Controller<EditorState, Scroll<EditorState, W>>
                 0.0
             };
 
-            if delta_x > 0.0 {
+            if delta_x != 0.0 {
                 ctx.request_paint();
             }
             child.scroll(Vec2 { x: delta_x, y: 0.0 }, size);
