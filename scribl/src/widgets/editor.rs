@@ -196,9 +196,9 @@ impl Editor {
         )
         .tooltip(|state: &EditorState, _env: &Env| {
             if state.action.play_toggle() == ToggleButtonState::ToggledOn {
-                "Pause playback (P)"
+                "Pause playback (Enter)"
             } else {
-                "Play back the animation (P)"
+                "Play back the animation (Enter)"
             }
             .to_owned()
         });
@@ -292,13 +292,24 @@ impl Editor {
         data: &mut EditorState,
         _env: &Env,
     ) {
-        match ev.key {
+        match &ev.key {
             KbKey::ArrowRight | KbKey::ArrowLeft => {
                 if data.action.is_scanning() {
                     data.stop_scanning();
                 }
                 ctx.set_handled();
             }
+            KbKey::Character(s) => match s.chars().next().unwrap() {
+                c @ '0'..='9' => {
+                    // Select the corresponding color.
+                    let num = c.to_digit(10).unwrap_or(0) as usize;
+                    // '1' is the first color, '0' is the last.
+                    let idx = (num + 9) % 10;
+                    // If there is no color at that index, just fail silently.
+                    let _ = data.palette.try_select_idx(idx);
+                }
+                _ => {}
+            },
             _ => {}
         }
     }

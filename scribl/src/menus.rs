@@ -126,7 +126,7 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
         cmd::PLAY,
     );
     let play = if data.action.play_toggle() == ToggleButtonState::ToggledOff {
-        play.hotkey(SysMods::None, "p")
+        play.hotkey(SysMods::None, KbKey::Enter)
     } else {
         play.disabled()
     };
@@ -137,7 +137,7 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
     );
     // The stop hotkey matches the hotkey that was used to start the current action.
     let stop = match data.action {
-        CurrentAction::Playing => stop.hotkey(SysMods::None, "p"),
+        CurrentAction::Playing => stop.hotkey(SysMods::None, KbKey::Enter),
         CurrentAction::Recording(_) | CurrentAction::WaitingToRecord(_) => {
             stop.hotkey(SysMods::None, " ")
         }

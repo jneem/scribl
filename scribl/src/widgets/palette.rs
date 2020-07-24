@@ -4,13 +4,14 @@ use druid::{Color, Command, Data, Lens, Point, Rect, RenderContext, WidgetPod};
 use std::sync::Arc;
 
 use crate::cmd;
+use crate::widgets::tooltip::TooltipExt;
 
 // The padding between and around the color swatches.
 const PALETTE_ELT_PADDING: f64 = 2.0;
 
 #[derive(Clone, Data, Lens)]
 pub struct PaletteData {
-    colors: Arc<Vec<Color>>,
+    colors: Arc<Vec<(Color, String)>>,
     selected: Color,
 }
 
@@ -18,18 +19,18 @@ impl Default for PaletteData {
     fn default() -> PaletteData {
         // The utexas color palette defined here: https://brand.utexas.edu/identity/color/
         let colors = vec![
-            Color::rgb8(191, 87, 0),
-            Color::rgb8(51, 63, 72),
-            Color::rgb8(248, 151, 31),
-            Color::rgb8(255, 214, 0),
-            Color::rgb8(166, 205, 87),
-            Color::rgb8(87, 157, 66),
-            Color::rgb8(0, 169, 183),
-            Color::rgb8(0, 95, 134),
-            Color::rgb8(156, 173, 183),
-            Color::rgb8(214, 210, 196),
+            (Color::rgb8(191, 87, 0), "Burnt orange".to_owned()),
+            (Color::rgb8(51, 63, 72), "Charcoal".to_owned()),
+            (Color::rgb8(248, 151, 31), "Kumquat".to_owned()),
+            (Color::rgb8(255, 214, 0), "Golden".to_owned()),
+            (Color::rgb8(166, 205, 87), "Yellow-green".to_owned()),
+            (Color::rgb8(87, 157, 66), "May green".to_owned()),
+            (Color::rgb8(0, 169, 183), "Cayman".to_owned()),
+            (Color::rgb8(0, 95, 134), "Capri".to_owned()),
+            (Color::rgb8(156, 173, 183), "Cadet".to_owned()),
+            (Color::rgb8(214, 210, 196), "Timberwolf".to_owned()),
         ];
-        let selected = colors[0].clone();
+        let selected = colors[0].0.clone();
         PaletteData {
             colors: Arc::new(colors),
             selected,
@@ -45,12 +46,21 @@ impl PaletteData {
     pub fn select(&mut self, color: &Color) {
         self.selected = color.clone();
     }
+
+    pub fn try_select_idx(&mut self, idx: usize) -> Result<(), ()> {
+        if let Some(c) = self.colors.get(idx) {
+            self.selected = c.0.clone();
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
 }
 
 pub struct Palette {
     // The idiomatic thing to do would be to wrap the children in lenses, but the combinators
     // are hard to use for this since Vec doesn't implement Data.
-    children: Vec<WidgetPod<Color, PaletteElement>>,
+    children: Vec<WidgetPod<Color, Box<dyn Widget<Color>>>>,
     height: f64,
 }
 
@@ -124,14 +134,21 @@ impl Palette {
         }
     }
 
-    fn resize(&mut self, colors: &[Color]) {
-        self.children.resize_with(colors.len(), || {
-            WidgetPod::new(PaletteElement {
-                color: Color::BLACK,
-            })
-        });
-        for (i, c) in colors.iter().enumerate() {
-            self.children[i].widget_mut().color = c.clone();
+    fn resize(&mut self, colors: &[(Color, String)]) {
+        self.children.clear();
+        for (i, (c, name)) in colors.iter().enumerate() {
+            let elt: Box<dyn Widget<_>> = if i <= 9 {
+                // TODO: the tooltips are defined here, but the actual key bindings are
+                // defined in Editor. It would be nice to have them defined in the same place.
+                Box::new(PaletteElement { color: c.clone() }.tooltip(format!(
+                    "{} ({})",
+                    name,
+                    (i + 1) % 10
+                )))
+            } else {
+                Box::new(PaletteElement { color: c.clone() })
+            };
+            self.children.push(WidgetPod::new(elt));
         }
     }
 }
@@ -139,7 +156,7 @@ impl Palette {
 impl Widget<PaletteData> for Palette {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut PaletteData, env: &Env) {
         for (i, c) in self.children.iter_mut().enumerate() {
-            let mut color = (&data.colors)[i].clone();
+            let mut color = (&data.colors)[i].0.clone();
             c.event(ctx, event, &mut color, env);
         }
     }
@@ -168,7 +185,7 @@ impl Widget<PaletteData> for Palette {
             ctx.request_layout();
         }
         for (i, c) in self.children.iter_mut().enumerate() {
-            c.lifecycle(ctx, event, &(&data.colors)[i], env);
+            c.lifecycle(ctx, event, &(&data.colors)[i].0, env);
         }
     }
 
@@ -187,12 +204,12 @@ impl Widget<PaletteData> for Palette {
         for (i, c) in self.children.iter_mut().enumerate() {
             // We don't really need to layout the children, but if we don't call layout
             // on them then druid will constantly think that they need to be re-layouted.
-            let _ = c.layout(ctx, &child_constraints, &data.colors[i], env);
+            let _ = c.layout(ctx, &child_constraints, &data.colors[i].0, env);
             let x = (self.height + PALETTE_ELT_PADDING) * i as f64 + PALETTE_ELT_PADDING;
             let y = PALETTE_ELT_PADDING;
             c.set_layout_rect(
                 ctx,
-                &data.colors[i as usize],
+                &data.colors[i as usize].0,
                 env,
                 Rect::from_origin_size((x, y), (self.height, self.height)),
             );
