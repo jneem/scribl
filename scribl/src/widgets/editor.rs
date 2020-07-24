@@ -109,9 +109,13 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
     let pen_size_group = crate::widgets::radio_icon::make_radio_icon_group(
         24.0,
         vec![
-            (&icons::BIG_CIRCLE, PenSize::Big, "BIG PEN!".into()),
-            (&icons::MEDIUM_CIRCLE, PenSize::Medium, "Medium pen".into()),
-            (&icons::SMALL_CIRCLE, PenSize::Small, "Small pen".into()),
+            (&icons::BIG_CIRCLE, PenSize::Big, "BIG PEN! (Q)".into()),
+            (
+                &icons::MEDIUM_CIRCLE,
+                PenSize::Medium,
+                "Medium pen (W)".into(),
+            ),
+            (&icons::SMALL_CIRCLE, PenSize::Small, "Small pen (E)".into()),
         ],
     );
 
@@ -308,6 +312,9 @@ impl Editor {
                     // If there is no color at that index, just fail silently.
                     let _ = data.palette.try_select_idx(idx);
                 }
+                'q' => data.pen_size = PenSize::Big,
+                'w' => data.pen_size = PenSize::Medium,
+                'e' => data.pen_size = PenSize::Small,
                 _ => {}
             },
             _ => {}
