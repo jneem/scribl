@@ -94,7 +94,7 @@ fn main() {
         e.set(theme::BUTTON_LIGHT, Color::rgb8(0x70, 0x70, 0x70));
         e.set(BUTTON_BACKGROUND_DISABLED, Color::rgb8(0x55, 0x55, 0x55));
         e.set(BUTTON_FOREGROUND_DISABLED, Color::rgb8(0x33, 0x33, 0x33));
-        e.set(BUTTON_ICON_DISABLED, Color::rgb8(0x33, 0x33, 0x33));
+        e.set(BUTTON_ICON_DISABLED, Color::rgb8(0x70, 0x70, 0x70));
         e.set(BUTTON_ICON_SELECTED, UI_DARK_GREEN);
         e.set(BUTTON_ICON_HOT, UI_LIGHT_GREEN);
         e.set(BUTTON_ICON_IDLE, Color::rgb8(0x70, 0x70, 0x70));
