@@ -13,10 +13,9 @@ use scribl_curves::{SnippetData, SnippetId, SnippetsData, Time, TimeDiff};
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData};
 use crate::cmd;
 use crate::editor_state::EditorState;
-use crate::snippet_layout;
+use crate::snippet_layout::{self, SnippetShape};
 
 const SNIPPET_HEIGHT: f64 = 20.0;
-const MIN_NUM_ROWS: usize = 5;
 const PIXELS_PER_USEC: f64 = 100.0 / 1000000.0;
 const TIMELINE_BG_COLOR: Color = Color::rgb8(0x66, 0x66, 0x66);
 const CURSOR_COLOR: Color = Color::rgb8(0x10, 0x10, 0xaa);
@@ -29,6 +28,17 @@ const AUDIO_SNIPPET_SELECTED_COLOR: Color = crate::UI_LIGHT_GREEN;
 const SNIPPET_STROKE_COLOR: Color = Color::rgb8(0x00, 0x00, 0x00);
 const SNIPPET_STROKE_THICKNESS: f64 = 2.0;
 const SNIPPET_WAVEFORM_COLOR: Color = crate::UI_DARK_BLUE;
+
+const MIN_TIMELINE_HEIGHT: f64 = 100.0;
+const LAYOUT_PARAMS: crate::snippet_layout::Parameters = crate::snippet_layout::Parameters {
+    thick_height: 18.0,
+    thin_height: 2.0,
+    h_padding: 10.0,
+    v_padding: 2.0,
+    min_width: TimeDiff::from_micros((10.0 / PIXELS_PER_USEC) as i64),
+    overlap: TimeDiff::from_micros((5.0 / PIXELS_PER_USEC) as i64),
+    pixels_per_usec: PIXELS_PER_USEC,
+};
 
 const MARK_COLOR: Color = Color::rgb8(0x33, 0x33, 0x99);
 
@@ -72,14 +82,18 @@ impl Id {
 
 /// The cached "waveform" of an audio snippet.
 struct AudioWaveform {
-    // The shape of the waveform. This is rendered with respect to a height
-    // going from -1 to 1.
+    // The shape of the waveform.
     wave: BezPath,
 }
 
 /// The cached "waveform" of a drawing snippet.
 struct DrawingWaveform {
     strokes: Vec<(Time, Time, Color)>,
+}
+
+enum SnippetInterior {
+    Audio(AudioWaveform),
+    Drawing(DrawingWaveform),
 }
 
 /// The data of a snippet (either a drawing snippet or an audio snippet).
@@ -90,7 +104,13 @@ enum Snip {
 }
 
 impl AudioWaveform {
-    fn from_audio(data: AudioSnippetData) -> AudioWaveform {
+    fn new(data: AudioSnippetData, shape: &crate::snippet_layout::SnippetShape) -> AudioWaveform {
+        if shape.rects.is_empty() {
+            return AudioWaveform {
+                wave: BezPath::new(),
+            };
+        }
+
         // Converts a PCM sample to a y coordinate. This could use some more
         // thought and/or testing. Like, should we be taking a logarithm somewhere?
         let audio_height = |x: f64| -> f64 {
@@ -99,30 +119,45 @@ impl AudioWaveform {
                 .min(1.0)
         };
 
-        let width = pix_width(data.end_time() - data.start_time());
         let pix_per_sample = 5;
         let buf = data.buf();
-        let mut mags = Vec::with_capacity((width as usize) / pix_per_sample);
+        let mut path_back = Vec::new();
         let mut path = BezPath::new();
-        path.move_to((0.0, 0.0));
-        for p in (0..(width as usize)).step_by(pix_per_sample) {
-            let start_time = x_pix(p as f64) - Time::ZERO;
-            let end_time = x_pix((p + pix_per_sample) as f64) - Time::ZERO;
-            let start_idx =
-                (start_time.as_audio_idx(crate::audio::SAMPLE_RATE) as usize).min(buf.len());
-            let end_idx =
-                (end_time.as_audio_idx(crate::audio::SAMPLE_RATE) as usize).min(buf.len());
-            let sub_buf = &buf[start_idx..end_idx];
+        let x0 = shape.rects[0].x0;
+        path.move_to((0.0, shape.rects[0].center().y));
+        for (i, r) in shape.rects.iter().enumerate() {
+            let start = if i == 0 {
+                0
+            } else {
+                (pix_width(LAYOUT_PARAMS.overlap) / 2.0) as usize
+            };
+            let width = if i + 1 == shape.rects.len() {
+                r.width() as usize
+            } else {
+                (r.width() - pix_width(LAYOUT_PARAMS.overlap) / 2.0) as usize
+            };
+            for p in (start..width).step_by(pix_per_sample) {
+                let start_time = x_pix(p as f64 + r.x0 - x0) - Time::ZERO;
+                let end_time = x_pix((p + pix_per_sample) as f64 + r.x0 - x0) - Time::ZERO;
+                let start_idx =
+                    (start_time.as_audio_idx(crate::audio::SAMPLE_RATE) as usize).min(buf.len());
+                let end_idx =
+                    (end_time.as_audio_idx(crate::audio::SAMPLE_RATE) as usize).min(buf.len());
+                let sub_buf = &buf[start_idx..end_idx];
 
-            let mag = (sub_buf.iter().cloned().max().unwrap_or(0) as f64
-                - sub_buf.iter().cloned().min().unwrap_or(0) as f64)
-                / 2.0;
-            path.line_to((p as f64, audio_height(mag)));
-            mags.push((p, mag));
+                let mag = (sub_buf.iter().cloned().max().unwrap_or(0) as f64
+                    - sub_buf.iter().cloned().min().unwrap_or(0) as f64)
+                    / 2.0;
+
+                let x = p as f64 + r.x0 - x0;
+                let dy = audio_height(mag) / 2.0 * r.height();
+                path.line_to((x, r.center().y + dy));
+                path_back.push((x, r.center().y - dy));
+            }
         }
 
-        for (p, mag) in mags.into_iter().rev() {
-            path.line_to((p as f64, -audio_height(mag)));
+        for (x, y) in path_back.into_iter().rev() {
+            path.line_to((x, y));
         }
         path.close_path();
         AudioWaveform { wave: path }
@@ -130,7 +165,7 @@ impl AudioWaveform {
 }
 
 impl DrawingWaveform {
-    fn from_snippet(data: &SnippetData) -> DrawingWaveform {
+    fn new(data: &SnippetData) -> DrawingWaveform {
         let mut strokes = Vec::new();
         for stroke in data.strokes() {
             if stroke.times.is_empty() {
@@ -193,10 +228,7 @@ impl Snip {
 
 /// The main timeline widget.
 struct TimelineInner {
-    // The timeline is organized in rows, and this map associates each id to a
-    // row (with 0 being the topmost row).
-    snippet_offsets: HashMap<Id, usize>,
-    num_rows: usize,
+    height: f64,
     children: HashMap<Id, WidgetPod<EditorState, TimelineSnippet>>,
 }
 
@@ -257,8 +289,7 @@ impl<W: Widget<EditorState>> Controller<EditorState, Scroll<EditorState, W>>
 impl Default for TimelineInner {
     fn default() -> TimelineInner {
         TimelineInner {
-            snippet_offsets: HashMap::new(),
-            num_rows: MIN_NUM_ROWS,
+            height: MIN_TIMELINE_HEIGHT,
             children: HashMap::new(),
         }
     }
@@ -267,35 +298,41 @@ impl Default for TimelineInner {
 impl TimelineInner {
     // Recreates the child widgets, and organizes them into rows so that they don't overlap.
     fn recreate_children(&mut self, snippets: &SnippetsData, audio: &AudioSnippetsData) {
-        let draw_offsets = snippet_layout::layout(snippets.snippets());
-        let audio_offsets = snippet_layout::layout(audio.snippets());
-        self.num_rows = (draw_offsets.num_rows + audio_offsets.num_rows).max(MIN_NUM_ROWS);
+        let draw_shapes = snippet_layout::layout(snippets.snippets(), &LAYOUT_PARAMS);
+        let audio_shapes = snippet_layout::layout(audio.snippets(), &LAYOUT_PARAMS);
+        self.height = (draw_shapes.max_y + audio_shapes.max_y).max(MIN_TIMELINE_HEIGHT);
 
-        self.snippet_offsets.clear();
         self.children.clear();
-        for (&id, &offset) in &draw_offsets.positions {
+        for (id, shape) in draw_shapes.positions {
             let snip = snippets.snippet(id);
             let id = Id::Drawing(id);
-            self.snippet_offsets.insert(id, offset);
+            let interior = SnippetInterior::Drawing(DrawingWaveform::new(&snip));
             self.children.insert(
                 id,
                 WidgetPod::new(TimelineSnippet {
                     id,
-                    wave: None,
-                    segs: Some(DrawingWaveform::from_snippet(&snip)),
+                    // FIXME: magic number
+                    path: shape.to_poly(5.0),
+                    hot: false,
+                    shape,
+                    interior,
                 }),
             );
         }
-        for (&id, &offset) in &audio_offsets.positions {
+        for (id, mut shape) in audio_shapes.positions {
+            shape.reflect_y(self.height);
             let audio_data = audio.snippet(id);
             let id = Id::Audio(id);
-            self.snippet_offsets.insert(id, self.num_rows - offset - 1);
+            let interior = SnippetInterior::Audio(AudioWaveform::new(audio_data.clone(), &shape));
             self.children.insert(
                 id,
                 WidgetPod::new(TimelineSnippet {
                     id,
-                    wave: Some(AudioWaveform::from_audio(audio_data.clone())),
-                    segs: None,
+                    // FIXME: magic number
+                    path: shape.to_poly(5.0),
+                    hot: false,
+                    shape: shape.clone(),
+                    interior,
                 }),
             );
         }
@@ -314,10 +351,11 @@ impl TimelineInner {
 struct TimelineSnippet {
     // The id of the snippet that this widget represents.
     id: Id,
-    // If the snippet is an audio snippet, a precalculated waveform.
-    wave: Option<AudioWaveform>,
-    // If the segment is a drawing snippet, a precalculated waveform.
-    segs: Option<DrawingWaveform>,
+    // Because a timeline snippet isn't rectangle-shaped, we do our own hot-state tracking.
+    hot: bool,
+    path: BezPath,
+    shape: SnippetShape,
+    interior: SnippetInterior,
 }
 
 impl TimelineSnippet {
@@ -363,29 +401,30 @@ impl TimelineSnippet {
         }
     }
 
+    fn path(&self) -> &BezPath {
+        &self.path
+    }
+
+    fn contains(&self, p: Point) -> bool {
+        self.shape.rects.iter().any(|r| r.contains(p))
+    }
+
     /// Draws the "interior" of the snippet (i.e., everything but the bounding rect).
-    fn render_interior(&self, ctx: &mut PaintCtx, snip: &Snip, _width: f64, height: f64) {
+    fn render_interior(&self, ctx: &mut PaintCtx, snip: &Snip, height: f64) {
         match snip {
             Snip::Audio(_data) => {
-                ctx.with_save(|ctx| {
-                    // The precomputed waveform is based on a vertical scale of
-                    // [-1, 1], so transform it to [0, height]
-                    ctx.transform(
-                        Affine::translate((0.0, height / 2.0))
-                            * Affine::scale_non_uniform(1.0, height / 2.0),
-                    );
-                    let wave = self
-                        .wave
-                        .as_ref()
-                        .expect("audio snippet should have a cached waveform");
-                    ctx.fill(&wave.wave, &SNIPPET_WAVEFORM_COLOR);
+                ctx.with_save(|ctx| match &self.interior {
+                    SnippetInterior::Audio(a) => {
+                        ctx.fill(&a.wave, &SNIPPET_WAVEFORM_COLOR);
+                    }
+                    _ => panic!("audio snippet should have a cached waveform"),
                 });
             }
             Snip::Drawing(data) => {
-                let segs = self
-                    .segs
-                    .as_ref()
-                    .expect("drawing widget should have cached segment extents");
+                let segs = match &self.interior {
+                    SnippetInterior::Drawing(s) => s,
+                    _ => panic!("drawing widget should have cached segment extents"),
+                };
                 for &(start, end, ref color) in &segs.strokes {
                     let start_x = pix_width(start - data.start_time());
                     let end_x = pix_width(end - data.start_time());
@@ -406,14 +445,14 @@ impl TimelineSnippet {
 impl Widget<EditorState> for TimelineSnippet {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut EditorState, _env: &Env) {
         match event {
-            Event::MouseDown(ev) if ev.button.is_left() => {
+            Event::MouseDown(ev) if ev.button.is_left() && self.contains(ev.pos) => {
                 ctx.set_active(true);
                 ctx.set_handled();
             }
-            Event::MouseUp(ev) if ev.button.is_left() => {
+            Event::MouseUp(ev) if ev.button.is_left() && self.contains(ev.pos) => {
                 if ctx.is_active() {
                     ctx.set_active(false);
-                    if ctx.is_hot() {
+                    if self.hot {
                         match self.id {
                             Id::Drawing(id) => data.selected_snippet = id.into(),
                             Id::Audio(id) => data.selected_snippet = id.into(),
@@ -421,6 +460,13 @@ impl Widget<EditorState> for TimelineSnippet {
                         ctx.set_handled();
                         ctx.set_menu(crate::menus::make_menu(data));
                     }
+                }
+            }
+            Event::MouseMove(ev) => {
+                let new_hot = self.contains(ev.pos);
+                if self.hot != new_hot {
+                    self.hot = new_hot;
+                    ctx.request_paint();
                 }
             }
             _ => {}
@@ -437,10 +483,7 @@ impl Widget<EditorState> for TimelineSnippet {
         let snip = self.snip(data);
         let old_snip = self.snip(old_data);
         if !snip.same(&old_snip) {
-            if let Snip::Audio(data) = snip {
-                self.wave = Some(AudioWaveform::from_audio(data));
-            }
-            ctx.request_paint();
+            ctx.request_layout();
         }
 
         if old_data.selected_snippet != data.selected_snippet {
@@ -450,17 +493,11 @@ impl Widget<EditorState> for TimelineSnippet {
 
     fn lifecycle(
         &mut self,
-        ctx: &mut LifeCycleCtx,
-        event: &LifeCycle,
+        _ctx: &mut LifeCycleCtx,
+        _event: &LifeCycle,
         _data: &EditorState,
         _env: &Env,
     ) {
-        match event {
-            LifeCycle::HotChanged(_) => {
-                ctx.request_paint();
-            }
-            _ => {}
-        }
     }
 
     fn layout(
@@ -475,45 +512,32 @@ impl Widget<EditorState> for TimelineSnippet {
         bc.constrain((width, height))
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx, data: &EditorState, env: &Env) {
+    fn paint(&mut self, ctx: &mut PaintCtx, data: &EditorState, _env: &Env) {
         let snippet = self.snip(data);
-        let width = self.width(data);
-        let height = SNIPPET_HEIGHT;
-        let radius = env.get(theme::BUTTON_BORDER_RADIUS);
+        let height = ctx.size().height;
         let is_selected = data.selected_snippet == self.id.to_maybe_id();
 
-        // Logically, untruncated snippets have infinite width. But druid
-        // doesn't support drawing rectangles of infinite width, so we truncate
-        // our rectangle to be just a little bit bigger than the drawing region.
-        let bounding_rect = ctx
-            .region()
-            .bounding_box()
-            .inflate(radius + 1.0, std::f64::INFINITY);
-        let stroke_thick = if ctx.is_hot() && !is_selected {
+        let stroke_thick = if self.hot && !is_selected {
             SNIPPET_STROKE_THICKNESS
         } else {
             0.0
         };
-        let rect = Rect::from_origin_size(Point::ZERO, (width, height))
-            .inset(-SNIPPET_STROKE_THICKNESS)
-            .intersect(bounding_rect)
-            .to_rounded_rect(env.get(theme::BUTTON_BORDER_RADIUS));
-        let inner_rect = Rect::from_origin_size(Point::ZERO, (width, height))
-            .inset(-SNIPPET_STROKE_THICKNESS - stroke_thick / 2.0)
-            .intersect(bounding_rect)
-            .to_rounded_rect(env.get(theme::BUTTON_BORDER_RADIUS));
+        let path = self.path().clone();
         let stroke_color = self.stroke_color();
         let fill_color = self.fill_color(data);
 
         ctx.with_save(|ctx| {
             let clip = ctx.region().bounding_box();
             ctx.clip(clip);
-            ctx.fill(&rect, &fill_color);
+            ctx.fill(&path, &fill_color);
+            ctx.clip(&path);
+            ctx.with_save(|ctx| {
+                ctx.transform(Affine::translate((pix_x(snippet.start_time()), 0.0)));
+                self.render_interior(ctx, &snippet, height);
+            });
             if stroke_thick > 0.0 {
-                ctx.stroke(&inner_rect, &stroke_color, stroke_thick);
+                ctx.stroke(&path, &stroke_color, stroke_thick);
             }
-            ctx.clip(&inner_rect);
-            self.render_interior(ctx, &snippet, width, height);
         });
     }
 }
@@ -603,17 +627,14 @@ impl Widget<EditorState> for TimelineInner {
         data: &EditorState,
         env: &Env,
     ) -> Size {
-        for (&id, &offset) in &self.snippet_offsets {
-            let child = self.children.get_mut(&id).unwrap();
-            let x = pix_x(child.widget().snip(data).start_time());
-            let y = offset as f64 * SNIPPET_HEIGHT;
+        let size = bc.constrain((std::f64::INFINITY, self.height));
 
-            let size = child.layout(ctx, bc, data, env);
-            child.set_layout_rect(ctx, data, env, Rect::from_origin_size((x, y), size));
+        // The children have funny shapes, so rather than use druid's layout mechanisms to position
+        // them, we just do it all manually.
+        for c in self.children.values_mut() {
+            c.set_layout_rect(ctx, data, env, size.to_rect());
         }
-
-        let height = SNIPPET_HEIGHT * self.num_rows as f64;
-        bc.constrain((std::f64::INFINITY, height))
+        size
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &EditorState, env: &Env) {
