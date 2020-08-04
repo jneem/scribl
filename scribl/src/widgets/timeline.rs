@@ -21,12 +21,12 @@ const TIMELINE_BG_COLOR: Color = Color::rgb8(0x66, 0x66, 0x66);
 const CURSOR_COLOR: Color = Color::rgb8(0x10, 0x10, 0xaa);
 const CURSOR_THICKNESS: f64 = 3.0;
 
-const DRAW_SNIPPET_COLOR: Color = crate::UI_BEIGE;
-const DRAW_SNIPPET_SELECTED_COLOR: Color = crate::UI_LIGHT_STEEL_BLUE;
 const AUDIO_SNIPPET_COLOR: Color = crate::UI_LIGHT_YELLOW;
-const AUDIO_SNIPPET_SELECTED_COLOR: Color = crate::UI_LIGHT_GREEN;
+const AUDIO_SNIPPET_SELECTED_COLOR: Color = crate::UI_LIGHT_YELLOW;
 const SNIPPET_STROKE_COLOR: Color = Color::rgb8(0x00, 0x00, 0x00);
-const SNIPPET_STROKE_THICKNESS: f64 = 2.0;
+const SNIPPET_SELECTED_STROKE_COLOR: Color = Color::rgb8(0xff, 0xff, 0xff);
+const SNIPPET_STROKE_THICKNESS: f64 = 1.0;
+const SNIPPET_SELECTED_STROKE_THICKNESS: f64 = 3.0;
 const SNIPPET_WAVEFORM_COLOR: Color = crate::UI_DARK_BLUE;
 
 const MIN_TIMELINE_HEIGHT: f64 = 100.0;
@@ -89,7 +89,7 @@ struct AudioWaveform {
 
 /// The cached "waveform" of a drawing snippet.
 struct DrawingWaveform {
-    strokes: Vec<(Time, Time, Color)>,
+    strokes: Vec<(Time, Color)>,
 }
 
 enum SnippetInterior {
@@ -168,15 +168,14 @@ impl AudioWaveform {
 impl DrawingWaveform {
     fn new(data: &SnippetData) -> DrawingWaveform {
         let mut strokes = Vec::new();
+        let mut last_color: Option<Color> = None;
         for stroke in data.strokes() {
-            if stroke.times.is_empty() {
-                continue;
+            if let Some(&t) = stroke.times.first() {
+                if last_color.as_ref().map(|c| c.as_rgba()) != Some(stroke.style.color.as_rgba()) {
+                    strokes.push((t, stroke.style.color.clone()));
+                    last_color = Some(stroke.style.color.clone());
+                }
             }
-            strokes.push((
-                *stroke.times.first().unwrap(),
-                *stroke.times.last().unwrap(),
-                stroke.style.color,
-            ));
         }
         DrawingWaveform { strokes }
     }
@@ -374,29 +373,16 @@ impl TimelineSnippet {
         }
     }
 
-    fn fill_color(&self, data: &EditorState) -> Color {
+    fn fill_color(&self, data: &EditorState) -> Option<Color> {
         match self.id {
-            Id::Drawing(id) => {
-                if data.selected_snippet == id.into() {
-                    DRAW_SNIPPET_SELECTED_COLOR
-                } else {
-                    DRAW_SNIPPET_COLOR
-                }
-            }
+            Id::Drawing(_) => None,
             Id::Audio(id) => {
                 if data.selected_snippet == id.into() {
-                    AUDIO_SNIPPET_SELECTED_COLOR
+                    Some(AUDIO_SNIPPET_SELECTED_COLOR)
                 } else {
-                    AUDIO_SNIPPET_COLOR
+                    Some(AUDIO_SNIPPET_COLOR)
                 }
             }
-        }
-    }
-
-    fn stroke_color(&self) -> Color {
-        match self.id {
-            Id::Drawing(_) => DRAW_SNIPPET_SELECTED_COLOR,
-            Id::Audio(_) => AUDIO_SNIPPET_SELECTED_COLOR,
         }
     }
 
@@ -424,12 +410,18 @@ impl TimelineSnippet {
                     SnippetInterior::Drawing(s) => s,
                     _ => panic!("drawing widget should have cached segment extents"),
                 };
-                for &(start, end, ref color) in &segs.strokes {
-                    let start_x = pix_width(start - data.start_time());
-                    let end_x = pix_width(end - data.start_time());
+                let mut start_x = 0.0;
+                let mut last_color = &Color::BLACK;
+                for &(start, ref color) in &segs.strokes {
+                    let end_x = pix_width(start - data.start_time());
                     let rect = Rect::from_points((start_x, 0.0), (end_x, height));
-                    ctx.fill(&rect, color);
+                    ctx.fill(&rect, last_color);
+                    last_color = color;
+                    start_x = end_x;
                 }
+
+                let last_rect = Rect::from_points((start_x, 0.0), (LAYOUT_PARAMS.end_x, height));
+                ctx.fill(&last_rect, last_color);
 
                 // Draw the lerp lines.
                 for t in snip.inner_lerp_times() {
@@ -515,27 +507,30 @@ impl Widget<EditorState> for TimelineSnippet {
         let snippet = self.snip(data);
         let height = ctx.size().height;
         let is_selected = data.selected_snippet == self.id.to_maybe_id();
-
-        let stroke_thick = if self.hot && !is_selected {
-            SNIPPET_STROKE_THICKNESS
-        } else {
-            0.0
-        };
         let path = self.path().clone();
-        let stroke_color = self.stroke_color();
         let fill_color = self.fill_color(data);
 
         ctx.with_save(|ctx| {
             let clip = ctx.region().bounding_box();
             ctx.clip(clip);
-            ctx.fill(&path, &fill_color);
-            ctx.clip(&path);
+            if let Some(c) = fill_color {
+                ctx.fill(&path, &c);
+            }
             ctx.with_save(|ctx| {
+                ctx.clip(&path);
                 ctx.transform(Affine::translate((pix_x(snippet.start_time()), 0.0)));
                 self.render_interior(ctx, &snippet, height);
             });
-            if stroke_thick > 0.0 {
-                ctx.stroke(&path, &stroke_color, stroke_thick);
+
+            if is_selected {
+                ctx.stroke(
+                    &path,
+                    &SNIPPET_SELECTED_STROKE_COLOR,
+                    SNIPPET_SELECTED_STROKE_THICKNESS,
+                );
+            }
+            if self.hot {
+                ctx.stroke(&path, &SNIPPET_STROKE_COLOR, SNIPPET_STROKE_THICKNESS);
             }
         });
     }
