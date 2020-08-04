@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
+use scribl_curves::Time;
+
 use crate::autosave::AutosaveData;
 use crate::cmd;
 use crate::editor_state::{
@@ -372,8 +374,9 @@ impl Editor {
         } else if cmd.is(cmd::APPEND_NEW_SEGMENT) {
             let prev_state = data.undo_state();
             let seg = cmd.get_unchecked(cmd::APPEND_NEW_SEGMENT);
+            let start_time = seg.start_time().unwrap_or(Time::ZERO);
             data.add_segment_to_snippet(seg.clone());
-            data.push_transient_undo_state(prev_state, "add stroke");
+            data.push_transient_undo_state(prev_state.with_time(start_time), "add stroke");
             ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::CHOOSE_COLOR) {
@@ -455,9 +458,11 @@ impl Editor {
             true
         } else if cmd.is(cmd::DRAW) {
             if data.action.is_idle() {
+                let prev_state = data.undo_state();
+                // We don't request_anim_frame here because recording starts paused. Instead, we do
+                // it in `DrawingPane` when the time actually starts.
                 data.start_recording(data.recording_speed.factor());
-            // We don't request_anim_frame here because recording starts paused. Instead, we do
-            // it in `DrawingPane` when the time actually starts.
+                data.push_transient_undo_state(prev_state, "start drawing");
             } else {
                 log::error!("can't draw, current action is {:?}", data.action);
             }

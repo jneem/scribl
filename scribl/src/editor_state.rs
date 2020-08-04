@@ -46,6 +46,10 @@ impl StrokeInProgress {
         self.points.borrow().last().copied()
     }
 
+    pub fn start_time(&self) -> Option<Time> {
+        self.times.borrow().first().copied()
+    }
+
     pub fn render(&self, ctx: &mut impl RenderContext, style: StrokeStyle, time: Time) {
         use druid::piet::{self, LineCap, LineJoin};
         let stroke_style = piet::StrokeStyle {
@@ -572,6 +576,7 @@ impl EditorState {
         self.selected_snippet = undo.selected_snippet;
         self.mark = undo.mark;
         self.warp_time_to(undo.time);
+        self.action = CurrentAction::Idle;
 
         // This is a bit of a special-case hack. If there get to be more of
         // these, it might be worth storing some metadata in the undo state.
