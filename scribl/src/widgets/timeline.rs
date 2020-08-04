@@ -16,7 +16,7 @@ use crate::editor_state::EditorState;
 use crate::snippet_layout::{self, SnippetShape};
 
 const SNIPPET_HEIGHT: f64 = 20.0;
-const PIXELS_PER_USEC: f64 = 100.0 / 1000000.0;
+const PIXELS_PER_USEC: f64 = 40.0 / 1000000.0;
 const TIMELINE_BG_COLOR: Color = Color::rgb8(0x66, 0x66, 0x66);
 const CURSOR_COLOR: Color = Color::rgb8(0x10, 0x10, 0xaa);
 const CURSOR_THICKNESS: f64 = 3.0;

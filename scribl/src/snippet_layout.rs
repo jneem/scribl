@@ -1,3 +1,9 @@
+//! This module is in charge of layout out the snippets in the timeline.
+//!
+//! The rough idea is: we lay out the snippets from top to bottom. At each step, we "drape" the new
+//! snippet around the "contours" of the existing snippets. More precisely, we use a skyline data
+//! structure to represent the existing snippets.
+
 use druid::kurbo::{BezPath, Point, Rect, Vec2};
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -6,22 +12,56 @@ use scribl_curves::{SnippetData, SnippetId, Time};
 
 use crate::audio::{AudioSnippetData, AudioSnippetId};
 
+/// An element of the skyline. We don't store the beginning -- it's the end of the previous
+/// building.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Building {
     y: f64,
     end_x: f64,
 }
 
+/// A bare-bones skyline implementation. We don't store the starting x coord -- for the skyline that
+/// represents the whole timeline, we always start at zero. For the skyline representing just the
+/// new snippet that we're adding, we just keep track of the start separately.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Skyline {
     buildings: Vec<Building>,
 }
 
+/// A collection of rectangles describing the layout of a single snippet in the timeline. These
+/// rectangles will be increasing in the `x` coordinate, and usually overlapping a bit (depending
+/// on the `overlap` parameter in `Parameters`). For example, they might look like
+///
+/// ```
+///                                         +--------------------+
+///                     +----------------------+                 |
+/// +---------------------+                 |  |                 |
+/// |                   | |                 +--------------------+
+/// |                   | |                    |
+/// |                   +----------------------+
+/// |                     |
+/// +---------------------+
+/// ```
 #[derive(Clone, Debug)]
 pub struct SnippetShape {
     pub rects: Vec<Rect>,
 }
 
+/// This is an intermediate data-type that we use when converting a `SnippetShape` into a
+/// nice-looking curved path. Basically, we replace each `Rect` with a collection of the
+/// four "important" points after taking overlapping neighbors into account. In the example
+/// below, the important points in the middle rect are marked with `o`:
+///
+/// ```
+///                                         +--------------------+
+///                     o-------------------o--+                 |
+/// +---------------------+                 |  |                 |
+/// |                   | |                 +--------------------+
+/// |                   | |                    |
+/// |                   +-o--------------------o
+/// |                     |
+/// +---------------------+
+/// ```
 #[derive(Debug)]
 struct Quad {
     top_left: Point,
@@ -58,6 +98,7 @@ impl Quad {
 }
 
 impl SnippetShape {
+    /// See the doc comment to `Quads` for an example of what this is doing.
     fn to_quads(&self) -> Vec<Quad> {
         let mut ret: Vec<_> = self.rects.iter().map(Quad::new).collect();
 
@@ -82,6 +123,7 @@ impl SnippetShape {
         ret
     }
 
+    /// Converts this snippet into a nice-looking path with rounded corners.
     pub fn to_path(&self, radius: f64) -> BezPath {
         let mut ret = BezPath::new();
         if self.rects.is_empty() {
@@ -157,6 +199,8 @@ impl SnippetShape {
         ret
     }
 
+    /// Reflects this shape vertically, so that `0.0` is mapped to `bottom`, `1.0` is mapped to
+    /// `bottom - 1.0`, etc.
     pub fn reflect_y(&mut self, bottom: f64) {
         for r in &mut self.rects {
             let y1 = bottom - r.y0;
@@ -174,9 +218,8 @@ impl Skyline {
         }
     }
 
-    /// Delete zero-width buildings.
+    /// Delete zero-width buildings, and merge adjacent buildings that have the same height.
     fn delete_empty(&mut self) {
-        // Delete zero-width buildings.
         let mut start_x = 0.0;
         self.buildings.retain(|b| {
             if b.end_x <= start_x {
@@ -186,6 +229,17 @@ impl Skyline {
                 true
             }
         });
+
+        let mut next_y = f64::INFINITY;
+        for b in self.buildings.iter_mut().rev() {
+            // There doesn't seem to be a "retain" that goes backwards, so we mark buildings as
+            // to-be-deleted by setting end_x to zero.
+            if b.y == next_y {
+                b.end_x = 0.0;
+            }
+            next_y = b.y;
+        }
+        self.buildings.retain(|b| b.end_x > 0.0);
     }
 
     /// Expand all the buildings in the skyline horizontally (both left and right) by the given
@@ -418,25 +472,45 @@ impl Skyline {
     }
 }
 
+/// A collection of parameters describing how to turn a bunch of snippets into a
+/// hopefully-visually-pleasing layout.
 pub struct Parameters {
+    /// Snippets have thick parts and thin parts (the thick part is the time interval where the
+    /// drawing is happening; the thin part then lasts until the snippet disappears). This is
+    /// the thickness of the thick part.
     pub thick_height: f64,
+    /// The thickness of the thin part.
     pub thin_height: f64,
+    /// Horizontal padding that we add between snippets.
     pub h_padding: f64,
+    /// Vertical padding that we add between snippets.
     pub v_padding: f64,
+    /// The number of pixels per microsecond of timeline time.
     pub pixels_per_usec: f64,
+    /// The minimum width of a rectangle in the timeline.
     pub min_width: f64,
+    /// When the vertical position of a snippet changes, we overlap the rectangles by this much.
+    /// See the `SnippetShape` for a picture.
     pub overlap: f64,
 }
 
+/// The result of laying out the snippets. The type parameter `T` is a snippet id (probably
+/// `SnippetId` or `AudioSnippetId`).
 pub struct Layout<T> {
+    /// A map from the snippet's id to its shape.
     pub positions: HashMap<T, SnippetShape>,
+    /// The maximum height of any snippet. This is redundant, in that it can be recomputed from
+    /// `positions`.
     pub max_y: f64,
 }
 
 #[derive(Clone)]
 pub struct SnippetBounds<T> {
+    /// The time at which this snippet starts.
     start: Time,
+    /// The time at which this snippet changes from thick to thin (if it does).
     thin: Option<Time>,
+    /// The time at which this snippet ends (if it does).
     end: Option<Time>,
     id: T,
 }
