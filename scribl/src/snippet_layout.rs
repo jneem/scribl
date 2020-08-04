@@ -448,8 +448,9 @@ impl Skyline {
 
         if let Some(thin) = b.thin {
             let thin_end = b.end.map(p).unwrap_or(params.end_x);
+            let thin_start = snip.buildings.last().map(|b| b.end_x).unwrap_or(p(thin));
             self.add_rect(
-                p(thin),
+                thin_start,
                 thin_end,
                 params.thin_height + params.v_padding,
                 params.min_width,
@@ -705,6 +706,20 @@ mod tests {
             &[
                 Rect::new(0.0, 0.0, 3.0, 2.0),
                 Rect::new(2.0, 0.0, 20.0, 1.0),
+            ]
+        );
+
+        let snips = snips!((0, None, Some(50)), (49, Some(49), Some(80)));
+        let layout = self::layout(snips, &PARAMS);
+        assert_eq!(
+            &layout.positions[&1].rects,
+            &[Rect::new(0.0, 0.0, 50.0, 2.0),]
+        );
+        assert_eq!(
+            &layout.positions[&2].rects,
+            &[
+                Rect::new(49.0, 2.0, 52.0, 4.0),
+                Rect::new(51.0, 0.0, 80.0, 1.0),
             ]
         );
     }
