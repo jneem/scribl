@@ -2,14 +2,14 @@ use druid::kurbo::{BezPath, Point, Rect, Vec2};
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use scribl_curves::{SnippetData, SnippetId, Time, TimeDiff};
+use scribl_curves::{SnippetData, SnippetId, Time};
 
 use crate::audio::{AudioSnippetData, AudioSnippetId};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Building {
     y: f64,
-    end_t: Time,
+    end_x: f64,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -82,8 +82,7 @@ impl SnippetShape {
         ret
     }
 
-    // TODO: make it rounded also
-    pub fn to_poly(&self, radius: f64) -> BezPath {
+    pub fn to_path(&self, radius: f64) -> BezPath {
         let mut ret = BezPath::new();
         if self.rects.is_empty() {
             return ret;
@@ -169,24 +168,21 @@ impl SnippetShape {
 }
 
 impl Skyline {
-    fn new(end_time: Time) -> Skyline {
+    fn new(end_x: f64) -> Skyline {
         Skyline {
-            buildings: vec![Building {
-                y: 0.0,
-                end_t: end_time,
-            }],
+            buildings: vec![Building { y: 0.0, end_x }],
         }
     }
 
     /// Delete zero-width buildings.
     fn delete_empty(&mut self) {
         // Delete zero-width buildings.
-        let mut start_t = Time::ZERO;
+        let mut start_x = 0.0;
         self.buildings.retain(|b| {
-            if b.end_t <= start_t {
+            if b.end_x <= start_x {
                 false
             } else {
-                start_t = b.end_t;
+                start_x = b.end_x;
                 true
             }
         });
@@ -195,20 +191,20 @@ impl Skyline {
     /// Expand all the buildings in the skyline horizontally (both left and right) by the given
     /// amount. The beginning of the first building is unchanged (because we don't store it), and
     /// the end of the last building is also unchanged.
-    fn expand_horizontally(&mut self, padding: TimeDiff) {
+    fn expand_horizontally(&mut self, padding: f64) {
         for i in 1..self.buildings.len() {
             if self.buildings[i - 1].y > self.buildings[i].y {
-                self.buildings[i - 1].end_t += padding;
+                self.buildings[i - 1].end_x += padding;
             } else {
-                self.buildings[i - 1].end_t -= padding;
+                self.buildings[i - 1].end_x -= padding;
             }
         }
         self.delete_empty();
     }
 
     /// Expand the skyline to ensure that every building has a minimal width.
-    fn fill_gaps(&mut self, min_width: TimeDiff) {
-        let mut start_t = Time::ZERO;
+    fn fill_gaps(&mut self, min_width: f64) {
+        let mut start_x = 0.0;
         let mut prev_nonempty: Option<usize> = None;
 
         // For every building that's too short, we have a choice:
@@ -216,7 +212,7 @@ impl Skyline {
         // - cover it with its left neighbor,
         // - cover it with its right neigbor.
         for i in 0..self.buildings.len() {
-            if self.buildings[i].end_t - start_t < min_width {
+            if self.buildings[i].end_x - start_x < min_width {
                 let cover_left = prev_nonempty
                     .map(|j| self.buildings[j].y > self.buildings[i].y)
                     .unwrap_or(false);
@@ -225,26 +221,26 @@ impl Skyline {
 
                 match (cover_left, cover_right) {
                     (false, false) => {
-                        self.buildings[i].end_t = start_t + min_width;
+                        self.buildings[i].end_x = start_x + min_width;
                         prev_nonempty = Some(i);
                     }
                     (true, false) => {
-                        self.buildings[prev_nonempty.unwrap()].end_t = self.buildings[i].end_t
+                        self.buildings[prev_nonempty.unwrap()].end_x = self.buildings[i].end_x
                     }
-                    (false, true) => self.buildings[i].end_t = start_t,
+                    (false, true) => self.buildings[i].end_x = start_x,
                     (true, true) => {
                         let prev = prev_nonempty.unwrap();
                         if self.buildings[prev].y <= self.buildings[i + 1].y {
-                            self.buildings[i].end_t = start_t;
+                            self.buildings[i].end_x = start_x;
                         } else {
-                            self.buildings[prev].end_t = self.buildings[i].end_t;
+                            self.buildings[prev].end_x = self.buildings[i].end_x;
                         }
                     }
                 }
             } else {
                 prev_nonempty = Some(i);
             }
-            start_t = self.buildings[i].end_t;
+            start_x = self.buildings[i].end_x;
         }
 
         self.delete_empty();
@@ -252,63 +248,66 @@ impl Skyline {
 
     fn add_rect(
         &self,
-        start_t: Time,
-        end_t: Time,
+        start_x: f64,
+        end_x: f64,
         height: f64,
-        min_width: TimeDiff,
+        min_width: f64,
         new_part: &mut Skyline,
     ) {
         // Find the first building that ends strictly after `start_x`.
-        let start_idx = match self.buildings.binary_search_by(|b| b.end_t.cmp(&start_t)) {
+        let start_idx = match self
+            .buildings
+            .binary_search_by(|b| b.end_x.partial_cmp(&start_x).unwrap())
+        {
             Ok(idx) => idx + 1,
             Err(idx) => idx,
         };
 
-        assert!(start_idx == self.buildings.len() || self.buildings[start_idx].end_t > start_t);
+        assert!(start_idx == self.buildings.len() || self.buildings[start_idx].end_x > start_x);
 
         let mut idx = start_idx;
-        let mut t = start_t;
+        let mut x = start_x;
         while idx < self.buildings.len() {
-            let min_end = t + min_width;
+            let min_end = x + min_width;
             let orig_idx = idx;
             let mut y0 = self.buildings[idx].y;
-            while idx + 1 < self.buildings.len() && min_end >= self.buildings[idx].end_t {
+            while idx + 1 < self.buildings.len() && min_end >= self.buildings[idx].end_x {
                 idx += 1;
                 y0 = y0.max(self.buildings[idx].y);
             }
-            let this_end_t = if orig_idx < idx {
+            let this_end_x = if orig_idx < idx {
                 min_end
             } else {
-                self.buildings[idx].end_t.min(end_t)
+                self.buildings[idx].end_x.min(end_x).max(min_end)
             };
             new_part.buildings.push(Building {
                 y: y0 + height,
-                end_t: this_end_t,
+                end_x: this_end_x,
             });
-            t = this_end_t;
+            x = this_end_x;
 
-            if end_t <= t {
+            if end_x <= x {
                 break;
             }
-            if this_end_t >= self.buildings[idx].end_t {
+            if this_end_x >= self.buildings[idx].end_x {
                 idx += 1;
             }
         }
     }
 
-    fn update_skyline(&mut self, start_t: Time, other: &[Building]) {
+    fn update_skyline(&mut self, start_x: f64, other: &[Building]) {
         let mut new = Vec::new();
         let mut merged = false;
         let mut i = 0;
         while i < self.buildings.len() {
-            if !merged && start_t < self.buildings[i].end_t {
+            if !merged && start_x < self.buildings[i].end_x {
                 new.push(Building {
-                    end_t: start_t,
+                    end_x: start_x,
                     y: self.buildings[i].y,
                 });
                 new.extend_from_slice(other);
-                let t = other.last().map(|b| b.end_t).unwrap_or(Time::ZERO);
-                while i < self.buildings.len() && self.buildings[i].end_t <= t {
+                let x = other.last().map(|b| b.end_x).unwrap_or(0.0);
+                while i < self.buildings.len() && self.buildings[i].end_x <= x {
                     i += 1;
                 }
 
@@ -325,13 +324,13 @@ impl Skyline {
         self.buildings = new;
     }
 
-    fn to_rects(&self, mut start_t: Time, thick_count: usize, params: &Parameters) -> Vec<Rect> {
+    fn to_rects(&self, mut start_x: f64, thick_count: usize, params: &Parameters) -> Vec<Rect> {
         let mut ret = Vec::new();
         for w in self.buildings.windows(2) {
-            let end_t = if w[1].y > w[0].y {
-                w[0].end_t
+            let end_x = if w[1].y > w[0].y {
+                w[0].end_x
             } else {
-                w[0].end_t + params.overlap
+                w[0].end_x + params.overlap
             };
             let height = if ret.len() < thick_count {
                 params.thick_height
@@ -342,16 +341,16 @@ impl Skyline {
             let y0 = y1 - height;
 
             ret.push(Rect {
-                x0: start_t.as_micros() as f64 * params.pixels_per_usec,
-                x1: end_t.as_micros() as f64 * params.pixels_per_usec,
+                x0: start_x,
+                x1: end_x,
                 y0,
                 y1,
             });
 
-            start_t = if w[1].y > w[0].y {
-                w[0].end_t - params.overlap
+            start_x = if w[1].y > w[0].y {
+                w[0].end_x - params.overlap
             } else {
-                w[0].end_t
+                w[0].end_x
             };
         }
 
@@ -364,8 +363,8 @@ impl Skyline {
             let y1 = last.y;
             let y0 = y1 - height;
             ret.push(Rect {
-                x0: start_t.as_micros() as f64 * params.pixels_per_usec,
-                x1: last.end_t.as_micros() as f64 * params.pixels_per_usec,
+                x0: start_x,
+                x1: last.end_x,
                 y0,
                 y1,
             });
@@ -378,11 +377,13 @@ impl Skyline {
             buildings: Vec::new(),
         };
         let hour = Time::from_micros(3_600_000_000);
+        let hour_x = hour.as_micros() as f64 * params.pixels_per_usec;
         let thick_end = b.thin.or(b.end).unwrap_or(hour);
+        let p = |x: Time| x.as_micros() as f64 * params.pixels_per_usec;
 
         self.add_rect(
-            b.start,
-            thick_end,
+            p(b.start),
+            p(thick_end),
             params.thick_height + params.v_padding,
             params.min_width,
             &mut snip,
@@ -396,24 +397,21 @@ impl Skyline {
         if let Some(thin) = b.thin {
             let thin_end = b.end.unwrap_or(hour);
             self.add_rect(
-                thin,
-                thin_end,
+                p(thin),
+                p(thin_end),
                 params.thin_height + params.v_padding,
                 params.min_width,
                 &mut snip,
             );
         }
 
-        let rects = snip.to_rects(b.start, thick_count, params);
-        // TODO: do everything in pixels?
-        let horizontal_padding =
-            TimeDiff::from_micros((params.h_padding / params.pixels_per_usec).round() as i64);
-        snip.expand_horizontally(horizontal_padding + params.overlap);
+        let rects = snip.to_rects(p(b.start), thick_count, params);
+        snip.expand_horizontally(params.h_padding + params.overlap);
         if let Some(last) = snip.buildings.last_mut() {
-            last.end_t = (last.end_t + horizontal_padding).min(hour);
+            last.end_x = (last.end_x + params.h_padding).min(hour_x);
         }
 
-        self.update_skyline(b.start - horizontal_padding, &snip.buildings[..]);
+        self.update_skyline(p(b.start) - params.h_padding, &snip.buildings[..]);
         self.fill_gaps(params.min_width);
 
         SnippetShape { rects }
@@ -426,8 +424,8 @@ pub struct Parameters {
     pub h_padding: f64,
     pub v_padding: f64,
     pub pixels_per_usec: f64,
-    pub min_width: TimeDiff,
-    pub overlap: TimeDiff,
+    pub min_width: f64,
+    pub overlap: f64,
 }
 
 pub struct Layout<T> {
@@ -479,7 +477,7 @@ pub fn layout<Id: Copy + Hash + Eq + Ord, T: Into<SnippetBounds<Id>>, I: Iterato
     iter: I,
     params: &Parameters,
 ) -> Layout<Id> {
-    let mut sky = Skyline::new(Time::from_micros(3_600_000_000));
+    let mut sky = Skyline::new(3_600_000_000.0 * params.pixels_per_usec);
     let mut ret = Layout {
         positions: HashMap::new(),
         max_y: 0.0,
@@ -515,20 +513,13 @@ mod tests {
         }
     }
 
-    fn sky(arr: &[(i64, f64)]) -> Skyline {
+    fn sky(arr: &[(f64, f64)]) -> Skyline {
         Skyline {
             buildings: arr
                 .iter()
-                .map(|&(t, y)| Building {
-                    end_t: Time::from_micros(t),
-                    y,
-                })
+                .map(|&(end_x, y)| Building { end_x, y })
                 .collect(),
         }
-    }
-
-    fn t(t: i64) -> Time {
-        Time::from_micros(t)
     }
 
     macro_rules! snips {
@@ -550,8 +541,8 @@ mod tests {
         thin_height: 1.0,
         h_padding: 0.0,
         v_padding: 0.0,
-        min_width: TimeDiff::from_micros(2),
-        overlap: TimeDiff::from_micros(1),
+        min_width: 2.0,
+        overlap: 1.0,
         pixels_per_usec: 1.0,
     };
 
@@ -560,8 +551,8 @@ mod tests {
         thin_height: 1.0,
         h_padding: 1.0,
         v_padding: 1.0,
-        min_width: TimeDiff::from_micros(2),
-        overlap: TimeDiff::from_micros(1),
+        min_width: 2.0,
+        overlap: 1.0,
         pixels_per_usec: 1.0,
     };
 
@@ -629,61 +620,74 @@ mod tests {
     }
 
     #[test]
+    fn instant_draw() {
+        let snips = snips!((0, Some(0), Some(20)));
+        let layout = layout(snips, &PARAMS);
+        assert_eq!(
+            &layout.positions[&1].rects,
+            &[
+                Rect::new(0.0, 0.0, 3.0, 2.0),
+                Rect::new(2.0, 0.0, 20.0, 1.0),
+            ]
+        );
+    }
+
+    #[test]
     fn fill_gaps() {
-        let min_width = TimeDiff::from_micros(3);
-        let mut no_gaps = sky(&[(5, 1.0), (10, 2.0), (15, 1.0)]);
+        let min_width = 3.0;
+        let mut no_gaps = sky(&[(5.0, 1.0), (10.0, 2.0), (15.0, 1.0)]);
         let clone = no_gaps.clone();
         no_gaps.fill_gaps(min_width);
         assert_eq!(no_gaps, clone);
 
-        let mut gap_start = sky(&[(1, 0.0), (3, 1.0)]);
+        let mut gap_start = sky(&[(1.0, 0.0), (3.0, 1.0)]);
         gap_start.fill_gaps(min_width);
-        assert_eq!(gap_start, sky(&[(3, 1.0)]));
+        assert_eq!(gap_start, sky(&[(3.0, 1.0)]));
 
-        let mut gap_start = sky(&[(1, 1.0), (3, 0.0)]);
+        let mut gap_start = sky(&[(1.0, 1.0), (3.0, 0.0)]);
         gap_start.fill_gaps(min_width);
-        assert_eq!(gap_start, sky(&[(3, 1.0)]));
+        assert_eq!(gap_start, sky(&[(3.0, 1.0)]));
 
-        let mut gap_mid = sky(&[(4, 2.0), (6, 1.0), (9, 3.0)]);
+        let mut gap_mid = sky(&[(4.0, 2.0), (6.0, 1.0), (9.0, 3.0)]);
         gap_mid.fill_gaps(min_width);
-        assert_eq!(gap_mid, sky(&[(4, 2.0), (9, 3.0)]));
+        assert_eq!(gap_mid, sky(&[(4.0, 2.0), (9.0, 3.0)]));
 
-        let mut gap_mid = sky(&[(4, 3.0), (6, 1.0), (9, 2.0)]);
+        let mut gap_mid = sky(&[(4.0, 3.0), (6.0, 1.0), (9.0, 2.0)]);
         gap_mid.fill_gaps(min_width);
-        assert_eq!(gap_mid, sky(&[(6, 3.0), (9, 2.0)]));
+        assert_eq!(gap_mid, sky(&[(6.0, 3.0), (9.0, 2.0)]));
 
-        let mut gap_end = sky(&[(5, 0.0), (6, 1.0)]);
+        let mut gap_end = sky(&[(5.0, 0.0), (6.0, 1.0)]);
         gap_end.fill_gaps(min_width);
-        assert_eq!(gap_end, sky(&[(5, 0.0), (8, 1.0)]));
+        assert_eq!(gap_end, sky(&[(5.0, 0.0), (8.0, 1.0)]));
 
-        let mut gap_end = sky(&[(5, 1.0), (6, 0.0)]);
+        let mut gap_end = sky(&[(5.0, 1.0), (6.0, 0.0)]);
         gap_end.fill_gaps(min_width);
-        assert_eq!(gap_end, sky(&[(6, 1.0)]));
+        assert_eq!(gap_end, sky(&[(6.0, 1.0)]));
 
-        let mut staircase = sky(&[(1, 1.0), (2, 2.0), (3, 3.0), (4, 4.0), (5, 5.0)]);
+        let mut staircase = sky(&[(1.0, 1.0), (2.0, 2.0), (3.0, 3.0), (4.0, 4.0), (5.0, 5.0)]);
         staircase.fill_gaps(min_width);
-        assert_eq!(staircase, sky(&[(3, 3.0), (6, 5.0)]));
+        assert_eq!(staircase, sky(&[(3.0, 3.0), (6.0, 5.0)]));
 
         // There's a bit of asymmetry here with the way that we process things greedily
         // left-to-right.
-        let mut staircase = sky(&[(1, 5.0), (2, 4.0), (3, 3.0), (4, 2.0), (5, 1.0)]);
+        let mut staircase = sky(&[(1.0, 5.0), (2.0, 4.0), (3.0, 3.0), (4.0, 2.0), (5.0, 1.0)]);
         staircase.fill_gaps(min_width);
-        assert_eq!(staircase, sky(&[(5, 5.0)]));
+        assert_eq!(staircase, sky(&[(5.0, 5.0)]));
     }
 
     #[test]
     fn add_rect() {
-        let min_width = TimeDiff::from_micros(3);
-        let mut s = sky(&[(100, 0.0)]);
+        let min_width = 3.0;
+        let mut s = sky(&[(100.0, 0.0)]);
         let mut new_s = Skyline::default();
-        s.add_rect(t(10), t(20), 1.0, min_width, &mut new_s);
-        assert_eq!(new_s, sky(&[(20, 1.0)]));
-        s.update_skyline(t(10), &new_s.buildings);
+        s.add_rect(10.0, 20.0, 1.0, min_width, &mut new_s);
+        assert_eq!(new_s, sky(&[(20.0, 1.0)]));
+        s.update_skyline(10.0, &new_s.buildings);
         s.fill_gaps(min_width);
-        assert_eq!(s, sky(&[(10, 0.0), (20, 1.0), (100, 0.0)]));
+        assert_eq!(s, sky(&[(10.0, 0.0), (20.0, 1.0), (100.0, 0.0)]));
 
         new_s.buildings.clear();
-        s.add_rect(t(15), t(25), 1.0, min_width, &mut new_s);
-        assert_eq!(new_s, sky(&[(20, 2.0), (25, 1.0)]));
+        s.add_rect(15.0, 25.0, 1.0, min_width, &mut new_s);
+        assert_eq!(new_s, sky(&[(20.0, 2.0), (25.0, 1.0)]));
     }
 }

@@ -33,10 +33,10 @@ const MIN_TIMELINE_HEIGHT: f64 = 100.0;
 const LAYOUT_PARAMS: crate::snippet_layout::Parameters = crate::snippet_layout::Parameters {
     thick_height: 18.0,
     thin_height: 2.0,
-    h_padding: 10.0,
+    h_padding: 5.0,
     v_padding: 2.0,
-    min_width: TimeDiff::from_micros((10.0 / PIXELS_PER_USEC) as i64),
-    overlap: TimeDiff::from_micros((5.0 / PIXELS_PER_USEC) as i64),
+    min_width: 20.0,
+    overlap: 5.0,
     pixels_per_usec: PIXELS_PER_USEC,
 };
 
@@ -129,12 +129,12 @@ impl AudioWaveform {
             let start = if i == 0 {
                 0
             } else {
-                (pix_width(LAYOUT_PARAMS.overlap) / 2.0) as usize
+                (LAYOUT_PARAMS.overlap / 2.0) as usize
             };
             let width = if i + 1 == shape.rects.len() {
                 r.width() as usize
             } else {
-                (r.width() - pix_width(LAYOUT_PARAMS.overlap) / 2.0) as usize
+                (r.width() - LAYOUT_PARAMS.overlap / 2.0) as usize
             };
             for p in (start..width).step_by(pix_per_sample) {
                 let start_time = x_pix(p as f64 + r.x0 - x0) - Time::ZERO;
@@ -311,8 +311,7 @@ impl TimelineInner {
                 id,
                 WidgetPod::new(TimelineSnippet {
                     id,
-                    // FIXME: magic number
-                    path: shape.to_poly(5.0),
+                    path: shape.to_path(LAYOUT_PARAMS.overlap),
                     hot: false,
                     shape,
                     interior,
@@ -328,8 +327,7 @@ impl TimelineInner {
                 id,
                 WidgetPod::new(TimelineSnippet {
                     id,
-                    // FIXME: magic number
-                    path: shape.to_poly(5.0),
+                    path: shape.to_path(LAYOUT_PARAMS.overlap),
                     hot: false,
                     shape: shape.clone(),
                     interior,
