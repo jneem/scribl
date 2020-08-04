@@ -37,6 +37,7 @@ const LAYOUT_PARAMS: crate::snippet_layout::Parameters = crate::snippet_layout::
     v_padding: 2.0,
     min_width: 20.0,
     overlap: 5.0,
+    end_x: 3_600_000_000.0 * PIXELS_PER_USEC,
     pixels_per_usec: PIXELS_PER_USEC,
 };
 

@@ -430,14 +430,12 @@ impl Skyline {
         let mut snip = Skyline {
             buildings: Vec::new(),
         };
-        let hour = Time::from_micros(3_600_000_000);
-        let hour_x = hour.as_micros() as f64 * params.pixels_per_usec;
-        let thick_end = b.thin.or(b.end).unwrap_or(hour);
         let p = |x: Time| x.as_micros() as f64 * params.pixels_per_usec;
+        let thick_end = b.thin.or(b.end).map(p).unwrap_or(params.end_x);
 
         self.add_rect(
             p(b.start),
-            p(thick_end),
+            thick_end,
             params.thick_height + params.v_padding,
             params.min_width,
             &mut snip,
@@ -449,10 +447,10 @@ impl Skyline {
         let thick_count = snip.buildings.len();
 
         if let Some(thin) = b.thin {
-            let thin_end = b.end.unwrap_or(hour);
+            let thin_end = b.end.map(p).unwrap_or(params.end_x);
             self.add_rect(
                 p(thin),
-                p(thin_end),
+                thin_end,
                 params.thin_height + params.v_padding,
                 params.min_width,
                 &mut snip,
@@ -462,7 +460,7 @@ impl Skyline {
         let rects = snip.to_rects(p(b.start), thick_count, params);
         snip.expand_horizontally(params.h_padding + params.overlap);
         if let Some(last) = snip.buildings.last_mut() {
-            last.end_x = (last.end_x + params.h_padding).min(hour_x);
+            last.end_x = (last.end_x + params.h_padding).min(params.end_x);
         }
 
         self.update_skyline(p(b.start) - params.h_padding, &snip.buildings[..]);
@@ -492,6 +490,9 @@ pub struct Parameters {
     /// When the vertical position of a snippet changes, we overlap the rectangles by this much.
     /// See the `SnippetShape` for a picture.
     pub overlap: f64,
+    /// The largest `x` position (because logically we need to deal with infinite `x` positions
+    /// but in practice we need to truncate).
+    pub end_x: f64,
 }
 
 /// The result of laying out the snippets. The type parameter `T` is a snippet id (probably
@@ -551,7 +552,7 @@ pub fn layout<Id: Copy + Hash + Eq + Ord, T: Into<SnippetBounds<Id>>, I: Iterato
     iter: I,
     params: &Parameters,
 ) -> Layout<Id> {
-    let mut sky = Skyline::new(3_600_000_000.0 * params.pixels_per_usec);
+    let mut sky = Skyline::new(params.end_x);
     let mut ret = Layout {
         positions: HashMap::new(),
         max_y: 0.0,
@@ -618,6 +619,7 @@ mod tests {
         min_width: 2.0,
         overlap: 1.0,
         pixels_per_usec: 1.0,
+        end_x: 100.0,
     };
 
     const PARAMS_PADDED: Parameters = Parameters {
@@ -628,6 +630,7 @@ mod tests {
         min_width: 2.0,
         overlap: 1.0,
         pixels_per_usec: 1.0,
+        end_x: 100.0,
     };
 
     #[test]
@@ -638,7 +641,7 @@ mod tests {
             &layout.positions[&1].rects,
             &[
                 Rect::new(0.0, 0.0, 31.0, 2.0),
-                Rect::new(30.0, 0.0, 3_600_000_000.0, 1.0)
+                Rect::new(30.0, 0.0, 100.0, 1.0)
             ]
         );
         assert_eq!(
@@ -646,7 +649,7 @@ mod tests {
             &[
                 Rect::new(10.0, 2.0, 32.0, 4.0),
                 Rect::new(31.0, 1.0, 51.0, 3.0),
-                Rect::new(50.0, 1.0, 3_600_000_000.0, 2.0)
+                Rect::new(50.0, 1.0, 100.0, 2.0)
             ]
         );
     }
