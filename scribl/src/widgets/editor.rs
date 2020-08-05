@@ -305,20 +305,24 @@ impl Editor {
                 }
                 ctx.set_handled();
             }
-            KbKey::Character(s) => match s.chars().next().unwrap() {
-                c @ '0'..='9' => {
-                    // Select the corresponding color.
-                    let num = c.to_digit(10).unwrap_or(0) as usize;
-                    // '1' is the first color, '0' is the last.
-                    let idx = (num + 9) % 10;
-                    // If there is no color at that index, just fail silently.
-                    let _ = data.palette.try_select_idx(idx);
+            KbKey::ArrowUp => ctx.submit_command(cmd::SELECT_SNIPPET_ABOVE, None),
+            KbKey::ArrowDown => ctx.submit_command(cmd::SELECT_SNIPPET_BELOW, None),
+            KbKey::Character(s) if !ev.mods.shift() && !ev.mods.ctrl() && !ev.mods.alt() => {
+                match s.chars().next().unwrap() {
+                    c @ '0'..='9' => {
+                        // Select the corresponding color.
+                        let num = c.to_digit(10).unwrap_or(0) as usize;
+                        // '1' is the first color, '0' is the last.
+                        let idx = (num + 9) % 10;
+                        // If there is no color at that index, just fail silently.
+                        let _ = data.palette.try_select_idx(idx);
+                    }
+                    'q' => data.pen_size = PenSize::Big,
+                    'w' => data.pen_size = PenSize::Medium,
+                    'e' => data.pen_size = PenSize::Small,
+                    _ => {}
                 }
-                'q' => data.pen_size = PenSize::Big,
-                'w' => data.pen_size = PenSize::Medium,
-                'e' => data.pen_size = PenSize::Small,
-                _ => {}
-            },
+            }
             _ => {}
         }
     }

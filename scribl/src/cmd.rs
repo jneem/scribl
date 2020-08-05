@@ -26,6 +26,12 @@ pub const ADD_SNIPPET: Selector<SnippetData> = Selector::new("scribl.add-snippet
 /// Deletes a snipppet. If the argument is `None`, the currently selected snippet is deleted.
 pub const DELETE_SNIPPET: Selector<MaybeSnippetId> = Selector::new("scribl.delete-snippet");
 
+/// Selects the snippet below (in the timeline) the currently selected snippet.
+pub const SELECT_SNIPPET_BELOW: Selector = Selector::new("scribl.select-snippet-below");
+
+/// Selects the snippet above (in the timeline) the currently selected snippet.
+pub const SELECT_SNIPPET_ABOVE: Selector = Selector::new("scribl.select-snippet-above");
+
 /// Adds a new audio snippet.
 pub const ADD_AUDIO_SNIPPET: Selector<AudioSnippetData> = Selector::new("scribl.add-audio-snippet");
 

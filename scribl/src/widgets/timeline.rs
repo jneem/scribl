@@ -12,7 +12,7 @@ use scribl_curves::{SnippetData, SnippetId, SnippetsData, Time, TimeDiff};
 
 use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData};
 use crate::cmd;
-use crate::editor_state::EditorState;
+use crate::editor_state::{EditorState, MaybeSnippetId};
 use crate::snippet_layout::{self, SnippetShape};
 
 const SNIPPET_HEIGHT: f64 = 20.0;
@@ -72,8 +72,7 @@ enum Id {
 }
 
 impl Id {
-    fn to_maybe_id(&self) -> crate::editor_state::MaybeSnippetId {
-        use crate::editor_state::MaybeSnippetId;
+    fn to_maybe_id(&self) -> MaybeSnippetId {
         match self {
             Id::Drawing(id) => MaybeSnippetId::Draw(*id),
             Id::Audio(id) => MaybeSnippetId::Audio(*id),
@@ -394,6 +393,46 @@ impl TimelineSnippet {
         self.shape.rects.iter().any(|r| r.contains(p))
     }
 
+    /// If this snippet intersects the horizontal position `x`, returns the y interval
+    /// of this snippet at that coordinate.
+    fn y_interval(&self, x: f64) -> Option<(f64, f64)> {
+        let mut min = f64::INFINITY;
+        let mut max = -f64::INFINITY;
+
+        for r in &self.shape.rects {
+            if r.x0 <= x && x <= r.x1 {
+                min = min.min(r.y0);
+                max = max.max(r.y1);
+            }
+        }
+
+        if min <= max {
+            Some((min, max))
+        } else {
+            None
+        }
+    }
+
+    /// Returns the y interval of this snippet at its closest point to `x`.
+    fn closest_y_interval(&self, x: f64) -> (f64, f64) {
+        if let Some(r) = self.shape.rects.first() {
+            if x < r.x0 {
+                return (r.y0, r.y1);
+            }
+        }
+        if let Some(r) = self.shape.rects.last() {
+            if x > r.x1 {
+                return (r.y0, r.y1);
+            }
+        }
+        if let Some(int) = self.y_interval(x) {
+            return int;
+        }
+        dbg!(x, &self.shape.rects);
+        log::error!("ran out of options in closest_y_interval");
+        (0.0, 0.0)
+    }
+
     /// Draws the "interior" of the snippet (i.e., everything but the bounding rect).
     fn render_interior(&self, ctx: &mut PaintCtx, snip: &Snip, height: f64) {
         match snip {
@@ -536,6 +575,26 @@ impl Widget<EditorState> for TimelineSnippet {
     }
 }
 
+impl TimelineInner {
+    fn y_intervals<'a>(&'a self, x: f64) -> impl Iterator<Item = (Id, f64, f64)> + 'a {
+        self.children.iter().filter_map(move |(&id, snip)| {
+            if let Some((y0, y1)) = snip.widget().y_interval(x) {
+                Some((id, y0, y1))
+            } else {
+                None
+            }
+        })
+    }
+
+    fn selected<'a>(&'a self, data: &EditorState) -> Option<&'a TimelineSnippet> {
+        match data.selected_snippet {
+            MaybeSnippetId::None => None,
+            MaybeSnippetId::Draw(id) => self.children.get(&Id::Drawing(id)).map(|w| w.widget()),
+            MaybeSnippetId::Audio(id) => self.children.get(&Id::Audio(id)).map(|w| w.widget()),
+        }
+    }
+}
+
 impl Widget<EditorState> for TimelineInner {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut EditorState, env: &Env) {
         match event {
@@ -557,6 +616,36 @@ impl Widget<EditorState> for TimelineInner {
             Event::MouseUp(_) => {
                 if ctx.is_active() {
                     ctx.set_active(false);
+                }
+            }
+            Event::Command(c) => {
+                let x = pix_x(data.time());
+                let y_int = self.selected(data).map(|s| s.closest_y_interval(x));
+
+                if c.is(cmd::SELECT_SNIPPET_ABOVE) {
+                    ctx.set_handled();
+
+                    let y = y_int.map(|int| int.0).unwrap_or(self.height);
+                    let id = self
+                        .y_intervals(x)
+                        .filter(|&(_id, _y0, y1)| y1 <= y)
+                        .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap())
+                        .map(|a| a.0);
+                    if let Some(id) = id {
+                        data.selected_snippet = id.to_maybe_id();
+                    }
+                } else if c.is(cmd::SELECT_SNIPPET_BELOW) {
+                    ctx.set_handled();
+
+                    let y = y_int.map(|int| int.1).unwrap_or(0.0);
+                    let id = self
+                        .y_intervals(x)
+                        .filter(|&(_id, y0, _y1)| y0 >= y)
+                        .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap())
+                        .map(|a| a.0);
+                    if let Some(id) = id {
+                        data.selected_snippet = id.to_maybe_id();
+                    }
                 }
             }
             _ => {}
