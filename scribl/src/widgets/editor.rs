@@ -1,8 +1,8 @@
 use druid::widget::{Align, Flex};
 use druid::{
     theme, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, ExtEventSink, KbKey,
-    KeyEvent, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, Size, TimerToken, UpdateCtx, Widget,
-    WidgetExt, WidgetId, WindowId,
+    KeyEvent, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, SingleUse, Size, TimerToken, UpdateCtx,
+    Widget, WidgetExt, WidgetId, WindowId,
 };
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
@@ -16,10 +16,10 @@ use crate::editor_state::{
     CurrentAction, DenoiseSetting, EditorState, MaybeSnippetId, PenSize, RecordingSpeed,
 };
 use crate::save_state::SaveFileData;
-use crate::widgets::tooltip::{TooltipExt, TooltipHost};
+use crate::widgets::tooltip::{ModalHost, TooltipExt};
 use crate::widgets::{
-    icons, make_status_bar, make_timeline, DrawingPane, LabelledContainer, Palette, ToggleButton,
-    ToggleButtonState,
+    alert, icons, make_status_bar, make_timeline, DrawingPane, LabelledContainer, Palette,
+    ToggleButton, ToggleButtonState,
 };
 
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(60);
@@ -239,7 +239,7 @@ impl Editor {
             .with_child(make_status_bar());
 
         Editor {
-            inner: Box::new(TooltipHost::new(Align::centered(column))),
+            inner: Box::new(ModalHost::new(Align::centered(column))),
             autosave_timer_id: TimerToken::INVALID,
             last_autosave_data: None,
             autosave_tx: None,
@@ -598,6 +598,25 @@ impl Editor {
         } else if cmd.is(cmd::ZOOM_RESET) {
             data.zoom = 1.0;
             true
+        } else if cmd.is(cmd::REQUEST_CLOSE_WINDOW) {
+            // TODO: note that we can't intercept it (yet) when the system tries to close our
+            // window; this is currently only when they close via the menu.
+            if data.changed_since_last_save() {
+                ctx.submit_command(
+                    ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
+                        alert::make_unsaved_changes_alert(),
+                    ))),
+                    None,
+                );
+            } else {
+                ctx.submit_command(
+                    ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
+                        alert::make_waiting_to_exit_alert(),
+                    ))),
+                    None,
+                );
+            }
+            true
         } else {
             false
         };
@@ -612,6 +631,7 @@ impl Editor {
                     cmd::FINISHED_ASYNC_SAVE,
                     Box::new(cmd::AsyncSaveResult {
                         path,
+                        data: save_data,
                         error: result.err().map(|e| e.to_string()),
                         autosave: false,
                     }),

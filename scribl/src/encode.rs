@@ -152,7 +152,6 @@ fn main_loop(pipeline: gst::Pipeline) -> Result<(), anyhow::Error> {
     }
 
     pipeline.set_state(gst::State::Null)?;
-    dbg!("finished encoding loop");
     Ok(())
 }
 

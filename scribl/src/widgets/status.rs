@@ -29,7 +29,7 @@ fn status_type(status: &AsyncOpsStatus) -> StatusType {
     }
     // We prioritize "in progress" messages.
     if let Some(x) = status.in_progress.encoding {
-        StatusType::Progress("Encoding: ".to_owned(), x)
+        StatusType::Progress("Encoding: ".to_owned(), x.0 as f64 / x.1 as f64)
     } else if let Some(path) = &status.in_progress.saving {
         StatusType::Label(format!("Saving {}...", f_name(path)))
     } else if let Some(path) = &status.in_progress.loading {

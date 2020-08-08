@@ -45,6 +45,7 @@ pub fn spawn_autosave_thread(ext_cmd: ExtEventSink, id: WindowId) -> Sender<Auto
                     FINISHED_ASYNC_SAVE,
                     Box::new(AsyncSaveResult {
                         path,
+                        data: autosave.data,
                         error: result.err().map(|e| e.to_string()),
                         autosave: true,
                     }),

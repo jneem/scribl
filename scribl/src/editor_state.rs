@@ -127,7 +127,7 @@ impl Default for MaybeSnippetId {
 
 #[derive(Clone, Data, Default)]
 pub struct InProgressStatus {
-    pub encoding: Option<f64>,
+    pub encoding: Option<(u64, u64)>,
     #[data(same_fn = "PartialEq::eq")]
     pub saving: Option<PathBuf>,
     #[data(same_fn = "PartialEq::eq")]
@@ -223,6 +223,11 @@ pub struct EditorState {
 
     #[data(ignore)]
     pub config: Config,
+
+    /// If the file was saved, this is the saved data. It's used to check whether the file has
+    /// changed since last save.
+    #[data(ignore)]
+    pub saved_data: Option<SaveFileData>,
 }
 
 impl Default for EditorState {
@@ -235,7 +240,7 @@ impl Default for EditorState {
         } else {
             DenoiseSetting::Vad
         };
-        EditorState {
+        let mut ret = EditorState {
             new_stroke: None,
             new_stroke_seq: None,
             snippets: SnippetsData::default(),
@@ -259,8 +264,11 @@ impl Default for EditorState {
             status: AsyncOpsStatus::default(),
 
             save_path: None,
+            saved_data: None,
             config,
-        }
+        };
+        ret.saved_data = Some(SaveFileData::from_editor_state(&ret));
+        ret
     }
 }
 
@@ -498,6 +506,7 @@ impl EditorState {
                 self.stop_recording_audio();
             }
             CurrentAction::Idle => {}
+            CurrentAction::WaitingToExit => {}
             CurrentAction::Loading => {}
         }
         self.action = CurrentAction::Loading;
@@ -534,12 +543,14 @@ impl EditorState {
     }
 
     pub fn from_save_file(data: SaveFileData) -> EditorState {
-        EditorState {
-            snippets: data.snippets,
-            audio_snippets: data.audio_snippets,
+        let mut ret = EditorState {
+            snippets: data.snippets.clone(),
+            audio_snippets: data.audio_snippets.clone(),
             undo: Arc::new(RefCell::new(UndoStack::new())),
             ..Default::default()
-        }
+        };
+        ret.saved_data = Some(data);
+        ret
     }
 
     pub fn undo_state(&self) -> UndoState {
@@ -616,7 +627,7 @@ impl EditorState {
     pub fn update_encoding_status(&mut self, enc_status: &EncodingStatus) {
         match enc_status {
             EncodingStatus::Encoding { frame, out_of } => {
-                self.status.in_progress.encoding = Some(*frame as f64 / *out_of as f64);
+                self.status.in_progress.encoding = Some((*frame, *out_of));
             }
             EncodingStatus::Finished(path) => {
                 self.status.in_progress.encoding = None;
@@ -650,6 +661,7 @@ impl EditorState {
         self.status.in_progress.saving = None;
         self.status.last_finished = match &save.error {
             None => {
+                self.saved_data = Some(save.data.clone());
                 Some(FinishedStatus::Saved {
                     path: save.path.clone(),
                     // TODO: time should be when it started saving?
@@ -661,6 +673,11 @@ impl EditorState {
                 Some(FinishedStatus::Error(e.clone()))
             }
         }
+    }
+
+    pub fn changed_since_last_save(&self) -> bool {
+        let new_save = SaveFileData::from_editor_state(self);
+        !self.saved_data.same(&Some(new_save))
     }
 }
 
@@ -688,6 +705,9 @@ pub enum CurrentAction {
 
     /// We are still loading the file from disk.
     Loading,
+
+    /// We are waiting for some async task to finish, and when it's done we will exit.
+    WaitingToExit,
 }
 
 impl Default for CurrentAction {

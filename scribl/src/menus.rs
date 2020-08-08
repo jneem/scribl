@@ -14,6 +14,10 @@ const EXPORT_FILE_TYPE: FileSpec = FileSpec::new("mp4 video (.mp4)", &["mp4"]);
 use crate::app_state::AppState;
 use crate::editor_state::EditorState;
 
+pub fn save_dialog_options() -> FileDialogOptions {
+    FileDialogOptions::new().allowed_types(vec![SCRIBL_FILE_TYPE])
+}
+
 fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
     let has_path = data.save_path.is_some();
 
@@ -28,10 +32,7 @@ fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
     )
     .hotkey(SysMods::Cmd, "o");
 
-    let save_as_command = Command::new(
-        commands::SHOW_SAVE_PANEL,
-        FileDialogOptions::new().allowed_types(vec![SCRIBL_FILE_TYPE]),
-    );
+    let save_as_command = commands::SHOW_SAVE_PANEL.with(save_dialog_options());
     let save_command = if has_path {
         Command::new(commands::SAVE_FILE, None)
     } else {
@@ -59,7 +60,7 @@ fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
 
     let close = MenuItem::new(
         LocalizedString::new("common-menu-file-close"),
-        commands::CLOSE_WINDOW,
+        cmd::REQUEST_CLOSE_WINDOW,
     )
     .hotkey(SysMods::Cmd, "q");
 

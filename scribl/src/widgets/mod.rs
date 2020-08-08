@@ -1,3 +1,4 @@
+mod alert;
 mod drawing_pane;
 mod editor;
 mod icons;

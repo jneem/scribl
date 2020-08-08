@@ -71,7 +71,11 @@ fn main() {
 
     let initial_editor = if let Some(path) = matches.value_of("FILE") {
         match crate::save_state::SaveFileData::load_from_path(path) {
-            Ok(save_file) => EditorState::from_save_file(save_file),
+            Ok(save_file) => {
+                let mut e = EditorState::from_save_file(save_file);
+                e.save_path = Some(path.into());
+                e
+            }
             Err(e) => {
                 log::error!("Error opening save file: {}", e);
                 return;
