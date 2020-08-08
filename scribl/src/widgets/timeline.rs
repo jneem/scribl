@@ -713,8 +713,10 @@ impl Widget<EditorState> for TimelineInner {
         let size = bc.constrain((std::f64::INFINITY, self.height));
 
         // The children have funny shapes, so rather than use druid's layout mechanisms to position
-        // them, we just do it all manually.
+        // them, we just do it all manually. Nevertheless, we need to call "layout" on the children
+        // so that druid will know that we already laid them out.
         for c in self.children.values_mut() {
+            c.layout(ctx, bc, data, env);
             c.set_layout_rect(ctx, data, env, size.to_rect());
         }
         size
