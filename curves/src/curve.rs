@@ -262,11 +262,16 @@ pub struct Stroke<'a> {
 }
 
 impl<'a> Stroke<'a> {
-    /// Suppose that we advance time from `start_time` to `end_time`. Returns a bounding box for
-    /// the region that needs to be repainted.
+    /// Returns a bounding box everything that is drawn between `start_time` and `end_time`,
+    /// inclusive.
     pub fn changes_bbox(&self, start_time: Time, end_time: Time) -> Rect {
         let start_idx = match self.times.binary_search(&start_time) {
-            Ok(idx) => idx,
+            // binary_search gives an arbitrary match, but we want the first one.
+            Ok(idx) => self.times[0..idx]
+                .iter()
+                .rposition(|&t| t < start_time)
+                .map(|i| i + 1)
+                .unwrap_or(0),
             Err(idx) => {
                 if idx < self.times.len() {
                     // If the start time is in the middle of a segment, round it down to the
@@ -280,7 +285,13 @@ impl<'a> Stroke<'a> {
             }
         };
         let end_idx = match self.times.binary_search(&end_time) {
-            Ok(idx) => idx + 1,
+            // binary_search gives an arbitrary match, but we want the last one.
+            Ok(idx) => {
+                idx + self.times[idx..]
+                    .iter()
+                    .position(|&t| t > end_time)
+                    .unwrap_or(1)
+            }
             Err(idx) => {
                 if idx == 0 {
                     idx
@@ -289,6 +300,7 @@ impl<'a> Stroke<'a> {
                 }
             }
         };
+
         let active_elts = if let Some(fade) = self.style.effects.fade() {
             // If a fade is active between start_time and end_time, the whole stroke needs to be
             // repainted.

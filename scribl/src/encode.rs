@@ -204,7 +204,6 @@ fn render_loop(
         cursor.advance_to(time.min(last_time), time.max(last_time));
         let mut bbox = Rect::ZERO;
         for b in cursor.bboxes(&snippets) {
-            let b = (transform * b).expand();
             if bbox.area() == 0.0 {
                 bbox = b;
             } else {
@@ -217,8 +216,8 @@ fn render_loop(
         {
             let mut ctx = bitmap.render_context();
             ctx.with_save(|ctx| {
-                ctx.clip(bbox);
                 ctx.transform(transform.into());
+                ctx.clip(bbox);
                 ctx.clear(Color::WHITE);
                 for id in cursor.active_ids() {
                     snippets.snippet(id).render(ctx, time);
