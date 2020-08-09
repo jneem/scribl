@@ -60,7 +60,7 @@ fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
 
     let close = MenuItem::new(
         LocalizedString::new("common-menu-file-close"),
-        cmd::REQUEST_CLOSE_WINDOW,
+        druid::commands::CLOSE_WINDOW,
     )
     .hotkey(SysMods::Cmd, "q");
 

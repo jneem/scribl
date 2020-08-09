@@ -560,8 +560,28 @@ impl Editor {
             }
             true
         } else if cmd.is(druid::commands::CLOSE_WINDOW) {
-            log::info!("close window command");
-            true
+            if matches!(data.action, CurrentAction::WaitingToExit) {
+                // By not handling the CLOSE_WINDOW command, we're telling druid to really close
+                // it.
+                false
+            } else if data.changed_since_last_save() {
+                ctx.submit_command(
+                    ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
+                        alert::make_unsaved_changes_alert(),
+                    ))),
+                    None,
+                );
+                true
+            } else {
+                data.action = CurrentAction::WaitingToExit;
+                ctx.submit_command(
+                    ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
+                        alert::make_waiting_to_exit_alert(),
+                    ))),
+                    None,
+                );
+                true
+            }
         } else if cmd.is(cmd::INITIALIZE_EVENT_SINK) {
             let ext_cmd = cmd.get_unchecked(cmd::INITIALIZE_EVENT_SINK);
             self.ext_cmd = Some(ext_cmd.clone());
@@ -597,25 +617,6 @@ impl Editor {
             true
         } else if cmd.is(cmd::ZOOM_RESET) {
             data.zoom = 1.0;
-            true
-        } else if cmd.is(cmd::REQUEST_CLOSE_WINDOW) {
-            // TODO: note that we can't intercept it (yet) when the system tries to close our
-            // window; this is currently only when they close via the menu.
-            if data.changed_since_last_save() {
-                ctx.submit_command(
-                    ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
-                        alert::make_unsaved_changes_alert(),
-                    ))),
-                    None,
-                );
-            } else {
-                ctx.submit_command(
-                    ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
-                        alert::make_waiting_to_exit_alert(),
-                    ))),
-                    None,
-                );
-            }
             true
         } else {
             false

@@ -83,11 +83,6 @@ pub const ZOOM_IN: Selector<()> = Selector::new("scribl.zoom-in");
 pub const ZOOM_OUT: Selector<()> = Selector::new("scribl.zoom-out");
 pub const ZOOM_RESET: Selector<()> = Selector::new("scribl.zoom-reset");
 
-/// We send this instead of `druid::commands::CLOSE_WINDOW` when the "Close" menu option is shown,
-/// because it can be intercepted to show an "are you sure you want to quit dialog." This will need
-/// to be reworked when the druid changes get in.
-pub const REQUEST_CLOSE_WINDOW: Selector = Selector::new("scribl.request-close-window");
-
 #[derive(Clone)]
 pub struct AsyncLoadResult {
     pub path: PathBuf,

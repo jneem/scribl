@@ -7,10 +7,12 @@ use crate::widgets::tooltip::ModalHost;
 use crate::EditorState;
 
 pub fn make_unsaved_changes_alert() -> impl Widget<EditorState> {
-    let close = Button::new("Close without saving").on_click(|ctx, _data, _env| {
-        ctx.submit_command(ModalHost::DISMISS_MODAL, None);
-        ctx.submit_command(druid::commands::CLOSE_WINDOW, None);
-    });
+    let close =
+        Button::new("Close without saving").on_click(|ctx, data: &mut EditorState, _env| {
+            data.action = CurrentAction::WaitingToExit;
+            ctx.submit_command(ModalHost::DISMISS_MODAL, None);
+            ctx.submit_command(druid::commands::CLOSE_WINDOW, None);
+        });
 
     let cancel = Button::new("Cancel").on_click(|ctx, _data, _env| {
         ctx.submit_command(ModalHost::DISMISS_MODAL, None);
