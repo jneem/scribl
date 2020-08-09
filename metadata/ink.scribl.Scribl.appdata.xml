@@ -30,6 +30,11 @@
     <update_contact>joeneeman@gmail.com</update_contact>
 
     <releases>
+        <release version="0.2.1" date="2020-08-08">
+            - Improvements to timeline appearance and interaction.
+            - Make it harder to accidentally quit without saving.
+            - Fix a visual glitch in some exported videos.
+        </release>
         <release version="0.2.0" date="2020-07-17">
             Initial flathub release.
         </release>
