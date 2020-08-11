@@ -212,12 +212,14 @@ fn render_loop(
             }
         }
 
+        bbox = (transform * bbox).expand();
+
         cursor.advance_to(time, time);
         {
             let mut ctx = bitmap.render_context();
             ctx.with_save(|ctx| {
-                ctx.transform(transform.into());
                 ctx.clip(bbox);
+                ctx.transform(transform.into());
                 ctx.clear(Color::WHITE);
                 for id in cursor.active_ids() {
                     snippets.snippet(id).render(ctx, time);
