@@ -625,7 +625,7 @@ impl Editor {
     }
 
     fn spawn_async_save(&mut self, save_data: SaveFileData, path: PathBuf, id: WindowId) {
-        if let Some(ext_cmd) = self.ext_cmd.as_ref().cloned() {
+        if let Some(ext_cmd) = self.ext_cmd.clone() {
             std::thread::spawn(move || {
                 let result = save_data.save_to_path(&path);
                 let _ = ext_cmd.submit_command(
@@ -639,11 +639,13 @@ impl Editor {
                     id,
                 );
             });
+        } else {
+            log::error!("can't save: no command handle!");
         }
     }
 
     fn spawn_async_load(&mut self, path: PathBuf, id: WindowId) {
-        if let Some(ext_cmd) = self.ext_cmd.as_ref().cloned() {
+        if let Some(ext_cmd) = self.ext_cmd.clone() {
             std::thread::spawn(move || {
                 let data = cmd::AsyncLoadResult {
                     path: path.clone(),
@@ -651,6 +653,8 @@ impl Editor {
                 };
                 let _ = ext_cmd.submit_command(cmd::FINISHED_ASYNC_LOAD, Box::new(data), id);
             });
+        } else {
+            log::error!("can't load: no command handle!");
         }
     }
 }
