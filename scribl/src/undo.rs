@@ -1,10 +1,9 @@
 use std::collections::VecDeque;
-use std::sync::Arc;
 
-use scribl_curves::{SnippetsData, StrokeSeq, Time};
+use scribl_curves::{SnippetsData, Time};
 
 use crate::audio::AudioSnippetsData;
-use crate::editor_state::MaybeSnippetId;
+use crate::editor_state::{CurrentAction, MaybeSnippetId};
 
 const MAX_UNDO_STACK: usize = 128;
 
@@ -13,12 +12,12 @@ const MAX_UNDO_STACK: usize = 128;
 /// (for example, if we undo while drawing, we pause the clock).
 #[derive(Clone, Default)]
 pub struct UndoState {
-    pub new_curve: Option<Arc<StrokeSeq>>,
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,
     pub selected_snippet: MaybeSnippetId,
     pub mark: Option<Time>,
     pub time: Time,
+    pub action: CurrentAction,
 }
 
 impl UndoState {

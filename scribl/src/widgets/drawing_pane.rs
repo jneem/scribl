@@ -1,13 +1,12 @@
 use druid::kurbo::TranslateScale;
 use druid::{
-    BoxConstraints, Color, Command, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
+    BoxConstraints, Color, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
     PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
 };
 
 use scribl_curves::{SnippetsCursor, Time};
 
-use crate::cmd;
-use crate::editor_state::{CurrentAction, EditorState};
+use crate::editor_state::EditorState;
 
 // The drawing coordinates are chosen so that the width of the image is always
 // 1.0. For now we also fix the height, but eventually we will support other aspect
@@ -99,14 +98,14 @@ impl Widget<EditorState> for DrawingPane {
                         // Compute the rectangle that needs to be invalidated in order to draw this new
                         // point.
                         let mut invalid = Rect::from_origin_size(ev.pos, (0.0, 0.0));
-                        let last_point = data.new_stroke.as_ref().and_then(|s| s.last_point());
+                        let last_point = data.new_stroke().and_then(|s| s.last_point());
                         if let Some(last_point) = last_point {
                             invalid = invalid.union_pt(self.from_image_coords() * last_point);
                         }
                         let pen_width = data.pen_size.size_fraction() * self.from_image_scale();
                         ctx.request_paint_rect(invalid.inset(pen_width).expand());
 
-                        data.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
+                        data.add_point_to_stroke(self.to_image_coords() * ev.pos, time);
                     } else {
                         // Pan the view.
                         self.offset -= (ev.pos - self.last_mouse_pos) / data.zoom;
@@ -120,21 +119,19 @@ impl Widget<EditorState> for DrawingPane {
             Event::MouseDown(ev) if ev.button.is_left() => {
                 ctx.set_active(true);
                 self.last_mouse_pos = ev.pos;
-                if let CurrentAction::WaitingToRecord(_) = data.action {
-                    data.start_actually_recording();
-                    ctx.request_anim_frame();
-                }
                 if data.action.is_recording() {
                     let time = data.accurate_time();
-                    data.add_to_cur_snippet(self.to_image_coords() * ev.pos, time);
+                    data.add_point_to_stroke(self.to_image_coords() * ev.pos, time);
+                    ctx.request_anim_frame();
                 }
             }
             Event::MouseUp(ev) => {
                 ctx.set_active(false);
                 if ev.button.is_left() && data.action.is_recording() {
-                    if let Some(seg) = data.finish_cur_segment() {
-                        ctx.submit_command(Command::new(cmd::APPEND_NEW_SEGMENT, seg), None);
-                    }
+                    data.finish_stroke();
+                    // We need to refresh the menus here because finish_stroke changes the undo
+                    // state.
+                    ctx.set_menu(crate::menus::make_menu(data));
                 }
             }
             Event::Wheel(ev) => {
@@ -178,7 +175,7 @@ impl Widget<EditorState> for DrawingPane {
             for bbox in self.cursor.bboxes(&data.snippets) {
                 ctx.request_paint_rect(transform * bbox);
             }
-            if let Some(strokes) = &data.new_stroke_seq {
+            if let Some(strokes) = &data.new_stroke_seq() {
                 for stroke in strokes.strokes() {
                     let rect = stroke.changes_bbox(start_time, end_time);
                     if rect.area() != 0.0 {
@@ -232,10 +229,10 @@ impl Widget<EditorState> for DrawingPane {
                     .snippet(id)
                     .render(ctx.render_ctx, data.time());
             }
-            if let Some(curve) = data.new_stroke_seq.as_ref() {
+            if let Some(curve) = data.new_stroke_seq() {
                 curve.render(ctx.render_ctx, data.time());
             }
-            if let Some(snip) = data.new_stroke.as_ref() {
+            if let Some(snip) = data.new_stroke() {
                 snip.render(ctx.render_ctx, data.cur_style(), data.time());
             }
         });

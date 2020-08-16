@@ -23,7 +23,7 @@ pub const MAX_ZOOM: f64 = 8.0;
 /// While drawing, this stores one continuous poly-line (from pen-down to
 /// pen-up). Because we expect lots of fast changes to this, it uses interior
 /// mutability to avoid repeated allocations.
-#[derive(Clone, Data, Default)]
+#[derive(Clone, Data, Debug, Default)]
 pub struct StrokeInProgress {
     #[data(ignore)]
     points: Arc<RefCell<Vec<Point>>>,
@@ -165,12 +165,17 @@ pub struct AsyncOpsStatus {
     pub last_finished: Option<FinishedStatus>,
 }
 
+#[derive(Clone, Data, Debug)]
+pub struct RecordingState {
+    pub time_factor: f64,
+    pub paused: bool,
+    pub new_stroke: StrokeInProgress,
+    pub new_stroke_seq: Arc<StrokeSeq>,
+}
+
 /// This data contains the state of an editor window.
 #[derive(Clone, Data, Lens)]
 pub struct EditorState {
-    pub new_stroke: Option<StrokeInProgress>,
-    pub new_stroke_seq: Option<Arc<StrokeSeq>>,
-
     pub snippets: SnippetsData,
     pub audio_snippets: AudioSnippetsData,
     pub selected_snippet: MaybeSnippetId,
@@ -184,7 +189,11 @@ pub struct EditorState {
     #[lens(name = "ignore_undo")]
     #[data(ignore)]
     pub undo: Arc<RefCell<UndoStack>>,
-    // TODO: doc
+
+    /// The current (logical) animation time.
+    ///
+    /// This isn't public because of some invariants that need to be upheld; use `warp_time_to()`
+    /// to modify the current time.
     #[lens(name = "time_lens")]
     time: Time,
 
@@ -207,7 +216,10 @@ pub struct EditorState {
     /// When true, the "fade out" toggle button is pressed down.
     pub fade_enabled: bool,
 
+    /// The current pen size, as selected in the UI.
     pub pen_size: PenSize,
+
+    /// The current denoise setting, as selected in the UI.
     pub denoise_setting: DenoiseSetting,
 
     pub audio: Arc<RefCell<AudioState>>,
@@ -241,8 +253,6 @@ impl Default for EditorState {
             DenoiseSetting::Vad
         };
         let mut ret = EditorState {
-            new_stroke: None,
-            new_stroke_seq: None,
             snippets: SnippetsData::default(),
             audio_snippets: AudioSnippetsData::default(),
             selected_snippet: MaybeSnippetId::None,
@@ -315,95 +325,58 @@ impl EditorState {
     }
 
     pub fn start_recording(&mut self, time_factor: f64) {
-        assert!(self.new_stroke_seq.is_none());
-        assert!(self.new_stroke.is_none());
-        assert_eq!(self.action, CurrentAction::Idle);
+        assert!(matches!(self.action, CurrentAction::Idle));
 
-        self.action = CurrentAction::WaitingToRecord(time_factor);
+        self.action = CurrentAction::Recording(RecordingState {
+            time_factor,
+            paused: true,
+            new_stroke: StrokeInProgress::default(),
+            new_stroke_seq: Arc::new(StrokeSeq::default()),
+        });
         self.take_time_snapshot();
     }
 
-    /// Puts us into the `WaitingToRecord` state, after first cleaning up any
-    /// other states that need to be cleaned up. This is useful for handling
-    /// mid-drawing undos.
-    pub fn ensure_recording(&mut self) {
-        match self.action {
-            CurrentAction::Playing => self.stop_playing(),
-            CurrentAction::Recording(_) => {
-                // We don't want to call stop_recording(), because that will
-                // clear out the snippet in progress. But we do need to reset
-                // the audio.
-                self.audio.borrow_mut().stop_playing();
-            }
-            CurrentAction::RecordingAudio(_) => {
-                let _ = self.stop_recording_audio();
-            }
-            CurrentAction::Scanning(_) => self.stop_scanning(),
-            _ => {}
-        }
-        self.new_stroke = None;
-        self.action = CurrentAction::WaitingToRecord(self.recording_speed.factor());
-        self.take_time_snapshot();
-    }
-
-    pub fn start_actually_recording(&mut self) {
-        if let CurrentAction::WaitingToRecord(time_factor) = self.action {
-            self.action = CurrentAction::Recording(time_factor);
-            self.take_time_snapshot();
-            if time_factor > 0.0 {
-                self.audio.borrow_mut().start_playing(
-                    self.audio_snippets.clone(),
-                    self.time,
-                    time_factor,
-                );
-            }
-        } else {
-            panic!("wasn't waiting to record");
+    fn start_playing_audio(&mut self) {
+        let time_factor = self.action.time_factor();
+        if time_factor > 0.0 {
+            self.audio.borrow_mut().start_playing(
+                self.audio_snippets.clone(),
+                self.time,
+                time_factor,
+            );
         }
     }
 
-    /// Takes the segment that is currently being drawn and adds it to the snippet in progress.
-    pub fn add_segment_to_snippet(&mut self, seg: StrokeInProgress) {
-        // TODO(performance): this is quadratic for long snippets with lots of segments, because
-        // we clone it every time the pen lifts.
-        let mut curve = self
-            .new_stroke_seq
-            .as_ref()
-            .map(|c| c.as_ref().clone())
-            .unwrap_or(StrokeSeq::new());
-        curve.append_stroke(
-            &seg.points.borrow(),
-            &seg.times.borrow(),
-            self.cur_style(),
-            0.0005,
-            std::f64::consts::PI / 4.0,
-        );
-        self.new_stroke_seq = Some(Arc::new(curve));
+    fn stop_all_audio(&mut self) {
+        self.audio.borrow_mut().stop_playing();
+        if matches!(self.action, CurrentAction::RecordingAudio(_)) {
+            let _ = self.stop_recording_audio();
+        }
     }
 
     /// Stops recording drawing, returning the snippet that we just finished recording (if it was
     /// non-empty).
     pub fn stop_recording(&mut self) -> Option<SnippetData> {
-        assert!(
-            matches!(self.action, CurrentAction::Recording(_) | CurrentAction::WaitingToRecord(_))
-        );
-
-        self.audio.borrow_mut().stop_playing();
-
-        if let Some(seg) = self.new_stroke.take() {
-            // If there is an unfinished segment, we add it directly to the snippet without going
-            // through a command, because we don't need the extra undo state.
-            self.add_segment_to_snippet(seg);
-        }
-        self.action = CurrentAction::Idle;
+        self.stop_all_audio();
+        self.finish_stroke();
+        let old_action = std::mem::replace(&mut self.action, CurrentAction::Idle);
         self.take_time_snapshot();
-        self.new_stroke_seq
-            .take()
-            .map(|arc_curve| SnippetData::new(arc_curve.as_ref().clone()))
+
+        if let CurrentAction::Recording(rec_state) = old_action {
+            let seq = rec_state.new_stroke_seq.as_ref().clone();
+            if seq.is_empty() {
+                None
+            } else {
+                Some(SnippetData::new(seq))
+            }
+        } else {
+            log::error!("tried to stop recording, but we weren't recording");
+            None
+        }
     }
 
     pub fn start_playing(&mut self) {
-        assert_eq!(self.action, CurrentAction::Idle);
+        assert!(matches!(self.action, CurrentAction::Idle));
         self.action = CurrentAction::Playing;
         self.take_time_snapshot();
         self.audio
@@ -412,14 +385,14 @@ impl EditorState {
     }
 
     pub fn stop_playing(&mut self) {
-        assert_eq!(self.action, CurrentAction::Playing);
+        assert!(matches!(self.action, CurrentAction::Playing));
         self.action = CurrentAction::Idle;
         self.take_time_snapshot();
         self.audio.borrow_mut().stop_playing();
     }
 
     pub fn start_recording_audio(&mut self) {
-        assert_eq!(self.action, CurrentAction::Idle);
+        assert!(matches!(self.action, CurrentAction::Idle));
         self.action = CurrentAction::RecordingAudio(self.time);
         self.take_time_snapshot();
         let mut config = self.config.audio_input.clone();
@@ -454,7 +427,7 @@ impl EditorState {
             ret.set_multiplier(-20.0);
             ret
         } else {
-            panic!("not recording");
+            panic!("not recording audio");
         }
     }
 
@@ -498,7 +471,7 @@ impl EditorState {
     pub fn set_loading(&mut self) {
         match self.action {
             CurrentAction::Scanning(_) => self.stop_scanning(),
-            CurrentAction::Recording(_) | CurrentAction::WaitingToRecord(_) => {
+            CurrentAction::Recording(_) => {
                 self.stop_recording();
             }
             CurrentAction::Playing => self.stop_playing(),
@@ -517,21 +490,68 @@ impl EditorState {
         self.take_time_snapshot();
     }
 
-    pub fn add_to_cur_snippet(&mut self, p: Point, t: Time) {
-        assert!(self.action.is_recording());
-
-        if let Some(ref mut snip) = self.new_stroke {
-            snip.add_point(p, t);
+    pub fn add_point_to_stroke(&mut self, p: Point, t: Time) {
+        let mut unpause = false;
+        if let CurrentAction::Recording(rec_state) = &mut self.action {
+            rec_state.new_stroke.add_point(p, t);
+            if rec_state.paused {
+                rec_state.paused = false;
+                unpause = true;
+            }
         } else {
-            let mut snip = StrokeInProgress::default();
-            snip.add_point(p, t);
-            self.new_stroke = Some(snip);
+            log::error!("tried to add a point, but we weren't recording");
+        }
+        if unpause {
+            self.take_time_snapshot();
+            self.start_playing_audio();
         }
     }
 
-    pub fn finish_cur_segment(&mut self) -> Option<StrokeInProgress> {
-        assert!(self.action.is_recording());
-        self.new_stroke.take()
+    pub fn finish_stroke(&mut self) {
+        let prev_state = self.undo_state();
+        let style = self.cur_style();
+        if let CurrentAction::Recording(rec_state) = &mut self.action {
+            let stroke = std::mem::replace(&mut rec_state.new_stroke, StrokeInProgress::default());
+            let start_time = stroke.start_time().unwrap_or(Time::ZERO);
+
+            // TODO(performance): this is quadratic for long snippets with lots of segments, because
+            // we clone it every time the pen lifts.
+            let mut seq = rec_state.new_stroke_seq.as_ref().clone();
+            if !stroke.points.borrow().is_empty() {
+                seq.append_stroke(
+                    &stroke.points.borrow(),
+                    &stroke.times.borrow(),
+                    style,
+                    0.0005,
+                    std::f64::consts::PI / 4.0,
+                );
+                rec_state.new_stroke_seq = Arc::new(seq);
+            }
+
+            self.push_transient_undo_state(prev_state.with_time(start_time), "add stroke");
+        } else {
+            log::error!("tried to finish a stroke, but we weren't recording");
+        }
+    }
+
+    /// Returns a reference to the stroke sequence that is currently being drawn (that is, all the
+    /// parts up until the last time that the pen lifted).
+    pub fn new_stroke_seq(&self) -> Option<&StrokeSeq> {
+        if let CurrentAction::Recording(rec_state) = &self.action {
+            Some(&rec_state.new_stroke_seq)
+        } else {
+            None
+        }
+    }
+
+    /// Returns a reference to the stroke that is currently being drawn (that is, all the parts
+    /// since the last time the pen went down and hasn't come up).
+    pub fn new_stroke(&self) -> Option<&StrokeInProgress> {
+        if let CurrentAction::Recording(rec_state) = &self.action {
+            Some(&rec_state.new_stroke)
+        } else {
+            None
+        }
     }
 
     pub fn cur_style(&self) -> StrokeStyle {
@@ -555,12 +575,12 @@ impl EditorState {
 
     pub fn undo_state(&self) -> UndoState {
         UndoState {
-            new_curve: self.new_stroke_seq.clone(),
             snippets: self.snippets.clone(),
             audio_snippets: self.audio_snippets.clone(),
             selected_snippet: self.selected_snippet.clone(),
             mark: self.mark,
             time: self.time,
+            action: self.action.clone(),
         }
     }
 
@@ -579,34 +599,33 @@ impl EditorState {
     }
 
     fn restore_undo_state(&mut self, undo: UndoState) {
-        let mid_recording = self.new_stroke_seq.is_some();
-
-        self.new_stroke_seq = undo.new_curve;
         self.snippets = undo.snippets;
         self.audio_snippets = undo.audio_snippets;
         self.selected_snippet = undo.selected_snippet;
         self.mark = undo.mark;
         self.warp_time_to(undo.time);
         self.action = CurrentAction::Idle;
+        self.stop_all_audio();
 
         // This is a bit of a special-case hack. If there get to be more of
         // these, it might be worth storing some metadata in the undo state.
         //
         // In case the undo resets us to a mid-recording state, we ensure that
-        // the state is waiting-to-record (i.e., recording but paused).
-        if mid_recording {
-            if let Some(new_curve) = self.new_stroke_seq.as_ref() {
-                if let Some(&time) = new_curve.times.last() {
-                    // This is even more of a special-case hack: the end of the
-                    // last-drawn curve is likely to be after undo.time (because
-                    // undo.time is the time of the beginning of the frame in
-                    // which the last curve was drawn). Set the time to be the
-                    // end of the last-drawn curve, otherwise they might try to
-                    // draw the next segment before the last one finishes.
-                    self.warp_time_to(time);
-                }
+        // the state is recording but paused.
+        if let CurrentAction::Recording(mut rec_state) = undo.action {
+            rec_state.paused = true;
+            rec_state.new_stroke = StrokeInProgress::default();
+
+            if let Some(&time) = rec_state.new_stroke_seq.times.last() {
+                // This is even more of a special-case hack: the end of the last-drawn curve is
+                // likely to be after undo.time (because undo.time is the time of the beginning of
+                // the frame in which the last curve was drawn). Set the time to be the end of the
+                // last-drawn curve, otherwise they might try to draw the next segment before the
+                // last one finishes.
+                self.warp_time_to(time);
             }
-            self.ensure_recording();
+
+            self.action = CurrentAction::Recording(rec_state);
         }
     }
 
@@ -681,15 +700,10 @@ impl EditorState {
     }
 }
 
-#[derive(Clone, Copy, Data, Debug, PartialEq)]
+#[derive(Clone, Data, Debug)]
 pub enum CurrentAction {
-    /// They started an animation (e.g. by pressing the "video" button), but
-    /// haven't actually started drawing yet. The time is not moving; we're
-    /// waiting until they start drawing.
-    WaitingToRecord(f64),
-
     /// They are drawing an animation, while the time is ticking.
-    Recording(f64),
+    Recording(RecordingState),
 
     /// They are watching the animation.
     Playing,
@@ -721,7 +735,6 @@ impl CurrentAction {
         use CurrentAction::*;
         use ToggleButtonState::*;
         match *self {
-            WaitingToRecord(_) => ToggledOn,
             Recording(_) => ToggledOn,
             Idle => ToggledOff,
             _ => Disabled,
@@ -749,7 +762,7 @@ impl CurrentAction {
     }
 
     pub fn is_idle(&self) -> bool {
-        *self == CurrentAction::Idle
+        matches!(self, CurrentAction::Idle)
     }
 
     pub fn is_recording(&self) -> bool {
@@ -758,11 +771,17 @@ impl CurrentAction {
 
     pub fn time_factor(&self) -> f64 {
         use CurrentAction::*;
-        match *self {
+        match self {
             Playing => 1.0,
             RecordingAudio(_) => 1.0,
-            Recording(x) => x,
-            Scanning(x) => x,
+            Recording(state) => {
+                if state.paused {
+                    0.0
+                } else {
+                    state.time_factor
+                }
+            }
+            Scanning(x) => *x,
             _ => 0.0,
         }
     }

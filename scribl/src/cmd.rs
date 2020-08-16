@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use scribl_curves::{SnippetData, SnippetsData, Time};
 
 use crate::audio::{AudioSnippetData, AudioSnippetsData};
-use crate::editor_state::{MaybeSnippetId, StrokeInProgress};
+use crate::editor_state::MaybeSnippetId;
 use crate::encode::EncodingStatus;
 use crate::save_state::SaveFileData;
 
@@ -57,10 +57,6 @@ pub const CHOOSE_COLOR: Selector<Color> = Selector::new("scribl.choose-color");
 
 /// Exports the current animation as a video.
 pub const EXPORT: Selector<ExportCmd> = Selector::new("scribl.export");
-
-/// Appends a new segment to the currently-drawing snippet.
-pub const APPEND_NEW_SEGMENT: Selector<StrokeInProgress> =
-    Selector::new("scribl.append-new-segment");
 
 /// While the video is encoding asynchronously, it periodically sends these commands.
 pub const ENCODING_STATUS: Selector<EncodingStatus> = Selector::new("scribl.encoding-status");

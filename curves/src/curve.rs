@@ -58,6 +58,10 @@ impl StrokeSeq {
         StrokeSeq::default()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.times.is_empty()
+    }
+
     /// Returns all the elements in this `StrokeSeq`. The return value will contain only `MoveTo`
     /// (for the first element of each stroke) and `CurveTo`.
     pub fn elements(&self) -> &[PathEl] {

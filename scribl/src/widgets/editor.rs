@@ -8,8 +8,6 @@ use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
-use scribl_curves::Time;
-
 use crate::autosave::AutosaveData;
 use crate::cmd;
 use crate::editor_state::{
@@ -375,14 +373,6 @@ impl Editor {
             data.push_undo_state(prev_state.with_time(snip.start_time()), "add audio");
             ctx.set_menu(crate::menus::make_menu(data));
             true
-        } else if cmd.is(cmd::APPEND_NEW_SEGMENT) {
-            let prev_state = data.undo_state();
-            let seg = cmd.get_unchecked(cmd::APPEND_NEW_SEGMENT);
-            let start_time = seg.start_time().unwrap_or(Time::ZERO);
-            data.add_segment_to_snippet(seg.clone());
-            data.push_transient_undo_state(prev_state.with_time(start_time), "add stroke");
-            ctx.set_menu(crate::menus::make_menu(data));
-            true
         } else if cmd.is(cmd::CHOOSE_COLOR) {
             let color = cmd.get_unchecked(cmd::CHOOSE_COLOR);
             data.palette.select(color);
@@ -484,7 +474,7 @@ impl Editor {
         } else if cmd.is(cmd::STOP) {
             match data.action {
                 CurrentAction::Playing => data.stop_playing(),
-                CurrentAction::WaitingToRecord(_) | CurrentAction::Recording(_) => {
+                CurrentAction::Recording(_) => {
                     if let Some(new_snippet) = data.stop_recording() {
                         ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
                     }

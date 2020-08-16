@@ -139,9 +139,7 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
     // The stop hotkey matches the hotkey that was used to start the current action.
     let stop = match data.action {
         CurrentAction::Playing => stop.hotkey(SysMods::None, KbKey::Enter),
-        CurrentAction::Recording(_) | CurrentAction::WaitingToRecord(_) => {
-            stop.hotkey(SysMods::None, " ")
-        }
+        CurrentAction::Recording(_) => stop.hotkey(SysMods::None, " "),
         CurrentAction::RecordingAudio(_) => stop.hotkey(SysMods::Shift, " "),
         _ => stop.disabled(),
     };
