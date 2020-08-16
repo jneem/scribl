@@ -30,7 +30,13 @@
     <update_contact>joeneeman@gmail.com</update_contact>
 
     <releases>
-        <release version="0.2.1" date="2020-08-08">
+        <release version="0.2.3" date="2020-08-16">
+            - Switch video codec to h264, for faster encoding and better compatibility.
+        </release>
+        <release version="0.2.2" date="2020-08-11">
+            - Fix another visual glitch in some exported videos.
+        </release>
+         <release version="0.2.1" date="2020-08-08">
             - Improvements to timeline appearance and interaction.
             - Make it harder to accidentally quit without saving.
             - Fix a visual glitch in some exported videos.
