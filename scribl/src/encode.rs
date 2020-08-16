@@ -52,7 +52,7 @@ fn create_pipeline(
     let pipeline = gst::Pipeline::new(None);
     let v_src = gst::ElementFactory::make("appsrc", Some("encode-vsource"))?;
     let v_convert = gst::ElementFactory::make("videoconvert", Some("encode-vconvert"))?;
-    let v_encode = gst::ElementFactory::make("vp9enc", Some("encode-vencode"))?;
+    let v_encode = gst::ElementFactory::make("x264enc", Some("encode-vencode"))?;
     let v_queue1 = gst::ElementFactory::make("queue", Some("encode-vqueue1"))?;
     let v_queue2 = gst::ElementFactory::make("queue", Some("encode-vqueue2"))?;
     let audio_output_data = crate::audio::OutputData {
@@ -63,10 +63,10 @@ fn create_pipeline(
     let a_src =
         crate::audio::create_appsrc(Arc::new(Mutex::new(audio_output_data)), "encode-asrc")?;
     let a_convert = gst::ElementFactory::make("audioconvert", Some("encode-aconvert"))?;
-    let a_encode = gst::ElementFactory::make("vorbisenc", Some("encode-aencode"))?;
+    let a_encode = gst::ElementFactory::make("lamemp3enc", Some("encode-aencode"))?;
     let a_queue1 = gst::ElementFactory::make("queue", Some("encode-aqueue1"))?;
     let a_queue2 = gst::ElementFactory::make("queue", Some("encode-aqueue2"))?;
-    let mux = gst::ElementFactory::make("webmmux", Some("encode-mux"))?;
+    let mux = gst::ElementFactory::make("mp4mux", Some("encode-mux"))?;
     let sink = gst::ElementFactory::make("filesink", Some("encode-sink"))?;
 
     pipeline.add_many(&[&v_src, &v_convert, &v_encode, &v_queue1, &v_queue2])?;
