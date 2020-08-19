@@ -17,6 +17,8 @@ use std::sync::{Arc, Mutex};
 
 use scribl_curves::{Cursor, Span, Time, TimeDiff};
 
+use crate::config::AudioInput as InputConfig;
+
 /// This is in charge of the audio event loop, and various other things. There should only be one
 /// of these alive at any one time, and it is intended to be long-lived (i.e., create it at startup
 /// and just keep it around).
@@ -26,6 +28,14 @@ pub struct AudioState {
     // The pipeline will be `None` if there was an error while creating it. In that case, we
     // already printed an error message so we'll just silently (heh) not play any audio.
     output_pipeline: Option<gst::Pipeline>,
+
+    input_tx: Sender<InputConfig>,
+    input_config: InputConfig,
+    // This is how the audio thread communicates the received audio back to the main thread: it
+    // unlocks this mutex and appends its audio to the buffer. This seems to work ok so far, as
+    // we're careful to only hold the mutex for as long as we need to copy the data in or out.
+    // But the strategy could do with more testing (TODO). E.g., does gstreamer glitch if we block
+    // in appsink? Or does it have enough buffers of its own?
     input_data: Arc<Mutex<InputData>>,
     input_pipeline: Option<gst::Pipeline>,
 }
@@ -45,7 +55,6 @@ struct InputData {
     /// For every frame (of size `DenoiseState::FRAME_SIZE`) in `buf`, we store an estimate of how
     /// likely that frame was to contain speech.
     vad: Vec<f32>,
-    config: crate::config::AudioInput,
 }
 
 pub const SAMPLE_RATE: u32 = 48000;
@@ -106,12 +115,12 @@ impl AudioState {
             );
         }
 
+        let (input_tx, input_rx) = channel();
         let input_data = Arc::new(Mutex::new(InputData {
             buf: Vec::new(),
             vad: Vec::new(),
-            config: crate::config::AudioInput::default(),
         }));
-        let input_pipeline = create_input_pipeline(Arc::clone(&input_data));
+        let input_pipeline = create_input_pipeline(Arc::clone(&input_data), input_rx);
         if let Err(e) = &input_pipeline {
             log::error!(
                 "Error initializing audio input, there will be no sound: {}",
@@ -122,6 +131,8 @@ impl AudioState {
             output_data: OutputData::new(),
             output_tx,
             output_pipeline: output_pipeline.ok(),
+            input_tx,
+            input_config: InputConfig::default(),
             input_data,
             input_pipeline: input_pipeline.ok(),
         }
@@ -169,12 +180,14 @@ impl AudioState {
         }
     }
 
-    pub fn start_recording(&mut self, config: crate::config::AudioInput) {
+    pub fn start_recording(&mut self, config: InputConfig) {
         {
             let mut lock = self.input_data.lock().unwrap();
             lock.buf.clear();
             lock.vad.clear();
-            lock.config = config;
+        }
+        if self.input_tx.send(config).is_err() {
+            log::error!("audio input thread died, no audio will be recorded");
         }
 
         if let Some(pipe) = self.input_pipeline.as_ref() {
@@ -185,13 +198,12 @@ impl AudioState {
     }
 
     pub fn stop_recording(&mut self) -> Vec<i16> {
-        let mut buf = Vec::new();
-        let mut vad = Vec::new();
-        let config = {
+        let (mut buf, vad) = {
             let mut lock = self.input_data.lock().unwrap();
-            std::mem::swap(&mut lock.buf, &mut buf);
-            std::mem::swap(&mut lock.vad, &mut vad);
-            lock.config.clone()
+            (
+                std::mem::replace(&mut lock.buf, Vec::new()),
+                std::mem::replace(&mut lock.vad, Vec::new()),
+            )
         };
         if let Some(pipe) = self.input_pipeline.as_ref() {
             if let Err(e) = pipe.set_state(gst::State::Paused) {
@@ -200,7 +212,8 @@ impl AudioState {
         }
 
         // Which frames are worth keeping, according to voice detection?
-        let mut keep: Vec<_> = vad.iter().map(|&v| v > config.vad_threshold).collect();
+        let vad_threshold = self.input_config.vad_threshold;
+        let mut keep: Vec<_> = vad.iter().map(|&v| v > vad_threshold).collect();
         convolve_bools(&mut keep[..], VOICELESS_FRAME_LAG);
 
         // Windows for fading in and out when voice is detected or not.
@@ -389,7 +402,10 @@ impl AudioSnippetsData {
     }
 }
 
-fn create_input_pipeline(data: Arc<Mutex<InputData>>) -> Result<gst::Pipeline> {
+fn create_input_pipeline(
+    data: Arc<Mutex<InputData>>,
+    config_rx: Receiver<InputConfig>,
+) -> Result<gst::Pipeline> {
     let pipeline = gst::Pipeline::new(None);
     let src = gst::ElementFactory::make("autoaudiosrc", Some("record-source"))?;
     let sink = gst::ElementFactory::make("appsink", Some("record-sink"))?;
@@ -407,6 +423,8 @@ fn create_input_pipeline(data: Arc<Mutex<InputData>>) -> Result<gst::Pipeline> {
     let mut denoise_in_buf = Vec::with_capacity(DenoiseState::FRAME_SIZE);
     let mut denoise_out_buf = vec![0.0; DenoiseState::FRAME_SIZE];
     let mut i16_buf = Vec::with_capacity(DenoiseState::FRAME_SIZE);
+    let mut vad_buf = Vec::new();
+    let mut config = InputConfig::default();
 
     let new_sample = move |sink: &gst_app::AppSink| -> Result<gst::FlowSuccess, gst::FlowError> {
         let sample = match sink.pull_sample() {
@@ -435,7 +453,9 @@ fn create_input_pipeline(data: Arc<Mutex<InputData>>) -> Result<gst::Pipeline> {
 
         // The buffer is in bytes; each sample is two bytes.
         let mut buffer = buffer.as_slice();
-        let config = data.lock().unwrap().config.clone();
+        for c in config_rx.try_iter() {
+            config = c;
+        }
 
         while !buffer.is_empty() {
             let cap_remaining = DenoiseState::FRAME_SIZE - denoise_in_buf.len();
@@ -455,8 +475,7 @@ fn create_input_pipeline(data: Arc<Mutex<InputData>>) -> Result<gst::Pipeline> {
             };
             denoise_in_buf.clear();
 
-            data.lock().unwrap().vad.push(vad);
-
+            vad_buf.push(vad);
             for sample in &denoise_out_buf {
                 i16_buf.push(sample.round() as i16);
             }
@@ -465,8 +484,10 @@ fn create_input_pipeline(data: Arc<Mutex<InputData>>) -> Result<gst::Pipeline> {
         {
             let mut lock = data.lock().unwrap();
             lock.buf.extend_from_slice(&i16_buf);
+            lock.vad.extend_from_slice(&vad_buf);
         }
         i16_buf.clear();
+        vad_buf.clear();
         Ok(gst::FlowSuccess::Ok)
     };
     sink.set_callbacks(
