@@ -1,3 +1,4 @@
+use druid::im::Vector;
 use druid::kurbo::{BezPath, ParamCurve, PathEl, PathSeg, Point, Shape};
 use druid::piet::{self, LineCap, LineJoin};
 use druid::{Color, Rect, RenderContext};
@@ -41,16 +42,16 @@ impl PartialEq for StrokeStyle {
 /// in time: one stroke ends before another begins.
 #[derive(Clone, Debug, Default)]
 pub struct StrokeSeq {
+    strokes: Vector<Stroke>,
+}
+
+/// A `Stroke` consists of a single, non-empty, continuous path made up of cubic segments. Each
+/// segment is annotated with the time at which it was drawn.
+#[derive(Clone, Debug)]
+pub struct Stroke {
     path: BezPath,
-    pub times: Vec<Time>,
-
-    // The path can consist of many different "strokes" (continuous parts between
-    // pen lifts). This contains the first index of each stroke, which will always
-    // point to a `MoveTo`.
-    stroke_boundaries: Vec<usize>,
-
-    // This has the same length as `stroke_boundaries`.
-    stroke_styles: Vec<StrokeStyle>,
+    pub(crate) times: Vec<Time>,
+    style: StrokeStyle,
 }
 
 impl StrokeSeq {
@@ -59,21 +60,29 @@ impl StrokeSeq {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.times.is_empty()
+        self.strokes.is_empty()
+    }
+
+    /// Returns time at which the first segment in the first stroke was drawn. Panics if this
+    /// sequence is empty.
+    pub fn first_time(&self) -> Time {
+        self.strokes[0].times[0]
+    }
+
+    /// Returns time at which the last segment in the last stroke was drawn. Panics if this
+    /// sequence is empty.
+    pub fn last_time(&self) -> Time {
+        *self.strokes.last().unwrap().times.last().unwrap()
     }
 
     /// Returns all the elements in this `StrokeSeq`. The return value will contain only `MoveTo`
     /// (for the first element of each stroke) and `CurveTo`.
-    pub fn elements(&self) -> &[PathEl] {
-        self.path.elements()
+    pub(crate) fn elts(&self) -> impl Iterator<Item = &Stroke> {
+        self.strokes.iter()
     }
 
-    pub(crate) fn append_path(&mut self, p: BezPath, times: Vec<Time>, style: StrokeStyle) {
-        assert_eq!(p.elements().len(), times.len());
-        self.stroke_boundaries.push(self.times.len());
-        self.stroke_styles.push(style);
-        self.times.extend_from_slice(&times[..]);
-        self.path.extend(p.into_iter());
+    pub(crate) fn append_path(&mut self, path: BezPath, times: Vec<Time>, style: StrokeStyle) {
+        self.strokes.push_back(Stroke { path, times, style });
     }
 
     pub fn append_stroke(
@@ -88,8 +97,8 @@ impl StrokeSeq {
         if points.is_empty() {
             return;
         }
-        if let Some(&last_time) = self.times.last() {
-            assert!(last_time <= times[0]);
+        if !self.is_empty() {
+            assert!(self.last_time() <= times[0]);
         }
 
         let point_indices = crate::simplify::simplify(points, distance_threshold);
@@ -99,30 +108,19 @@ impl StrokeSeq {
         self.append_path(path, times, style);
     }
 
-    pub fn strokes<'a>(&'a self) -> impl Iterator<Item = Stroke<'a>> + 'a {
-        self.strokes_with_times(&self.times[..])
+    pub fn strokes<'a>(&'a self) -> impl Iterator<Item = StrokeRef<'a>> + 'a {
+        self.strokes.iter().map(|s| s.as_stroke_ref())
     }
 
-    pub fn strokes_with_times<'a, 'b>(
+    pub(crate) fn strokes_with_times<'a, 'b>(
         &'a self,
-        times: &'a [Time],
-    ) -> impl Iterator<Item = Stroke<'a>> + 'a {
-        assert_eq!(times.len(), self.times.len());
-        self.stroke_boundaries
-            .iter()
-            .enumerate()
-            .map(move |(idx, &stroke_start_idx)| {
-                let stroke_end_idx = self
-                    .stroke_boundaries
-                    .get(idx + 1)
-                    .cloned()
-                    .unwrap_or(self.times.len());
-                Stroke {
-                    style: self.stroke_styles[idx].clone(),
-                    elements: &self.path.elements()[stroke_start_idx..stroke_end_idx],
-                    times: &times[stroke_start_idx..stroke_end_idx],
-                }
-            })
+        times: &'a [Vec<Time>],
+    ) -> impl Iterator<Item = StrokeRef<'a>> + 'a {
+        self.strokes.iter().zip(times).map(|(s, t)| StrokeRef {
+            elements: s.path.elements(),
+            style: s.style.clone(),
+            times: &t[..],
+        })
     }
 
     pub fn render(&self, ctx: &mut impl RenderContext, time: Time) {
@@ -202,7 +200,7 @@ impl StrokeSeq {
 // A curve gets serialized as a sequence of strokes.
 impl Serialize for StrokeSeq {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
-        let mut seq = ser.serialize_seq(Some(self.stroke_styles.len()))?;
+        let mut seq = ser.serialize_seq(Some(self.strokes.len()))?;
 
         for stroke in self.strokes() {
             seq.serialize_element(&stroke)?;
@@ -215,7 +213,7 @@ impl Serialize for StrokeSeq {
 impl<'a> Deserialize<'a> for StrokeSeq {
     fn deserialize<D: Deserializer<'a>>(de: D) -> Result<StrokeSeq, D::Error> {
         let strokes: Vec<SavedSegment> = Deserialize::deserialize(de)?;
-        let mut curve = StrokeSeq::new();
+        let mut ret = StrokeSeq::new();
 
         for stroke in strokes {
             let p = |(x, y)| Point::new(x as f64 / 10_000.0, y as f64 / 10_000.0);
@@ -234,10 +232,20 @@ impl<'a> Deserialize<'a> for StrokeSeq {
                 .into_iter()
                 .map(|x| Time::from_micros(x as i64))
                 .collect();
-            curve.append_path(path, times, stroke.style);
+            ret.append_path(path, times, stroke.style);
         }
 
-        Ok(curve)
+        Ok(ret)
+    }
+}
+
+impl Stroke {
+    fn as_stroke_ref<'a>(&'a self) -> StrokeRef<'a> {
+        StrokeRef {
+            elements: self.path.elements(),
+            times: &self.times[..],
+            style: self.style.clone(),
+        }
     }
 }
 
@@ -252,7 +260,7 @@ struct SavedSegment {
 ///
 /// The strokes of a curve can be obtained from [`Curve::strokes`].
 #[derive(Serialize)]
-pub struct Stroke<'a> {
+pub struct StrokeRef<'a> {
     /// The elements of this stroke. This will always start with a `PathEl::MoveTo`, and it will be
     /// followed only by `PathEl::CurveTo`s.
     #[serde(serialize_with = "serialize_path_els")]
@@ -265,7 +273,7 @@ pub struct Stroke<'a> {
     pub style: StrokeStyle,
 }
 
-impl<'a> Stroke<'a> {
+impl<'a> StrokeRef<'a> {
     /// Returns a bounding box everything that is drawn between `start_time` and `end_time`,
     /// inclusive.
     pub fn changes_bbox(&self, start_time: Time, end_time: Time) -> Rect {
@@ -418,9 +426,10 @@ pub mod tests {
         let ser = serde_json::to_string(&c).unwrap();
         let deserialized: StrokeSeq = serde_json::from_str(&ser).unwrap();
         // BezPath doesn't implement PartialEq, so just compare the other parts.
-        assert_eq!(deserialized.times, c.times);
-        assert_eq!(deserialized.stroke_boundaries, c.stroke_boundaries);
-        assert_eq!(deserialized.stroke_styles, c.stroke_styles);
+        for (des, orig) in deserialized.strokes.iter().zip(c.strokes.iter()) {
+            assert_eq!(des.times, orig.times);
+            assert_eq!(des.style, orig.style);
+        }
     }
 
     #[test]
@@ -428,8 +437,9 @@ pub mod tests {
         let c = basic_curve();
         let written = serde_cbor::to_vec(&c).unwrap();
         let read: StrokeSeq = serde_cbor::from_slice(&written[..]).unwrap();
-        assert_eq!(read.times, c.times);
-        assert_eq!(read.stroke_boundaries, c.stroke_boundaries);
-        assert_eq!(read.stroke_styles, c.stroke_styles);
+        for (des, orig) in read.strokes.iter().zip(c.strokes.iter()) {
+            assert_eq!(des.times, orig.times);
+            assert_eq!(des.style, orig.style);
+        }
     }
 }

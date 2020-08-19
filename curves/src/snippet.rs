@@ -1,5 +1,5 @@
 use druid::im::OrdMap;
-use druid::kurbo::{PathEl, Shape};
+use druid::kurbo::Shape;
 use druid::{Data, Rect, RenderContext};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::Arc;
@@ -25,7 +25,7 @@ pub struct SnippetData {
     pub(crate) lerp: Arc<Lerp>,
     /// The times of the strokes, with distortion applied.
     #[data(ignore)]
-    times: Arc<Vec<Time>>,
+    times: Arc<Vec<Vec<Time>>>,
 
     /// Controls whether the snippet ever ends. If `None`, it means that the snippet will remain
     /// forever; if `Some(t)` it means that the snippet will disappear at time `t`.
@@ -47,19 +47,22 @@ pub struct SnippetsData {
 
 pub type SnippetsCursor = span_cursor::Cursor<Time, SnippetId>;
 
-fn lerp_times(input: &[Time], lerp: &Lerp) -> Vec<Time> {
-    input.iter().map(|t| lerp.lerp_clamped(*t)).collect()
+fn lerp_times(input: &StrokeSeq, lerp: &Lerp) -> Vec<Vec<Time>> {
+    input
+        .elts()
+        .map(|stroke| stroke.times.iter().map(|t| lerp.lerp_clamped(*t)).collect())
+        .collect()
 }
 
 impl SnippetData {
     pub fn new(strokes: StrokeSeq) -> SnippetData {
-        if strokes.times.is_empty() {
+        if strokes.is_empty() {
             panic!("tried to create a snippet from an empty stroke sequence");
         }
-        let start = *strokes.times.first().unwrap();
-        let end = *strokes.times.last().unwrap();
+        let start = strokes.first_time();
+        let end = strokes.last_time();
         let lerp = Lerp::identity(start, end);
-        let times = lerp_times(&strokes.times, &lerp);
+        let times = lerp_times(&strokes, &lerp);
         SnippetData {
             strokes: Arc::new(strokes),
             lerp: Arc::new(lerp),
@@ -69,7 +72,7 @@ impl SnippetData {
     }
 
     pub(crate) fn new_complete(strokes: StrokeSeq, lerp: Lerp, end: Option<Time>) -> SnippetData {
-        let times = lerp_times(&strokes.times, &lerp);
+        let times = lerp_times(&strokes, &lerp);
         SnippetData {
             strokes: Arc::new(strokes),
             lerp: Arc::new(lerp),
@@ -78,7 +81,7 @@ impl SnippetData {
         }
     }
 
-    pub fn strokes<'a>(&'a self) -> impl Iterator<Item = crate::curve::Stroke<'a>> {
+    pub fn strokes<'a>(&'a self) -> impl Iterator<Item = crate::curve::StrokeRef<'a>> {
         self.strokes.strokes_with_times(&self.times[..])
     }
 
@@ -91,7 +94,7 @@ impl SnippetData {
     pub fn with_new_lerp(&self, lerp_from: Time, lerp_to: Time) -> SnippetData {
         let mut lerp = (*self.lerp).clone();
         lerp.add_lerp(lerp_from, lerp_to);
-        let times = lerp_times(&self.strokes.times[..], &lerp);
+        let times = lerp_times(&self.strokes, &lerp);
         SnippetData {
             strokes: Arc::clone(&self.strokes),
             lerp: Arc::new(lerp),
@@ -113,50 +116,13 @@ impl SnippetData {
         }
     }
 
-    /// Returns a reference to just that part of the path that exists up until `time`.
-    ///
-    /// If there if a path element that starts before `time` and ends after `time`, it will be
-    /// included too.
-    pub fn path_at(&self, time: Time) -> &[PathEl] {
-        if !self.visible_at(time) {
-            return &[];
-        }
-
-        let idx = match self.times.binary_search(&time) {
-            Ok(i) => i + 1,
-            Err(i) => i,
-        };
-        &self.strokes.elements()[..idx]
-    }
-
-    pub fn path_between(&self, start: Time, end: Time) -> &[PathEl] {
-        if let Some(my_end) = self.end {
-            if start > my_end {
-                return &[];
-            }
-        }
-        if end < self.start_time() {
-            return &[];
-        }
-
-        let start_idx = match self.times.binary_search(&start) {
-            Ok(i) => i,
-            Err(i) => i,
-        };
-        let end_idx = match self.times.binary_search(&end) {
-            Ok(i) => i + 1,
-            Err(i) => i,
-        };
-        &self.strokes.elements()[start_idx..end_idx]
-    }
-
     pub fn start_time(&self) -> Time {
-        *self.times.first().unwrap()
+        self.times[0][0]
     }
 
     /// The last time at which the snippet changed.
     pub fn last_draw_time(&self) -> Time {
-        *self.times.last().unwrap()
+        *self.times.last().unwrap().last().unwrap()
     }
 
     pub fn render(&self, ctx: &mut impl RenderContext, time: Time) {
@@ -277,7 +243,7 @@ struct SnippetDataSave {
 
 impl From<SnippetDataSave> for SnippetData {
     fn from(save: SnippetDataSave) -> SnippetData {
-        let times = lerp_times(&save.strokes.times[..], &save.lerp);
+        let times = lerp_times(&save.strokes, &save.lerp);
         SnippetData {
             strokes: save.strokes,
             lerp: save.lerp,

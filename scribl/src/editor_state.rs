@@ -514,8 +514,8 @@ impl EditorState {
             let stroke = std::mem::replace(&mut rec_state.new_stroke, StrokeInProgress::default());
             let start_time = stroke.start_time().unwrap_or(Time::ZERO);
 
-            // TODO(performance): this is quadratic for long snippets with lots of segments, because
-            // we clone it every time the pen lifts.
+            // Note that cloning and appending to a StrokeSeq is cheap, because it uses im::Vector
+            // internally.
             let mut seq = rec_state.new_stroke_seq.as_ref().clone();
             if !stroke.points.borrow().is_empty() {
                 seq.append_stroke(
@@ -616,13 +616,13 @@ impl EditorState {
             rec_state.paused = true;
             rec_state.new_stroke = StrokeInProgress::default();
 
-            if let Some(&time) = rec_state.new_stroke_seq.times.last() {
+            if !rec_state.new_stroke_seq.is_empty() {
                 // This is even more of a special-case hack: the end of the last-drawn curve is
                 // likely to be after undo.time (because undo.time is the time of the beginning of
                 // the frame in which the last curve was drawn). Set the time to be the end of the
                 // last-drawn curve, otherwise they might try to draw the next segment before the
                 // last one finishes.
-                self.warp_time_to(time);
+                self.warp_time_to(rec_state.new_stroke_seq.last_time());
             }
 
             self.action = CurrentAction::Recording(rec_state);
