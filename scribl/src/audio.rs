@@ -12,6 +12,7 @@ use serde::de::Deserializer;
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use std::ops::DerefMut;
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
 use scribl_curves::{Cursor, Span, Time, TimeDiff};
@@ -20,7 +21,8 @@ use scribl_curves::{Cursor, Span, Time, TimeDiff};
 /// of these alive at any one time, and it is intended to be long-lived (i.e., create it at startup
 /// and just keep it around).
 pub struct AudioState {
-    output_data: Arc<Mutex<OutputData>>,
+    output_data: OutputData,
+    output_tx: Sender<OutputData>,
     // The pipeline will be `None` if there was an error while creating it. In that case, we
     // already printed an error message so we'll just silently (heh) not play any audio.
     output_pipeline: Option<gst::Pipeline>,
@@ -28,13 +30,13 @@ pub struct AudioState {
     input_pipeline: Option<gst::Pipeline>,
 }
 
-/// This data is shared between the main program and the gstreamer playback pipeline (as
-/// represented by the `needs_data` callback on its `app-src` element). It is protected by
-/// a mutex. When the main program wants to, say, update the audio data, it unlocks the mutex and
-/// mutates `snips`.
+/// This data is shared gets sent from the main program to the gstreamer playback pipeline (as
+/// represented by the `needs_data` callback on its `app-src` element) whenever the main
+/// program wants to update the playback parameters.
+#[derive(Clone)]
 pub struct OutputData {
     pub snips: AudioSnippetsData,
-    pub cursor: Cursor<usize, AudioSnippetId>,
+    pub start_time: Time,
     pub forwards: bool,
 }
 
@@ -81,16 +83,22 @@ pub struct AudioSnippetsData {
     snippets: OrdMap<AudioSnippetId, AudioSnippetData>,
 }
 
+impl OutputData {
+    fn new() -> OutputData {
+        OutputData {
+            snips: AudioSnippetsData::default(),
+            start_time: Time::ZERO,
+            forwards: true,
+        }
+    }
+}
+
 impl AudioState {
     /// Initializes the audio and spawns the audio thread. Returns an object that can be used
     /// to control the audio.
     pub fn init() -> AudioState {
-        let output_data = Arc::new(Mutex::new(OutputData {
-            snips: AudioSnippetsData::default(),
-            cursor: Cursor::empty(0),
-            forwards: true,
-        }));
-        let output_pipeline = create_output_pipeline(Arc::clone(&output_data));
+        let (output_tx, output_rx) = channel();
+        let output_pipeline = create_output_pipeline(output_rx);
         if let Err(e) = &output_pipeline {
             log::error!(
                 "Error initializing audio output, there will be no sound: {}",
@@ -111,7 +119,8 @@ impl AudioState {
             );
         }
         AudioState {
-            output_data,
+            output_data: OutputData::new(),
+            output_tx,
             output_pipeline: output_pipeline.ok(),
             input_data,
             input_pipeline: input_pipeline.ok(),
@@ -119,7 +128,11 @@ impl AudioState {
     }
 
     pub fn seek(&mut self, time: Time, velocity: f64) {
-        self.output_data.lock().unwrap().forwards = velocity > 0.0;
+        self.output_data.forwards = velocity > 0.0;
+        self.output_data.start_time = time;
+        if self.output_tx.send(self.output_data.clone()).is_err() {
+            log::error!("audio thread not present while seeking");
+        }
         let result = || -> Result<()> {
             if let Some(pipe) = self.output_pipeline.as_ref() {
                 if let Some(sink) = pipe.get_by_name("playback-sink") {
@@ -221,13 +234,12 @@ impl AudioState {
     }
 
     pub fn start_playing(&mut self, data: AudioSnippetsData, time: Time, velocity: f64) {
-        {
-            let mut lock = self.output_data.lock().unwrap();
-            let idx = time.as_audio_idx(SAMPLE_RATE);
-            lock.cursor = Cursor::new(data.snippet_spans(), idx, idx);
-            lock.snips = data;
-            lock.forwards = velocity > 0.0;
+        self.output_data.snips = data;
+        self.output_data.forwards = velocity > 0.0;
+        if self.output_tx.send(self.output_data.clone()).is_err() {
+            log::error!("audio thread not present");
         }
+
         if let Some(pipe) = self.output_pipeline.as_ref() {
             if let Err(e) = pipe.set_state(gst::State::Playing) {
                 log::error!("failed to start playing audio: {}", e);
@@ -467,7 +479,7 @@ fn create_input_pipeline(data: Arc<Mutex<InputData>>) -> Result<gst::Pipeline> {
 
 /// Creates a gstreamer AppSrc element that mixes our audio and provides it to a gstreamer
 /// pipeline.
-pub fn create_appsrc(data: Arc<Mutex<OutputData>>, name: &str) -> Result<gst::Element> {
+pub fn create_appsrc(rx: Receiver<OutputData>, name: &str) -> Result<gst::Element> {
     let src = gst::ElementFactory::make("appsrc", Some(name))?;
     let src = src
         .dynamic_cast::<gst_app::AppSrc>()
@@ -478,10 +490,16 @@ pub fn create_appsrc(data: Arc<Mutex<OutputData>>, name: &str) -> Result<gst::El
     src.set_property_format(gst::Format::Time);
     src.set_stream_type(gst_app::AppStreamType::RandomAccess);
 
-    let need_audio_data_inner =
+    let mut data = OutputData::new();
+    let mut cursor = Cursor::empty(0);
+    let mut need_audio_data_inner =
         move |src: &gst_app::AppSrc, size_hint: u32| -> anyhow::Result<()> {
-            let mut lock = data.lock().unwrap();
-            if lock.forwards && lock.cursor.is_finished() {
+            for new_data in rx.try_iter() {
+                data = new_data;
+                let idx = data.start_time.as_audio_idx(SAMPLE_RATE);
+                cursor = Cursor::new(data.snips.snippet_spans(), idx, idx);
+            }
+            if data.forwards && cursor.is_finished() {
                 let _ = src.end_of_stream();
                 return Ok(());
             }
@@ -493,18 +511,15 @@ pub fn create_appsrc(data: Arc<Mutex<OutputData>>, name: &str) -> Result<gst::El
             // gstreamer buffers seem to only ever hand out [u8], but we prefer to work with
             // [i16]s. Here, we're doing an extra copy to handle endian-ness and avoid unsafe.
             let mut buf = vec![0i16; size as usize / 2];
-            let forwards = lock.forwards;
-            let data: &mut OutputData = &mut lock;
-            if forwards {
-                let prev_end = data.cursor.current().1;
-                data.cursor.advance_to(prev_end, prev_end + buf.len());
+            if data.forwards {
+                let prev_end = cursor.current().1;
+                cursor.advance_to(prev_end, prev_end + buf.len());
             } else {
-                let prev_start = data.cursor.current().0;
-                data.cursor
-                    .advance_to(prev_start.saturating_sub(buf.len()), prev_start);
+                let prev_start = cursor.current().0;
+                cursor.advance_to(prev_start.saturating_sub(buf.len()), prev_start);
             }
-            data.snips.mix_to(&data.cursor, &mut buf[..]);
-            let time = Time::from_audio_idx(data.cursor.current().0, SAMPLE_RATE);
+            data.snips.mix_to(&cursor, &mut buf[..]);
+            let time = Time::from_audio_idx(cursor.current().0, SAMPLE_RATE);
 
             let mut gst_buffer = gst::Buffer::with_size(size as usize)?;
             {
@@ -541,9 +556,9 @@ pub fn create_appsrc(data: Arc<Mutex<OutputData>>, name: &str) -> Result<gst::El
     Ok(src.upcast::<gst::Element>())
 }
 
-fn create_output_pipeline(data: Arc<Mutex<OutputData>>) -> Result<gst::Pipeline> {
+fn create_output_pipeline(rx: Receiver<OutputData>) -> Result<gst::Pipeline> {
     let pipeline = gst::Pipeline::new(None);
-    let src = create_appsrc(data, "playback-source")?;
+    let src = create_appsrc(rx, "playback-source")?;
     let scale = gst::ElementFactory::make("scaletempo", Some("playback-scale"))?;
     let resample = gst::ElementFactory::make("audioresample", Some("playback-resample"))?;
     let sink = gst::ElementFactory::make("autoaudiosink", Some("playback-sink"))?;

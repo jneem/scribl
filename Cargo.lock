@@ -1057,9 +1057,9 @@ checksum = "0419348c027fa7be448d2ae7ea0e4e04c2334c31dc4e74ab29f00a2a7ca69204"
 
 [[package]]
 name = "nnnoiseless"
-version = "0.2.1"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f65332dd1906f81bd620cce6776383e45e73650fba55cbe950c3842cda832c02"
+checksum = "9cbcc5f4fda35e09d92ade331be2eb3897695d3037df72fb73d35de6b4a9f2f7"
 dependencies = [
  "num-complex",
  "once_cell",

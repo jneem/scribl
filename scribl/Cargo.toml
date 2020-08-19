@@ -29,4 +29,4 @@ serde_cbor = "0.11.1"
 directories-next = "1.0.1"
 toml = "0.5.6"
 console = { version = "0.11.3", default-features = false }
-nnnoiseless = "0.2.0"
+nnnoiseless = { version = "0.3.0", default-features = false }

@@ -7,10 +7,10 @@ use gstreamer as gst;
 use gstreamer_app as gst_app;
 use gstreamer_video as gst_video;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Arc;
 
-use scribl_curves::{Cursor, SnippetsData, Time, TimeDiff};
+use scribl_curves::{SnippetsData, Time, TimeDiff};
 
 use crate::audio::AudioSnippetsData;
 
@@ -56,12 +56,14 @@ fn create_pipeline(
     let v_queue1 = gst::ElementFactory::make("queue", Some("encode-vqueue1"))?;
     let v_queue2 = gst::ElementFactory::make("queue", Some("encode-vqueue2"))?;
     let audio_output_data = crate::audio::OutputData {
-        cursor: Cursor::new(audio.snippet_spans(), 0, 0),
+        start_time: Time::ZERO,
         snips: audio,
         forwards: true,
     };
-    let a_src =
-        crate::audio::create_appsrc(Arc::new(Mutex::new(audio_output_data)), "encode-asrc")?;
+    let (output_tx, output_rx) = channel();
+    // The unwrap is ok because we know that the receiver is still alive.
+    output_tx.send(audio_output_data).unwrap();
+    let a_src = crate::audio::create_appsrc(output_rx, "encode-asrc")?;
     let a_convert = gst::ElementFactory::make("audioconvert", Some("encode-aconvert"))?;
     let a_encode = gst::ElementFactory::make("lamemp3enc", Some("encode-aencode"))?;
     let a_queue1 = gst::ElementFactory::make("queue", Some("encode-aqueue1"))?;
