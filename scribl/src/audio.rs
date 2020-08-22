@@ -147,30 +147,17 @@ impl AudioState {
         let result = || -> Result<()> {
             if let Some(pipe) = self.output_pipeline.as_ref() {
                 if let Some(sink) = pipe.get_by_name("playback-sink") {
-                    if velocity > 0.0 {
-                        sink.seek(
-                            velocity,
-                            gst::SeekFlags::FLUSH,
-                            gst::SeekType::Set,
-                            gst::ClockTime::from_useconds(time.as_micros() as u64),
-                            gst::SeekType::Set,
-                            gst::ClockTime::none(),
-                        )?;
-                    } else {
-                        // There's a very annoying bug, either here or in gstreamer, in which if we
-                        // play with velocity 1.0 and then velocity -1.0, it doesn't actually play.
-                        // The workaround for now is just not to use velocity -1.0: it only comes
-                        // up when scanning, anyway, so we can just ensure that the scanning speed
-                        // is never -1.0.
-                        sink.seek(
-                            velocity,
-                            gst::SeekFlags::FLUSH,
-                            gst::SeekType::Set,
-                            gst::ClockTime::from_useconds(0),
-                            gst::SeekType::Set,
-                            gst::ClockTime::from_useconds(time.as_micros() as u64),
-                        )?;
-                    }
+                    // The "scaletempo" gstreamer plugin has some issues with playing backwards. We
+                    // avoid them by always playing forwards, but adapting our appsrc to produce
+                    // the samples backwards.
+                    sink.seek(
+                        velocity.abs(),
+                        gst::SeekFlags::FLUSH,
+                        gst::SeekType::Set,
+                        gst::ClockTime::from_useconds(time.as_micros() as u64),
+                        gst::SeekType::Set,
+                        gst::ClockTime::none(),
+                    )?;
                 }
             }
             Ok(())
@@ -520,7 +507,7 @@ pub fn create_appsrc(rx: Receiver<OutputData>, name: &str) -> Result<gst::Elemen
                 let idx = data.start_time.as_audio_idx(SAMPLE_RATE);
                 cursor = Cursor::new(data.snips.snippet_spans(), idx, idx);
             }
-            if data.forwards && cursor.is_finished() {
+            if data.forwards && cursor.is_finished() || !data.forwards && cursor.current().1 == 0 {
                 let _ = src.end_of_stream();
                 return Ok(());
             }
@@ -548,10 +535,21 @@ pub fn create_appsrc(rx: Receiver<OutputData>, name: &str) -> Result<gst::Elemen
                     .get_mut()
                     .ok_or(anyhow!("couldn't get mut buffer"))?;
 
+                let time = if data.forwards {
+                    time
+                } else {
+                    data.start_time + (data.start_time - time)
+                };
                 gst_buffer_ref.set_pts(gst::ClockTime::from_useconds(time.as_micros() as u64));
-                let mut data = gst_buffer_ref.map_writable()?;
-                for (idx, bytes) in data.as_mut_slice().chunks_mut(2).enumerate() {
-                    bytes.copy_from_slice(&buf[idx].to_le_bytes());
+                let mut gst_buf = gst_buffer_ref.map_writable()?;
+                if data.forwards {
+                    for (idx, bytes) in gst_buf.as_mut_slice().chunks_mut(2).enumerate() {
+                        bytes.copy_from_slice(&buf[idx].to_le_bytes());
+                    }
+                } else {
+                    for (idx, bytes) in gst_buf.as_mut_slice().chunks_mut(2).rev().enumerate() {
+                        bytes.copy_from_slice(&buf[idx].to_le_bytes());
+                    }
                 }
             }
             let _ = src.push_buffer(gst_buffer);
