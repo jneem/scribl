@@ -1,4 +1,4 @@
-use druid::piet::{FontBuilder, PietText, PietTextLayout, Text, TextLayout, TextLayoutBuilder};
+use druid::piet::{FontFamily, PietText, PietTextLayout, Text, TextLayout, TextLayoutBuilder};
 use druid::widget::prelude::*;
 use druid::widget::{Align, Either, Flex, Label, ProgressBar, WidgetExt};
 use druid::{lens, Color, Point};
@@ -107,18 +107,16 @@ struct Clock;
 fn get_layout(time: Time, t: &mut PietText, env: &Env) -> PietTextLayout {
     let font_name = env.get(crate::FONT_NAME_MONO);
     let font_size = env.get(druid::theme::TEXT_SIZE_NORMAL);
-    let font = t.new_font_by_name(font_name, font_size).build().unwrap();
+    let font = t.font_family(font_name).unwrap_or(FontFamily::MONOSPACE);
     let usecs = time.as_micros();
     let mins = usecs / 60_000_000;
     let secs = (usecs / 1_000_000) % 60;
     let cents = (usecs / 10_000) % 100;
-    t.new_text_layout(
-        &font,
-        &format!("{:02}:{:02}.{:02}", mins, secs, cents),
-        f64::INFINITY,
-    )
-    .build()
-    .unwrap()
+    t.new_text_layout(&format!("{:02}:{:02}.{:02}", mins, secs, cents))
+        .font(font, font_size)
+        .text_color(Color::WHITE)
+        .build()
+        .unwrap()
 }
 
 impl Widget<Time> for Clock {
@@ -134,7 +132,7 @@ impl Widget<Time> for Clock {
         let font_size = env.get(druid::theme::TEXT_SIZE_NORMAL);
         let layout = get_layout(Time::ZERO, &mut ctx.text(), env);
         bc.constrain((
-            layout.width() + 2.0 * X_PADDING,
+            layout.size().width + 2.0 * X_PADDING,
             font_size * LINE_HEIGHT_FACTOR,
         ))
     }
@@ -143,11 +141,7 @@ impl Widget<Time> for Clock {
         let font_size = env.get(druid::theme::TEXT_SIZE_NORMAL);
         let layout = get_layout(*data, &mut ctx.text(), env);
         let line_height = font_size * LINE_HEIGHT_FACTOR;
-
-        // Find the origin for the text
         let origin = Point::new(X_PADDING, line_height * BASELINE_GUESS_FACTOR);
-        let color = Color::WHITE;
-
-        ctx.draw_text(&layout, origin, &color);
+        ctx.draw_text(&layout, origin);
     }
 }

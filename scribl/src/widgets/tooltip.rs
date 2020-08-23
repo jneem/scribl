@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::EditorState;
 
-use druid::piet::{FontBuilder, Text, TextLayout, TextLayoutBuilder};
+use druid::piet::{FontFamily, Text, TextLayout, TextLayoutBuilder};
 use druid::widget::prelude::*;
 use druid::widget::{Controller, ControllerHost, LabelText};
 use druid::{
@@ -220,14 +220,14 @@ impl<W: Widget<EditorState>> Widget<EditorState> for ModalHost<EditorState, W> {
 
         if let Some((point, string)) = &self.cur_tooltip {
             let mut tooltip_origin = *point + TOOLTIP_OFFSET;
-            let font = ctx
-                .text()
-                .new_font_by_name(env.get(druid::theme::FONT_NAME), FONT_SIZE)
-                .build()
-                .unwrap();
-            let layout = ctx
-                .text()
-                .new_text_layout(&font, string, None)
+            let mut text = ctx.text();
+            let font = text
+                .font_family(env.get(druid::theme::FONT_NAME))
+                .unwrap_or(FontFamily::SANS_SERIF);
+            let layout = text
+                .new_text_layout(string)
+                .font(font, FONT_SIZE)
+                .text_color(TOOLTIP_TEXT_COLOR)
                 .build()
                 .unwrap();
             let line_height = FONT_SIZE * LINE_HEIGHT_FACTOR;
@@ -237,13 +237,13 @@ impl<W: Widget<EditorState>> Widget<EditorState> for ModalHost<EditorState, W> {
             if tooltip_origin.y + line_height > size.height {
                 tooltip_origin.y = size.height - line_height;
             }
-            if tooltip_origin.x + layout.width() > size.width {
-                tooltip_origin.x = size.width - layout.width();
+            if tooltip_origin.x + layout.size().width > size.width {
+                tooltip_origin.x = size.width - layout.size().width;
             }
 
             let rect = Rect::from_origin_size(
                 tooltip_origin,
-                (layout.width() + X_PADDING * 2.0, line_height),
+                (layout.size().width + X_PADDING * 2.0, line_height),
             )
             .inset(-TOOLTIP_STROKE_WIDTH / 2.0)
             .to_rounded_rect(env.get(druid::theme::BUTTON_BORDER_RADIUS));
@@ -252,7 +252,7 @@ impl<W: Widget<EditorState>> Widget<EditorState> for ModalHost<EditorState, W> {
 
             ctx.fill(rect, &TOOLTIP_COLOR);
             ctx.stroke(rect, &TOOLTIP_STROKE_COLOR, TOOLTIP_STROKE_WIDTH);
-            ctx.draw_text(&layout, text_origin, &TOOLTIP_TEXT_COLOR);
+            ctx.draw_text(&layout, text_origin);
         }
     }
 }

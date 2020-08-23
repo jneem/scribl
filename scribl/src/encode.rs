@@ -3,6 +3,7 @@ use druid::kurbo::TranslateScale;
 use druid::piet::{Device, ImageFormat};
 use druid::{Color, Data, Rect, RenderContext};
 use gst::prelude::*;
+use gst_video::{VideoFormat, VideoInfo};
 use gstreamer as gst;
 use gstreamer_app as gst_app;
 use gstreamer_video as gst_video;
@@ -95,7 +96,7 @@ fn create_pipeline(
         log::warn!("invalid fps value {}, defaulting to 30.0", config.fps);
         (gst::Fraction::new(30, 1), 30.0)
     };
-    let video_info = gst_video::VideoInfo::new(gst_video::VideoFormat::Rgba, width, height)
+    let video_info = VideoInfo::builder(VideoFormat::Rgba, width, height)
         .fps(fps_frac)
         .build()?;
 
@@ -171,7 +172,7 @@ fn render_loop(
     height: u32,
     fps: f64,
     frame_count: u32,
-    video_info: gst_video::VideoInfo,
+    video_info: VideoInfo,
 ) -> Result<(), Error> {
     let mut device = Device::new().map_err(|e| anyhow!("failed to get device: {}", e))?;
     let mut bitmap = device

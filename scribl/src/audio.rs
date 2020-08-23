@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 use druid::im::OrdMap;
 use druid::Data;
 use gst::prelude::*;
+use gst_audio::{AudioFormat, AudioInfo};
 use gstreamer as gst;
 use gstreamer_app as gst_app;
 use gstreamer_audio as gst_audio;
@@ -402,8 +403,7 @@ fn create_input_pipeline(
     let sink = sink
         .dynamic_cast::<gst_app::AppSink>()
         .map_err(|_| anyhow!("bug: couldn't cast sink to an AppSink"))?;
-    let audio_info =
-        gst_audio::AudioInfo::new(gst_audio::AudioFormat::S16le, SAMPLE_RATE as u32, 1).build()?;
+    let audio_info = AudioInfo::builder(AudioFormat::S16le, SAMPLE_RATE as u32, 1).build()?;
     sink.set_caps(Some(&audio_info.to_caps()?));
 
     let mut denoise_state = DenoiseState::new();
@@ -478,7 +478,7 @@ fn create_input_pipeline(
         Ok(gst::FlowSuccess::Ok)
     };
     sink.set_callbacks(
-        gst_app::AppSinkCallbacks::new()
+        gst_app::AppSinkCallbacks::builder()
             .new_sample(new_sample)
             .build(),
     );
@@ -492,8 +492,7 @@ pub fn create_appsrc(rx: Receiver<OutputData>, name: &str) -> Result<gst::Elemen
     let src = src
         .dynamic_cast::<gst_app::AppSrc>()
         .map_err(|_| anyhow!("bug: couldn't cast src to an AppSrc"))?;
-    let audio_info =
-        gst_audio::AudioInfo::new(gst_audio::AudioFormat::S16le, SAMPLE_RATE as u32, 1).build()?;
+    let audio_info = AudioInfo::builder(AudioFormat::S16le, SAMPLE_RATE as u32, 1).build()?;
     src.set_caps(Some(&audio_info.to_caps()?));
     src.set_property_format(gst::Format::Time);
     src.set_stream_type(gst_app::AppStreamType::RandomAccess);
@@ -567,7 +566,7 @@ pub fn create_appsrc(rx: Receiver<OutputData>, name: &str) -> Result<gst::Elemen
     let seek = move |_src: &gst_app::AppSrc, _arg: u64| -> bool { true };
 
     src.set_callbacks(
-        gst_app::AppSrcCallbacks::new()
+        gst_app::AppSrcCallbacks::builder()
             .need_data(need_audio_data)
             .seek_data(seek)
             .build(),
