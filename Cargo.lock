@@ -439,6 +439,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ebur128"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22e077e29310bf97aabb3cddffdbe408e1a1e32e65d27c97f5a463d57f91a36c"
+dependencies = [
+ "bitflags",
+ "cc",
+]
+
+[[package]]
 name = "either"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1139,12 +1149,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lufs"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ede332fea0d816b71889523560e54ad832e54166c42d35075ac4abfb41b3b518"
-
-[[package]]
 name = "malloc_buf"
 version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1702,13 +1706,13 @@ dependencies = [
  "console",
  "directories-next",
  "druid",
+ "ebur128",
  "env_logger",
  "gstreamer",
  "gstreamer-app",
  "gstreamer-audio",
  "gstreamer-video",
  "log",
- "lufs",
  "nnnoiseless",
  "pkg-version",
  "scribl_curves",

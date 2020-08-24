@@ -3,6 +3,7 @@
 use anyhow::{anyhow, Result};
 use druid::im::OrdMap;
 use druid::Data;
+use ebur128::EbuR128;
 use gst::prelude::*;
 use gst_audio::{AudioFormat, AudioInfo};
 use gstreamer as gst;
@@ -56,6 +57,7 @@ struct InputData {
     /// For every frame (of size `DenoiseState::FRAME_SIZE`) in `buf`, we store an estimate of how
     /// likely that frame was to contain speech.
     vad: Vec<f32>,
+    loudness: EbuR128,
 }
 
 pub const SAMPLE_RATE: u32 = 48000;
@@ -93,6 +95,29 @@ pub struct AudioSnippetsData {
     snippets: OrdMap<AudioSnippetId, AudioSnippetData>,
 }
 
+impl InputData {
+    fn new() -> InputData {
+        InputData {
+            buf: Vec::new(),
+            vad: Vec::new(),
+            // TODO: what are the failure cases for Ebur128::new?
+            loudness: EbuR128::new(
+                1,
+                SAMPLE_RATE,
+                ebur128::Mode::I | ebur128::Mode::M | ebur128::Mode::SAMPLE_PEAK,
+            )
+            .unwrap(),
+        }
+    }
+
+    fn append_buffer(&mut self, buf: &[i16], vad: &[f32]) {
+        // FIXME: unwrap
+        self.loudness.add_frames_i16(buf).unwrap();
+        self.vad.extend_from_slice(vad);
+        self.buf.extend_from_slice(buf);
+    }
+}
+
 impl OutputData {
     fn new() -> OutputData {
         OutputData {
@@ -117,10 +142,7 @@ impl AudioState {
         }
 
         let (input_tx, input_rx) = channel();
-        let input_data = Arc::new(Mutex::new(InputData {
-            buf: Vec::new(),
-            vad: Vec::new(),
-        }));
+        let input_data = Arc::new(Mutex::new(InputData::new()));
         let input_pipeline = create_input_pipeline(Arc::clone(&input_data), input_rx);
         if let Err(e) = &input_pipeline {
             log::error!(
@@ -185,14 +207,11 @@ impl AudioState {
         }
     }
 
-    pub fn stop_recording(&mut self) -> Vec<i16> {
-        let (mut buf, vad) = {
-            let mut lock = self.input_data.lock().unwrap();
-            (
-                std::mem::replace(&mut lock.buf, Vec::new()),
-                std::mem::replace(&mut lock.vad, Vec::new()),
-            )
-        };
+    pub fn stop_recording(&mut self, target_loudness: f32) -> (Vec<i16>, f32) {
+        let mut data = std::mem::replace(
+            self.input_data.lock().unwrap().deref_mut(),
+            InputData::new(),
+        );
         if let Some(pipe) = self.input_pipeline.as_ref() {
             if let Err(e) = pipe.set_state(gst::State::Paused) {
                 log::error!("failed to pause recording: {}", e);
@@ -201,7 +220,7 @@ impl AudioState {
 
         // Which frames are worth keeping, according to voice detection?
         let vad_threshold = self.input_config.vad_threshold;
-        let mut keep: Vec<_> = vad.iter().map(|&v| v > vad_threshold).collect();
+        let mut keep: Vec<_> = data.vad.iter().map(|&v| v > vad_threshold).collect();
         convolve_bools(&mut keep[..], VOICELESS_FRAME_LAG);
 
         // Windows for fading in and out when voice is detected or not.
@@ -216,7 +235,8 @@ impl AudioState {
             .collect();
 
         keep.push(false);
-        for (frame, k) in buf
+        for (frame, k) in data
+            .buf
             .chunks_exact_mut(DenoiseState::FRAME_SIZE)
             .zip(keep.windows(2))
         {
@@ -231,7 +251,20 @@ impl AudioState {
             }
         }
 
-        buf
+        // By default, we normalize to loudness -20. This is quieter than many sources ask for
+        // (e.g. youtube recommends -13 to -15), but going louder tends to introduce clipping.
+        // Maybe some sort of dynamic range compression would be appropriate?
+        let orig_lufs = data.loudness.loudness_global().unwrap() as f32;
+        let peak = data.loudness.sample_peak(0).unwrap() as f32;
+
+        // Multiplying a signal by x has the effect of adding 20 * log_10(x) to the loudness.
+        let multiplier = 10.0f32
+            .powf((target_loudness - orig_lufs) / 20.0)
+            // Truncate the multiplier so that we don't clip. (Also make sure the peak isn't really
+            // small, because often the sample is all-zero or close to it.)
+            .min(1.0 / peak.max(1.0 / 50.0));
+
+        (data.buf, multiplier)
     }
 
     pub fn start_playing(&mut self, data: AudioSnippetsData, time: Time, velocity: f64) {
@@ -282,10 +315,10 @@ fn convolve_bools(xs: &mut [bool], width: usize) {
 }
 
 impl AudioSnippetData {
-    pub fn new(buf: Vec<i16>, start_time: Time) -> AudioSnippetData {
+    pub fn new(buf: Vec<i16>, start_time: Time, multiplier: f32) -> AudioSnippetData {
         AudioSnippetData {
             buf: Arc::new(buf),
-            multiplier: 1.0,
+            multiplier,
             start_time,
         }
     }
@@ -301,22 +334,6 @@ impl AudioSnippetData {
     pub fn end_time(&self) -> Time {
         let length = TimeDiff::from_audio_idx(self.buf().len() as i64, SAMPLE_RATE);
         self.start_time() + length
-    }
-
-    /// Normalize this audio signal to have a target loudness.
-    pub fn set_multiplier(&mut self, target_lufs: f32) {
-        let orig_lufs = lufs::loudness(self.buf.iter().map(|&x| (x as f32) / (i16::MAX as f32)));
-        let peak = self
-            .buf
-            .iter()
-            .map(|&x| (x as f32).abs())
-            .fold(0.0f32, |x, y| x.max(y));
-        // Truncate the multiplier so it doesn't get ridiculous.
-        self.multiplier = lufs::multiplier(orig_lufs, target_lufs).min(50.0);
-        if self.multiplier * peak >= i16::MAX as f32 {
-            log::info!("Reducing loudness to avoid clipping");
-            self.multiplier = i16::MAX as f32 / peak;
-        }
     }
 
     pub fn multiplier(&self) -> f32 {
@@ -468,11 +485,7 @@ fn create_input_pipeline(
             }
         }
 
-        {
-            let mut lock = data.lock().unwrap();
-            lock.buf.extend_from_slice(&i16_buf);
-            lock.vad.extend_from_slice(&vad_buf);
-        }
+        data.lock().unwrap().append_buffer(&i16_buf, &vad_buf);
         i16_buf.clear();
         vad_buf.clear();
         Ok(gst::FlowSuccess::Ok)
