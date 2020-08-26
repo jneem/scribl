@@ -1,4 +1,5 @@
 mod alert;
+mod audio_indicator;
 mod drawing_pane;
 mod editor;
 mod icons;
@@ -10,6 +11,7 @@ mod timeline;
 mod toggle_button;
 pub mod tooltip;
 
+pub use audio_indicator::AudioIndicator;
 pub use drawing_pane::DrawingPane;
 pub use editor::Editor;
 pub use icons::Icon;

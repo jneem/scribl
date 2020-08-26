@@ -16,8 +16,8 @@ use crate::editor_state::{
 use crate::save_state::SaveFileData;
 use crate::widgets::tooltip::{ModalHost, TooltipExt};
 use crate::widgets::{
-    alert, icons, make_status_bar, make_timeline, DrawingPane, LabelledContainer, Palette,
-    ToggleButton, ToggleButtonState,
+    alert, icons, make_status_bar, make_timeline, AudioIndicator, DrawingPane, LabelledContainer,
+    Palette, ToggleButton, ToggleButtonState,
 };
 
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(60);
@@ -155,6 +155,8 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
         .to_owned()
     });
 
+    let audio_indicator = AudioIndicator::new(24.0);
+
     let noise_group = crate::widgets::radio_icon::make_radio_icon_group(
         24.0,
         vec![
@@ -178,6 +180,8 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
 
     let audio_button_group = Flex::row()
         .with_child(rec_audio_button)
+        .with_spacer(10.0)
+        .with_child(audio_indicator)
         .with_spacer(10.0)
         .with_child(noise_group.lens(EditorState::denoise_setting))
         .padding(5.0);

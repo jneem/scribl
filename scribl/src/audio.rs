@@ -191,6 +191,7 @@ impl AudioState {
     }
 
     pub fn start_recording(&mut self, config: InputConfig) {
+        self.input_config = config.clone();
         {
             let mut lock = self.input_data.lock().unwrap();
             lock.buf.clear();
@@ -265,6 +266,20 @@ impl AudioState {
             .min(1.0 / peak.max(1.0 / 50.0));
 
         (data.buf, multiplier)
+    }
+
+    pub fn current_loudness(&self) -> Option<f32> {
+        self.input_data
+            .lock()
+            .unwrap()
+            .loudness
+            .prev_sample_peak(0)
+            .ok()
+            .map(|x| (x.log10() * 20.0) as f32)
+    }
+
+    pub fn current_vad(&self) -> Option<f32> {
+        self.input_data.lock().unwrap().vad.last().copied()
     }
 
     pub fn start_playing(&mut self, data: AudioSnippetsData, time: Time, velocity: f64) {
@@ -634,7 +649,7 @@ mod tests {
                 $(
                     let buf: &[i16] = $buf;
                     let time = Time::from_audio_idx($time, SAMPLE_RATE);
-                    ret = ret.with_new_snippet(AudioSnippetData::new(buf.to_owned(), time));
+                    ret = ret.with_new_snippet(AudioSnippetData::new(buf.to_owned(), time, 1.0));
                 )*
 
                 ret
