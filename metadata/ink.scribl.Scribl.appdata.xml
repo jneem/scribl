@@ -30,6 +30,10 @@
     <update_contact>joeneeman@gmail.com</update_contact>
 
     <releases>
+        <release version="0.2.5" date="2020-08-25">
+            - Fix the display of the clock and tooltip text.
+            - Add an audio loudness indicator.
+        </release>
         <release version="0.2.4" date="2020-08-23">
             - Smoother reverse audio.
             - Fix bug that could prevent things from displaying before resize.
