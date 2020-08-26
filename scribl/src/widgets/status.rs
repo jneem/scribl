@@ -12,7 +12,6 @@ use crate::editor_state::{AsyncOpsStatus, EditorState, FinishedStatus};
 
 const LINE_HEIGHT_FACTOR: f64 = 1.2;
 const X_PADDING: f64 = 5.0;
-const BASELINE_GUESS_FACTOR: f64 = 0.8;
 
 // We have two possible status widgets: one is just a label; the other is a label + progress bar.
 #[derive(Clone, Data, Debug)]
@@ -138,10 +137,8 @@ impl Widget<Time> for Clock {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &Time, env: &Env) {
-        let font_size = env.get(druid::theme::TEXT_SIZE_NORMAL);
         let layout = get_layout(*data, &mut ctx.text(), env);
-        let line_height = font_size * LINE_HEIGHT_FACTOR;
-        let origin = Point::new(X_PADDING, line_height * BASELINE_GUESS_FACTOR);
+        let origin = Point::new(X_PADDING, 0.0);
         ctx.draw_text(&layout, origin);
     }
 }
