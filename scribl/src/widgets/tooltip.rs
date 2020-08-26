@@ -51,7 +51,7 @@ const TOOLTIP_OFFSET: Vec2 = Vec2::new(5.0, 5.0);
 
 const FONT_SIZE: f64 = 15.0;
 const LINE_HEIGHT_FACTOR: f64 = 1.7;
-const BASELINE_GUESS_FACTOR: f64 = 0.7;
+const TEXT_TOP_GUESS_FACTOR: f64 = 0.15;
 const X_PADDING: f64 = 6.0;
 
 /// The argument is a string containing the tooltip text.
@@ -248,7 +248,7 @@ impl<W: Widget<EditorState>> Widget<EditorState> for ModalHost<EditorState, W> {
             .inset(-TOOLTIP_STROKE_WIDTH / 2.0)
             .to_rounded_rect(env.get(druid::theme::BUTTON_BORDER_RADIUS));
             let text_origin =
-                tooltip_origin + Vec2::new(X_PADDING, line_height * BASELINE_GUESS_FACTOR);
+                tooltip_origin + Vec2::new(X_PADDING, line_height * TEXT_TOP_GUESS_FACTOR);
 
             ctx.fill(rect, &TOOLTIP_COLOR);
             ctx.stroke(rect, &TOOLTIP_STROKE_COLOR, TOOLTIP_STROKE_WIDTH);
