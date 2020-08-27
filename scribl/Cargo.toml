@@ -15,7 +15,8 @@ anyhow = "1.0.27"
 clap = "2.33.0"
 console = { version = "0.12.0", default-features = false }
 directories-next = "1.0.1"
-druid = { git = "https://github.com/linebender/druid.git", features = ["im"] }
+#druid = { git = "https://github.com/linebender/druid.git", features = ["im"] }
+druid = { path = "../../druid/druid", features = ["im"] }
 ebur128 = "0.1.1"
 env_logger = "0.7.1"
 gstreamer = "0.16"

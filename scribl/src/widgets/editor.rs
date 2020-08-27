@@ -491,9 +491,6 @@ impl Editor {
             }
             ctx.set_menu(crate::menus::make_menu(data));
             true
-        } else if cmd.is(cmd::UPDATE_TIME) {
-            data.update_time();
-            true
         } else if cmd.is(cmd::WARP_TIME_TO) {
             if data.action.is_idle() {
                 data.warp_time_to(*cmd.get_unchecked(cmd::WARP_TIME_TO));
@@ -684,6 +681,9 @@ impl Widget<EditorState> for Editor {
                 self.last_autosave_data = Some(autosave_data);
                 self.autosave_timer_id = ctx.request_timer(AUTOSAVE_INTERVAL);
             }
+            Event::AnimFrame(_) => {
+                data.update_time();
+            }
             _ => {}
         }
         self.inner.event(ctx, event, data, env);
@@ -696,6 +696,9 @@ impl Widget<EditorState> for Editor {
         data: &EditorState,
         env: &Env,
     ) {
+        if data.action.time_factor() != 0.0 {
+            ctx.request_anim_frame();
+        }
         self.inner.update(ctx, old_data, data, env);
     }
 
@@ -708,19 +711,9 @@ impl Widget<EditorState> for Editor {
     ) {
         match event {
             LifeCycle::WidgetAdded => self.autosave_timer_id = ctx.request_timer(AUTOSAVE_INTERVAL),
-            LifeCycle::AnimFrame(_) => {
-                // We're not allowed to update the data in lifecycle, so on each animation frame we
-                // send ourselves a command to update the current time.
-                if data.action.time_factor() != 0.0 {
-                    ctx.submit_command(cmd::UPDATE_TIME, ctx.widget_id());
-                }
-            }
             _ => {}
         }
         self.inner.lifecycle(ctx, event, data, env);
-        if data.action.time_factor() != 0.0 {
-            ctx.request_anim_frame();
-        }
     }
 
     fn layout(
