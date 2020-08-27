@@ -33,9 +33,7 @@ jobs:
       CARGO_INCREMENTAL: 0
     strategy:
       matrix:
-        #os: [ubuntu-latest, windows-2019]
-        # Disable windows for now; it doesn't build because of recent piet text changes
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-2019]
 
     name: cargo test
     steps:
@@ -48,7 +46,11 @@ jobs:
         if: contains(matrix.os, 'ubuntu')
 
       - name: Install deps
-        run: choco install gstreamer
+        run: |
+            choco install pkgconfiglite
+            choco install gstreamer gstreamer-devel
+            echo "::set-env name=PKG_CONFIG::C:/ProgramData/chocolatey/bin/pkg-config.exe"
+            echo "::set-env name=PKG_CONFIG_PATH::C:/gstreamer/1.0/x86_64/lib/pkgconfig"
         if: contains(matrix.os, 'windows')
 
       - name: Restore dependency crates
@@ -65,3 +67,4 @@ jobs:
 
       - name: Run tests
         run: cargo test --locked --verbose
+
