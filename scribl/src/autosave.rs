@@ -1,8 +1,8 @@
+use crossbeam_channel::Sender;
 use directories_next::ProjectDirs;
 use druid::{ExtEventSink, WindowId};
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::sync::mpsc::Sender;
 
 use crate::cmd::{AsyncSaveResult, FINISHED_ASYNC_SAVE};
 use crate::save_state::SaveFileData;
@@ -33,7 +33,7 @@ impl AutosaveData {
 }
 
 pub fn spawn_autosave_thread(ext_cmd: ExtEventSink, id: WindowId) -> Sender<AutosaveData> {
-    let (tx, rx) = std::sync::mpsc::channel::<AutosaveData>();
+    let (tx, rx) = crossbeam_channel::unbounded::<AutosaveData>();
     std::thread::spawn(move || {
         while let Ok(autosave) = rx.recv() {
             // We save only the most recent requested file (so as not to fall behind in case saving

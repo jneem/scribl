@@ -1,6 +1,7 @@
 use druid::widget::prelude::*;
 use druid::{Color, Rect};
 
+use crate::cmd;
 use crate::editor_state::{DenoiseSetting, EditorState};
 
 static BAR_COLORS: &[Color] = &[
@@ -36,7 +37,20 @@ impl AudioIndicator {
 
 // TODO: can we make a narrower state?
 impl Widget<EditorState> for AudioIndicator {
-    fn event(&mut self, _ctx: &mut EventCtx, _ev: &Event, _data: &mut EditorState, _env: &Env) {}
+    fn event(&mut self, ctx: &mut EventCtx, ev: &Event, data: &mut EditorState, _env: &Env) {
+        if let Event::Command(c) = ev {
+            if let Some(status) = c.get(cmd::RECORDING_AUDIO_STATUS) {
+                let vad = data.denoise_setting != DenoiseSetting::Vad
+                    || status.vad >= data.config.audio_input.vad_threshold;
+                let loudness_bands = if vad { calc_bands(status.loudness) } else { 0 };
+
+                if loudness_bands != self.loudness_bands {
+                    self.loudness_bands = loudness_bands;
+                    ctx.request_paint();
+                }
+            }
+        }
+    }
 
     fn lifecycle(
         &mut self,
@@ -49,27 +63,11 @@ impl Widget<EditorState> for AudioIndicator {
 
     fn update(
         &mut self,
-        ctx: &mut UpdateCtx,
+        _ctx: &mut UpdateCtx,
         _old_data: &EditorState,
-        data: &EditorState,
+        _data: &EditorState,
         _env: &Env,
     ) {
-        let loudness = data
-            .audio
-            .borrow()
-            .current_loudness()
-            .unwrap_or(-f32::INFINITY);
-
-        let vad = data.audio.borrow().current_vad().unwrap_or(0.0);
-
-        let vad = data.denoise_setting != DenoiseSetting::Vad
-            || vad >= data.config.audio_input.vad_threshold;
-        let loudness_bands = if vad { calc_bands(loudness) } else { 0 };
-
-        if loudness_bands != self.loudness_bands {
-            self.loudness_bands = loudness_bands;
-            ctx.request_paint();
-        }
     }
 
     fn layout(

@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Error};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use druid::kurbo::TranslateScale;
 use druid::piet::{Device, ImageFormat};
 use druid::{Color, Data, Rect, RenderContext};
@@ -8,7 +9,6 @@ use gstreamer as gst;
 use gstreamer_app as gst_app;
 use gstreamer_video as gst_video;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 
 use scribl_curves::{SnippetsData, Time, TimeDiff};
@@ -59,9 +59,9 @@ fn create_pipeline(
     let audio_output_data = crate::audio::OutputData {
         start_time: Time::ZERO,
         snips: audio,
-        forwards: true,
+        velocity: 1.0,
     };
-    let (output_tx, output_rx) = channel();
+    let (output_tx, output_rx) = unbounded();
     // The unwrap is ok because we know that the receiver is still alive.
     output_tx.send(audio_output_data).unwrap();
     let a_src = crate::audio::create_appsrc(output_rx, "encode-asrc")?;
@@ -106,7 +106,7 @@ fn create_pipeline(
     v_src.set_caps(Some(&video_info.to_caps()?));
     v_src.set_property_format(gst::Format::Time);
 
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = unbounded();
     // gstreamer's callbacks need Sync, not just Send.
     let tx = Arc::new(std::sync::Mutex::new(tx));
     let tx_clone = Arc::clone(&tx);

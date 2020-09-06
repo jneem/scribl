@@ -1,5 +1,5 @@
 use druid::kurbo::BezPath;
-use druid::{Data, Lens, Point, RenderContext};
+use druid::{Data, ExtEventSink, Lens, Point, RenderContext};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use scribl_curves::{
     Time, TimeDiff,
 };
 
-use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData, AudioState};
+use crate::audio::{AudioHandle, AudioSnippetId, AudioSnippetsData};
 use crate::config::Config;
 use crate::encode::EncodingStatus;
 use crate::save_state::SaveFileData;
@@ -222,7 +222,8 @@ pub struct EditorState {
     /// The current denoise setting, as selected in the UI.
     pub denoise_setting: DenoiseSetting,
 
-    pub audio: Arc<RefCell<AudioState>>,
+    #[data(ignore)]
+    pub audio: AudioHandle,
 
     pub palette: crate::widgets::PaletteData,
 
@@ -268,7 +269,7 @@ impl Default for EditorState {
             fade_enabled: false,
             pen_size: PenSize::Medium,
             denoise_setting,
-            audio: Arc::new(RefCell::new(AudioState::init())),
+            audio: AudioHandle::initialize_audio(),
             palette: crate::widgets::PaletteData::default(),
 
             status: AsyncOpsStatus::default(),
@@ -338,17 +339,14 @@ impl EditorState {
 
     fn start_playing_audio(&mut self) {
         let time_factor = self.action.time_factor();
-        if time_factor > 0.0 {
-            self.audio.borrow_mut().start_playing(
-                self.audio_snippets.clone(),
-                self.time,
-                time_factor,
-            );
+        if time_factor != 0.0 {
+            self.audio
+                .play(self.audio_snippets.clone(), self.time, time_factor);
         }
     }
 
     fn stop_all_audio(&mut self) {
-        self.audio.borrow_mut().stop_playing();
+        self.audio.stop_playing();
         if matches!(self.action, CurrentAction::RecordingAudio(_)) {
             let _ = self.stop_recording_audio();
         }
@@ -379,19 +377,17 @@ impl EditorState {
         assert!(matches!(self.action, CurrentAction::Idle));
         self.action = CurrentAction::Playing;
         self.take_time_snapshot();
-        self.audio
-            .borrow_mut()
-            .start_playing(self.audio_snippets.clone(), self.time, 1.0);
+        self.start_playing_audio();
     }
 
     pub fn stop_playing(&mut self) {
         assert!(matches!(self.action, CurrentAction::Playing));
         self.action = CurrentAction::Idle;
         self.take_time_snapshot();
-        self.audio.borrow_mut().stop_playing();
+        self.audio.stop_playing();
     }
 
-    pub fn start_recording_audio(&mut self) {
+    pub fn start_recording_audio(&mut self, sink: ExtEventSink) {
         assert!(matches!(self.action, CurrentAction::Idle));
         self.action = CurrentAction::RecordingAudio(self.time);
         self.take_time_snapshot();
@@ -410,22 +406,20 @@ impl EditorState {
                 config.remove_noise = true;
             }
         }
-        self.audio.borrow_mut().start_recording(config);
+        self.audio.start_recording(config, sink);
     }
 
-    /// Stops recording audio, returning the audio snippet that we just recorded.
-    pub fn stop_recording_audio(&mut self) -> AudioSnippetData {
+    /// Stops recording audio.
+    ///
+    /// If all goes well, the audio thread will soon send a command containing the newly recorded
+    /// audio.
+    pub fn stop_recording_audio(&mut self) {
         if let CurrentAction::RecordingAudio(rec_start) = self.action {
             self.action = CurrentAction::Idle;
             self.take_time_snapshot();
-
-            // By default, we normalize to loudness -20. This is quieter than many sources ask for
-            // (e.g. youtube recommends -13 to -15), but going louder tends to introduce clipping.
-            // Maybe some sort of dynamic range compression would be appropriate?
-            let (buf, multiplier) = self.audio.borrow_mut().stop_recording(-20.0);
-            AudioSnippetData::new(buf, rec_start, multiplier)
+            self.audio.stop_recording(rec_start);
         } else {
-            panic!("not recording audio");
+            log::error!("tried to stop recording, but we weren't recording");
         }
     }
 
@@ -437,15 +431,11 @@ impl EditorState {
                 // never put us in that situation, because they have to lift one arrow key before
                 // pressing the other.
                 assert_eq!(velocity.signum(), cur_vel.signum());
-                self.audio.borrow_mut().seek(self.time, velocity);
+                self.audio.seek(self.time, velocity);
             }
             CurrentAction::Idle => {
                 self.action = CurrentAction::Scanning(velocity);
-                self.audio.borrow_mut().start_playing(
-                    self.audio_snippets.clone(),
-                    self.time,
-                    velocity,
-                );
+                self.start_playing_audio();
             }
             _ => {
                 log::warn!("not scanning, because I'm busy doing {:?}", self.action);
@@ -457,7 +447,7 @@ impl EditorState {
     pub fn stop_scanning(&mut self) {
         match self.action {
             CurrentAction::Scanning(_) => {
-                self.audio.borrow_mut().stop_playing();
+                self.audio.stop_playing();
                 self.action = CurrentAction::Idle;
                 self.take_time_snapshot();
             }

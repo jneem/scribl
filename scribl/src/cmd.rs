@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use scribl_curves::{SnippetData, SnippetsData, Time};
 
-use crate::audio::{AudioSnippetData, AudioSnippetsData};
+use crate::audio::{AudioRecordingStatus, AudioSnippetData, AudioSnippetsData};
 use crate::editor_state::MaybeSnippetId;
 use crate::encode::EncodingStatus;
 use crate::save_state::SaveFileData;
@@ -31,6 +31,10 @@ pub const SELECT_SNIPPET_BELOW: Selector = Selector::new("scribl.select-snippet-
 
 /// Selects the snippet above (in the timeline) the currently selected snippet.
 pub const SELECT_SNIPPET_ABOVE: Selector = Selector::new("scribl.select-snippet-above");
+
+/// This command is sent by the audio thread each time it records a small chunk.
+pub const RECORDING_AUDIO_STATUS: Selector<AudioRecordingStatus> =
+    Selector::new("scribl.recording-audio-status");
 
 /// Adds a new audio snippet.
 pub const ADD_AUDIO_SNIPPET: Selector<AudioSnippetData> = Selector::new("scribl.add-audio-snippet");

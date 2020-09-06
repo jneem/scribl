@@ -1,3 +1,4 @@
+use crossbeam_channel::Sender;
 use druid::widget::{Align, Flex};
 use druid::{
     theme, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, ExtEventSink, KbKey,
@@ -5,7 +6,6 @@ use druid::{
     Widget, WidgetExt, WidgetId, WindowId,
 };
 use std::path::PathBuf;
-use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use crate::autosave::AutosaveData;
@@ -391,7 +391,7 @@ impl Editor {
                 // translate between the Receiver that encode_blocking sends to, and the
                 // ExtEventSink that sends commands to us.
                 let export = export.clone();
-                let (tx, rx) = std::sync::mpsc::channel();
+                let (tx, rx) = crossbeam_channel::unbounded();
                 let window_id = ctx.window_id();
                 std::thread::spawn(move || {
                     while let Ok(msg) = rx.recv() {
@@ -468,7 +468,7 @@ impl Editor {
             true
         } else if cmd.is(cmd::TALK) {
             if data.action.is_idle() {
-                data.start_recording_audio();
+                data.start_recording_audio(ctx.get_external_handle());
                 ctx.request_anim_frame();
             } else {
                 log::error!("can't talk, current action is {:?}", data.action);
@@ -484,8 +484,7 @@ impl Editor {
                     }
                 }
                 CurrentAction::RecordingAudio(_) => {
-                    let snip = data.stop_recording_audio();
-                    ctx.submit_command(Command::new(cmd::ADD_AUDIO_SNIPPET, snip), None);
+                    data.stop_recording_audio();
                 }
                 _ => {}
             }

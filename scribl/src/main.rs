@@ -1,4 +1,5 @@
 use clap::{App, Arg};
+use crossbeam_channel::unbounded;
 use druid::theme;
 use druid::{AppLauncher, Color, Key};
 use std::io::Write;
@@ -134,7 +135,7 @@ fn encode(data: EditorState, path: &str) {
         filename: path.into(),
         config: config.export,
     };
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = unbounded();
     std::thread::spawn(move || crate::encode::encode_blocking(export, tx));
 
     let mut term = console::Term::stderr();

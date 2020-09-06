@@ -1,8 +1,9 @@
 //! This module is in charge of audio (both recording and playback).
 
 use anyhow::{anyhow, Result};
+use crossbeam_channel::{select, unbounded, Receiver, Sender};
 use druid::im::OrdMap;
-use druid::Data;
+use druid::{Data, ExtEventSink, Target};
 use ebur128::EbuR128;
 use gst::prelude::*;
 use gst_audio::{AudioFormat, AudioInfo};
@@ -14,17 +15,72 @@ use serde::de::Deserializer;
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use std::ops::DerefMut;
-use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
 use scribl_curves::{Cursor, Span, Time, TimeDiff};
 
+use crate::cmd;
 use crate::config::AudioInput as InputConfig;
 
-/// This is in charge of the audio event loop, and various other things. There should only be one
-/// of these alive at any one time, and it is intended to be long-lived (i.e., create it at startup
-/// and just keep it around).
-pub struct AudioState {
+#[derive(Clone)]
+pub struct AudioHandle {
+    cmd_tx: Sender<AudioCmd>,
+    target: Target,
+}
+
+impl AudioHandle {
+    pub fn initialize_audio() -> AudioHandle {
+        let (tx, rx) = unbounded();
+        std::thread::spawn(move || audio_loop(rx));
+        AudioHandle {
+            cmd_tx: tx,
+            target: Target::Global,
+        }
+    }
+
+    pub fn play(&self, snips: AudioSnippetsData, start_time: Time, velocity: f64) {
+        if let Err(e) = self.cmd_tx.send(AudioCmd::Play(OutputData {
+            snips,
+            start_time,
+            velocity,
+        })) {
+            log::error!("audio thread exited unexpectedly: {}", e);
+        }
+    }
+
+    pub fn stop_playing(&self) {
+        if let Err(e) = self.cmd_tx.send(AudioCmd::StopPlaying) {
+            log::error!("audio thread exited unexpectedly: {}", e);
+        }
+    }
+
+    pub fn start_recording(&self, config: InputConfig, sink: ExtEventSink) {
+        if let Err(e) = self
+            .cmd_tx
+            .send(AudioCmd::Record(config, sink, self.target))
+        {
+            log::error!("audio thread exited unexpectedly: {}", e);
+        }
+    }
+
+    pub fn stop_recording(&self, start_time: Time) {
+        if let Err(e) = self
+            .cmd_tx
+            .send(AudioCmd::StopRecording(self.target, start_time))
+        {
+            log::error!("audio thread exited unexpectedly: {}", e);
+        }
+    }
+
+    pub fn seek(&self, time: Time, velocity: f64) {
+        if let Err(e) = self.cmd_tx.send(AudioCmd::Seek(time, velocity)) {
+            log::error!("audio thread exited unexpectedly: {}", e);
+        }
+    }
+}
+
+/// This contains the various channels that are used to communicate with the gstreamer callbacks.
+struct AudioState {
     output_data: OutputData,
     output_tx: Sender<OutputData>,
     // The pipeline will be `None` if there was an error while creating it. In that case, we
@@ -32,6 +88,7 @@ pub struct AudioState {
     output_pipeline: Option<gst::Pipeline>,
 
     input_tx: Sender<InputConfig>,
+    input_status_rx: Receiver<AudioRecordingStatus>,
     input_config: InputConfig,
     // This is how the audio thread communicates the received audio back to the main thread: it
     // unlocks this mutex and appends its audio to the buffer. This seems to work ok so far, as
@@ -42,6 +99,14 @@ pub struct AudioState {
     input_pipeline: Option<gst::Pipeline>,
 }
 
+enum AudioCmd {
+    Play(OutputData),
+    StopPlaying,
+    Record(InputConfig, ExtEventSink, Target),
+    StopRecording(Target, Time),
+    Seek(Time, f64),
+}
+
 /// This data is shared gets sent from the main program to the gstreamer playback pipeline (as
 /// represented by the `needs_data` callback on its `app-src` element) whenever the main
 /// program wants to update the playback parameters.
@@ -49,7 +114,7 @@ pub struct AudioState {
 pub struct OutputData {
     pub snips: AudioSnippetsData,
     pub start_time: Time,
-    pub forwards: bool,
+    pub velocity: f64,
 }
 
 struct InputData {
@@ -58,6 +123,18 @@ struct InputData {
     /// likely that frame was to contain speech.
     vad: Vec<f32>,
     loudness: EbuR128,
+}
+
+pub struct AudioRecording {
+    pub buf: Vec<i16>,
+    pub loudness: f64,
+    pub peak: f64,
+}
+
+#[derive(Clone)]
+pub struct AudioRecordingStatus {
+    pub loudness: f32,
+    pub vad: f32,
 }
 
 pub const SAMPLE_RATE: u32 = 48000;
@@ -110,11 +187,23 @@ impl InputData {
         }
     }
 
-    fn append_buffer(&mut self, buf: &[i16], vad: &[f32]) {
-        // FIXME: unwrap
-        self.loudness.add_frames_i16(buf).unwrap();
+    fn append_buffer(&mut self, buf: &[i16], vad: &[f32]) -> AudioRecordingStatus {
+        // What are the error cases here?
+        if let Err(e) = self.loudness.add_frames_i16(buf) {
+            log::error!("failed to calculate loudness: {}", e);
+        }
         self.vad.extend_from_slice(vad);
         self.buf.extend_from_slice(buf);
+
+        AudioRecordingStatus {
+            vad: *self.vad.last().unwrap_or(&0.0),
+            loudness: self
+                .loudness
+                .prev_sample_peak(0)
+                .ok()
+                .map(|x| (x.log10() * 20.0) as f32)
+                .unwrap_or(-f32::INFINITY),
+        }
     }
 }
 
@@ -123,16 +212,19 @@ impl OutputData {
         OutputData {
             snips: AudioSnippetsData::default(),
             start_time: Time::ZERO,
-            forwards: true,
+            velocity: 1.0,
         }
+    }
+
+    fn forwards(&self) -> bool {
+        self.velocity > 0.0
     }
 }
 
 impl AudioState {
-    /// Initializes the audio and spawns the audio thread. Returns an object that can be used
-    /// to control the audio.
-    pub fn init() -> AudioState {
-        let (output_tx, output_rx) = channel();
+    /// Initializes the audio input and output pipelines.
+    fn init() -> AudioState {
+        let (output_tx, output_rx) = unbounded();
         let output_pipeline = create_output_pipeline(output_rx);
         if let Err(e) = &output_pipeline {
             log::error!(
@@ -141,32 +233,32 @@ impl AudioState {
             );
         }
 
-        let (input_tx, input_rx) = channel();
+        let (input_tx, input_rx) = unbounded();
+        let (status_tx, status_rx) = unbounded();
         let input_data = Arc::new(Mutex::new(InputData::new()));
-        let input_pipeline = create_input_pipeline(Arc::clone(&input_data), input_rx);
+        let input_pipeline = create_input_pipeline(Arc::clone(&input_data), input_rx, status_tx);
         if let Err(e) = &input_pipeline {
             log::error!(
                 "Error initializing audio input, there will be no sound: {}",
                 e
             );
         }
+
         AudioState {
             output_data: OutputData::new(),
             output_tx,
             output_pipeline: output_pipeline.ok(),
             input_tx,
+            input_status_rx: status_rx,
             input_config: InputConfig::default(),
             input_data,
             input_pipeline: input_pipeline.ok(),
         }
     }
 
-    pub fn seek(&mut self, time: Time, velocity: f64) {
-        self.output_data.forwards = velocity > 0.0;
+    fn seek(&mut self, time: Time, velocity: f64) {
+        self.output_data.velocity = velocity;
         self.output_data.start_time = time;
-        if self.output_tx.send(self.output_data.clone()).is_err() {
-            log::error!("audio thread not present while seeking");
-        }
         let result = || -> Result<()> {
             if let Some(pipe) = self.output_pipeline.as_ref() {
                 if let Some(sink) = pipe.get_by_name("playback-sink") {
@@ -190,7 +282,7 @@ impl AudioState {
         }
     }
 
-    pub fn start_recording(&mut self, config: InputConfig) {
+    fn start_recording(&mut self, config: InputConfig) {
         self.input_config = config.clone();
         {
             let mut lock = self.input_data.lock().unwrap();
@@ -208,7 +300,7 @@ impl AudioState {
         }
     }
 
-    pub fn stop_recording(&mut self, target_loudness: f32) -> (Vec<i16>, f32) {
+    fn stop_recording(&mut self) -> AudioRecording {
         let mut data = std::mem::replace(
             self.input_data.lock().unwrap().deref_mut(),
             InputData::new(),
@@ -252,39 +344,17 @@ impl AudioState {
             }
         }
 
-        // By default, we normalize to loudness -20. This is quieter than many sources ask for
-        // (e.g. youtube recommends -13 to -15), but going louder tends to introduce clipping.
-        // Maybe some sort of dynamic range compression would be appropriate?
-        let orig_lufs = data.loudness.loudness_global().unwrap() as f32;
-        let peak = data.loudness.sample_peak(0).unwrap() as f32;
-
-        // Multiplying a signal by x has the effect of adding 20 * log_10(x) to the loudness.
-        let multiplier = 10.0f32
-            .powf((target_loudness - orig_lufs) / 20.0)
-            // Truncate the multiplier so that we don't clip. (Also make sure the peak isn't really
-            // small, because often the sample is all-zero or close to it.)
-            .min(1.0 / peak.max(1.0 / 50.0));
-
-        (data.buf, multiplier)
+        let loudness = data.loudness.loudness_global().unwrap();
+        let peak = data.loudness.sample_peak(0).unwrap();
+        AudioRecording {
+            buf: data.buf,
+            loudness,
+            peak,
+        }
     }
 
-    pub fn current_loudness(&self) -> Option<f32> {
-        self.input_data
-            .lock()
-            .unwrap()
-            .loudness
-            .prev_sample_peak(0)
-            .ok()
-            .map(|x| (x.log10() * 20.0) as f32)
-    }
-
-    pub fn current_vad(&self) -> Option<f32> {
-        self.input_data.lock().unwrap().vad.last().copied()
-    }
-
-    pub fn start_playing(&mut self, data: AudioSnippetsData, time: Time, velocity: f64) {
-        self.output_data.snips = data;
-        self.output_data.forwards = velocity > 0.0;
+    pub fn start_playing(&mut self, data: OutputData) {
+        self.output_data = data;
         if self.output_tx.send(self.output_data.clone()).is_err() {
             log::error!("audio thread not present");
         }
@@ -295,7 +365,7 @@ impl AudioState {
                 return;
             }
         }
-        self.seek(time, velocity);
+        self.seek(self.output_data.start_time, self.output_data.velocity);
     }
 
     pub fn stop_playing(&mut self) {
@@ -425,6 +495,7 @@ impl AudioSnippetsData {
 fn create_input_pipeline(
     data: Arc<Mutex<InputData>>,
     config_rx: Receiver<InputConfig>,
+    status_tx: Sender<AudioRecordingStatus>,
 ) -> Result<gst::Pipeline> {
     let pipeline = gst::Pipeline::new(None);
     let src = gst::ElementFactory::make("autoaudiosrc", Some("record-source"))?;
@@ -500,7 +571,8 @@ fn create_input_pipeline(
             }
         }
 
-        data.lock().unwrap().append_buffer(&i16_buf, &vad_buf);
+        let status = data.lock().unwrap().append_buffer(&i16_buf, &vad_buf);
+        let _ = status_tx.send(status);
         i16_buf.clear();
         vad_buf.clear();
         Ok(gst::FlowSuccess::Ok)
@@ -527,61 +599,60 @@ pub fn create_appsrc(rx: Receiver<OutputData>, name: &str) -> Result<gst::Elemen
 
     let mut data = OutputData::new();
     let mut cursor = Cursor::empty(0);
-    let mut need_audio_data_inner =
-        move |src: &gst_app::AppSrc, size_hint: u32| -> anyhow::Result<()> {
-            for new_data in rx.try_iter() {
-                data = new_data;
-                let idx = data.start_time.as_audio_idx(SAMPLE_RATE);
-                cursor = Cursor::new(data.snips.snippet_spans(), idx, idx);
-            }
-            if data.forwards && cursor.is_finished() || !data.forwards && cursor.current().1 == 0 {
-                let _ = src.end_of_stream();
-                return Ok(());
-            }
+    let mut need_audio_data_inner = move |src: &gst_app::AppSrc,
+                                          size_hint: u32|
+          -> anyhow::Result<()> {
+        for new_data in rx.try_iter() {
+            data = new_data;
+            let idx = data.start_time.as_audio_idx(SAMPLE_RATE);
+            cursor = Cursor::new(data.snips.snippet_spans(), idx, idx);
+        }
+        if data.forwards() && cursor.is_finished() || !data.forwards() && cursor.current().1 == 0 {
+            let _ = src.end_of_stream();
+            return Ok(());
+        }
 
-            // I'm not sure if this is necessary, but there isn't much documentation on `size_hint` in
-            // gstreamer, so just to be sure let's make sure it isn't too small.
-            let size = size_hint.max(1024);
+        let size = size_hint as usize / 2;
 
-            // gstreamer buffers seem to only ever hand out [u8], but we prefer to work with
-            // [i16]s. Here, we're doing an extra copy to handle endian-ness and avoid unsafe.
-            let mut buf = vec![0i16; size as usize / 2];
-            if data.forwards {
-                let prev_end = cursor.current().1;
-                cursor.advance_to(prev_end, prev_end + buf.len());
+        // gstreamer buffers seem to only ever hand out [u8], but we prefer to work with
+        // [i16]s. Here, we're doing an extra copy to handle endian-ness and avoid unsafe.
+        let mut buf = vec![0i16; size];
+        if data.forwards() {
+            let prev_end = cursor.current().1;
+            cursor.advance_to(prev_end, prev_end + buf.len());
+        } else {
+            let prev_start = cursor.current().0;
+            cursor.advance_to(prev_start.saturating_sub(buf.len()), prev_start);
+        }
+        data.snips.mix_to(&cursor, &mut buf[..]);
+        let time = Time::from_audio_idx(cursor.current().0, SAMPLE_RATE);
+
+        let mut gst_buffer = gst::Buffer::with_size(size * 2)?;
+        {
+            let gst_buffer_ref = gst_buffer
+                .get_mut()
+                .ok_or(anyhow!("couldn't get mut buffer"))?;
+
+            let time = if data.forwards() {
+                time
             } else {
-                let prev_start = cursor.current().0;
-                cursor.advance_to(prev_start.saturating_sub(buf.len()), prev_start);
-            }
-            data.snips.mix_to(&cursor, &mut buf[..]);
-            let time = Time::from_audio_idx(cursor.current().0, SAMPLE_RATE);
-
-            let mut gst_buffer = gst::Buffer::with_size(size as usize)?;
-            {
-                let gst_buffer_ref = gst_buffer
-                    .get_mut()
-                    .ok_or(anyhow!("couldn't get mut buffer"))?;
-
-                let time = if data.forwards {
-                    time
-                } else {
-                    data.start_time + (data.start_time - time)
-                };
-                gst_buffer_ref.set_pts(gst::ClockTime::from_useconds(time.as_micros() as u64));
-                let mut gst_buf = gst_buffer_ref.map_writable()?;
-                if data.forwards {
-                    for (idx, bytes) in gst_buf.as_mut_slice().chunks_mut(2).enumerate() {
-                        bytes.copy_from_slice(&buf[idx].to_le_bytes());
-                    }
-                } else {
-                    for (idx, bytes) in gst_buf.as_mut_slice().chunks_mut(2).rev().enumerate() {
-                        bytes.copy_from_slice(&buf[idx].to_le_bytes());
-                    }
+                data.start_time + (data.start_time - time)
+            };
+            gst_buffer_ref.set_pts(gst::ClockTime::from_useconds(time.as_micros() as u64));
+            let mut gst_buf = gst_buffer_ref.map_writable()?;
+            if data.forwards() {
+                for (idx, bytes) in gst_buf.as_mut_slice().chunks_mut(2).enumerate() {
+                    bytes.copy_from_slice(&buf[idx].to_le_bytes());
+                }
+            } else {
+                for (idx, bytes) in gst_buf.as_mut_slice().chunks_mut(2).rev().enumerate() {
+                    bytes.copy_from_slice(&buf[idx].to_le_bytes());
                 }
             }
-            let _ = src.push_buffer(gst_buffer);
-            Ok(())
-        };
+        }
+        let _ = src.push_buffer(gst_buffer);
+        Ok(())
+    };
 
     let need_audio_data = move |src: &gst_app::AppSrc, size_hint: u32| {
         if let Err(e) = need_audio_data_inner(src, size_hint) {
@@ -635,6 +706,68 @@ impl<'de> Deserialize<'de> for AudioSnippetsData {
             snippets: snips,
             last_id: max_id,
         })
+    }
+}
+
+fn audio_loop(cmd: Receiver<AudioCmd>) {
+    let mut state = AudioState::init();
+    let mut sink: Option<ExtEventSink> = None;
+    let mut target: Option<Target> = None;
+
+    loop {
+        select! {
+            recv(cmd) -> msg => {
+                use AudioCmd::*;
+                match msg {
+                    Ok(Play(data)) => state.start_playing(data),
+                    Ok(Seek(time, velocity)) => state.seek(time, velocity),
+                    Ok(StopPlaying) => state.stop_playing(),
+                    Ok(Record(config, new_sink, new_target)) => {
+                        sink = Some(new_sink);
+                        target = Some(new_target);
+                        state.start_recording(config);
+                    }
+                    Ok(StopRecording(target, time)) => {
+                        let rec = state.stop_recording();
+
+                        // By default, we normalize to loudness -20. This is quieter than many
+                        // sources ask for (e.g. youtube recommends -13 to -15), but going louder
+                        // tends to introduce clipping.  Maybe some sort of dynamic range
+                        // compression would be appropriate?
+                        let target_loudness = -20.0;
+
+                        // Multiplying a signal by x has the effect of adding 20 * log_10(x) to the
+                        // loudness.
+                        let multiplier = 10.0f64
+                            .powf((target_loudness - rec.loudness) / 20.0)
+                            // Truncate the multiplier so that we don't clip. (Also make sure the
+                            // peak isn't really small, because often the sample is all-zero or
+                            // close to it.)
+                            .min(1.0 / rec.peak.max(1.0 / 50.0));
+
+                        let snip = AudioSnippetData::new(rec.buf, time, multiplier as f32);
+
+                        if let Some(sink) = sink.as_ref() {
+                            let _ = sink.submit_command(cmd::ADD_AUDIO_SNIPPET, snip, target);
+                        } else {
+                            log::error!("couldn't submit audio snippet");
+                        }
+                    }
+                    Err(_) => {
+                        // Failure to receive here just means that the main program exited.
+                        break;
+                    }
+                }
+            }
+            recv(state.input_status_rx) -> msg => {
+                if let (Some(sink), Some(target)) = (&sink, target) {
+                    let _ = sink.submit_command(cmd::RECORDING_AUDIO_STATUS, msg.unwrap(), target);
+                } else {
+                    log::error!("couldn't submit audio snippet");
+                }
+            }
+
+        }
     }
 }
 
