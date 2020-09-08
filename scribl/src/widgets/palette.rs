@@ -1,6 +1,6 @@
 use druid::kurbo::Circle;
 use druid::widget::prelude::*;
-use druid::{Color, Command, Data, Lens, Point, Rect, RenderContext, WidgetPod};
+use druid::{Color, Data, Lens, Point, Rect, RenderContext, WidgetPod};
 use std::sync::Arc;
 
 use crate::cmd;
@@ -77,7 +77,7 @@ impl Widget<Color> for PaletteElement {
             Event::MouseUp(_) => {
                 if ctx.is_active() {
                     ctx.set_active(false);
-                    ctx.submit_command(Command::new(cmd::CHOOSE_COLOR, self.color.clone()), None);
+                    ctx.submit_command(cmd::CHOOSE_COLOR.with(self.color.clone()));
                 }
             }
             _ => {}

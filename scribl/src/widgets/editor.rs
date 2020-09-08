@@ -38,8 +38,8 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
         &icons::VIDEO,
         24.0,
         |state: &EditorState| state.action.rec_toggle(),
-        |ctx, _, _| ctx.submit_command(cmd::DRAW, None),
-        |ctx, _, _| ctx.submit_command(cmd::STOP, None),
+        |ctx, _, _| ctx.submit_command(cmd::DRAW),
+        |ctx, _, _| ctx.submit_command(cmd::STOP),
     )
     .tooltip(|state: &EditorState, _env: &Env| {
         if state.action.rec_toggle() == ToggleButtonState::ToggledOn {
@@ -136,8 +136,8 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
         &icons::MICROPHONE,
         24.0,
         |state: &EditorState| state.action.rec_audio_toggle(),
-        |ctx, _, _| ctx.submit_command(cmd::TALK, None),
-        |ctx, _, _| ctx.submit_command(cmd::STOP, None),
+        |ctx, _, _| ctx.submit_command(cmd::TALK),
+        |ctx, _, _| ctx.submit_command(cmd::STOP),
     )
     .tooltip(|state: &EditorState, _env: &Env| {
         if state.action.rec_audio_toggle() == ToggleButtonState::ToggledOn {
@@ -192,8 +192,8 @@ impl Editor {
             &icons::PLAY,
             24.0,
             |state: &EditorState| state.action.play_toggle(),
-            |ctx, _, _| ctx.submit_command(cmd::PLAY, None),
-            |ctx, _, _| ctx.submit_command(cmd::STOP, None),
+            |ctx, _, _| ctx.submit_command(cmd::PLAY),
+            |ctx, _, _| ctx.submit_command(cmd::STOP),
         )
         .tooltip(|state: &EditorState, _env: &Env| {
             if state.action.play_toggle() == ToggleButtonState::ToggledOn {
@@ -299,8 +299,8 @@ impl Editor {
                 }
                 ctx.set_handled();
             }
-            KbKey::ArrowUp => ctx.submit_command(cmd::SELECT_SNIPPET_ABOVE, None),
-            KbKey::ArrowDown => ctx.submit_command(cmd::SELECT_SNIPPET_BELOW, None),
+            KbKey::ArrowUp => ctx.submit_command(cmd::SELECT_SNIPPET_ABOVE),
+            KbKey::ArrowDown => ctx.submit_command(cmd::SELECT_SNIPPET_BELOW),
             KbKey::Character(s) if !ev.mods.shift() && !ev.mods.ctrl() && !ev.mods.alt() => {
                 match s.chars().next().unwrap() {
                     c @ '0'..='9' => {
@@ -473,7 +473,7 @@ impl Editor {
                 CurrentAction::Playing => data.stop_playing(),
                 CurrentAction::Recording(_) => {
                     if let Some(new_snippet) = data.stop_recording() {
-                        ctx.submit_command(Command::new(cmd::ADD_SNIPPET, new_snippet), None);
+                        ctx.submit_command(cmd::ADD_SNIPPET.with(new_snippet));
                     }
                 }
                 CurrentAction::RecordingAudio(_) => {
@@ -482,9 +482,6 @@ impl Editor {
                 _ => {}
             }
             ctx.set_menu(crate::menus::make_menu(data));
-            true
-        } else if cmd.is(cmd::UPDATE_TIME) {
-            data.update_time();
             true
         } else if cmd.is(cmd::WARP_TIME_TO) {
             if data.action.is_idle() {
@@ -514,7 +511,7 @@ impl Editor {
                         filename: path.to_owned(),
                         config: data.config.export.clone(),
                     };
-                    ctx.submit_command(Command::new(cmd::EXPORT, export), None);
+                    ctx.submit_command(cmd::EXPORT.with(export));
                 }
                 Some("scb") => {
                     data.status.in_progress.saving = Some(path.clone());
@@ -557,21 +554,15 @@ impl Editor {
                 // it.
                 false
             } else if data.changed_since_last_save() {
-                ctx.submit_command(
-                    ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
-                        alert::make_unsaved_changes_alert(),
-                    ))),
-                    None,
-                );
+                ctx.submit_command(ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
+                    alert::make_unsaved_changes_alert(),
+                ))));
                 true
             } else {
                 data.action = CurrentAction::WaitingToExit;
-                ctx.submit_command(
-                    ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
-                        alert::make_waiting_to_exit_alert(),
-                    ))),
-                    None,
-                );
+                ctx.submit_command(ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
+                    alert::make_waiting_to_exit_alert(),
+                ))));
                 true
             }
         } else if cmd.is(cmd::FINISHED_ASYNC_LOAD) {
@@ -667,6 +658,11 @@ impl Widget<EditorState> for Editor {
                 self.last_autosave_data = Some(autosave_data);
                 self.autosave_timer_id = ctx.request_timer(AUTOSAVE_INTERVAL);
             }
+            Event::AnimFrame(_) => {
+                if data.action.time_factor() != 0.0 {
+                    data.update_time();
+                }
+            }
             _ => {}
         }
         self.inner.event(ctx, event, data, env);
@@ -696,13 +692,6 @@ impl Widget<EditorState> for Editor {
                     ctx.window_id(),
                 ));
                 self.autosave_timer_id = ctx.request_timer(AUTOSAVE_INTERVAL);
-            }
-            LifeCycle::AnimFrame(_) => {
-                // We're not allowed to update the data in lifecycle, so on each animation frame we
-                // send ourselves a command to update the current time.
-                if data.action.time_factor() != 0.0 {
-                    ctx.submit_command(cmd::UPDATE_TIME, ctx.widget_id());
-                }
             }
             _ => {}
         }

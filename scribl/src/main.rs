@@ -3,6 +3,7 @@ use crossbeam_channel::unbounded;
 use druid::theme;
 use druid::{AppLauncher, Color, Key};
 use std::io::Write;
+use std::sync::Arc;
 
 mod app_delegate;
 mod app_state;
@@ -27,7 +28,7 @@ const BUTTON_ICON_HOT: Key<Color> = Key::new("scribl-radio-button-icon-hot");
 const BUTTON_ICON_IDLE: Key<Color> = Key::new("scribl-radio-button-icon-idle");
 const BUTTON_GROUP_BORDER_WIDTH: Key<f64> = Key::new("scribl-button-group-border-width");
 pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("scribl-text-size-small");
-pub const FONT_NAME_MONO: Key<&str> = Key::new("scribl-font-name-mono");
+pub const FONT_NAME_MONO: Key<Arc<str>> = Key::new("scribl-font-name-mono");
 
 use app_state::AppState;
 use editor_state::EditorState;

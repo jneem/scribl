@@ -1,8 +1,6 @@
 use druid::commands;
 use druid::platform_menus;
-use druid::{
-    Command, FileDialogOptions, FileSpec, KbKey, LocalizedString, MenuDesc, MenuItem, SysMods,
-};
+use druid::{FileDialogOptions, FileSpec, KbKey, LocalizedString, MenuDesc, MenuItem, SysMods};
 
 use crate::cmd;
 use crate::editor_state::{CurrentAction, MaybeSnippetId};
@@ -25,16 +23,14 @@ fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
 
     let open = MenuItem::new(
         LocalizedString::new("common-menu-file-open"),
-        Command::new(
-            commands::SHOW_OPEN_PANEL,
-            FileDialogOptions::new().allowed_types(vec![SCRIBL_FILE_TYPE]),
-        ),
+        commands::SHOW_OPEN_PANEL
+            .with(FileDialogOptions::new().allowed_types(vec![SCRIBL_FILE_TYPE])),
     )
     .hotkey(SysMods::Cmd, "o");
 
     let save_as_command = commands::SHOW_SAVE_PANEL.with(save_dialog_options());
     let save_command = if has_path {
-        Command::new(commands::SAVE_FILE, None)
+        commands::SAVE_FILE.with(None)
     } else {
         save_as_command.clone()
     };
@@ -51,10 +47,8 @@ fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
     // be another way to get the system file dialog.
     let export = MenuItem::new(
         LocalizedString::new("scribl-menu-file-export").with_placeholder("Export"),
-        Command::new(
-            commands::SHOW_SAVE_PANEL,
-            FileDialogOptions::new().allowed_types(vec![EXPORT_FILE_TYPE]),
-        ),
+        commands::SHOW_SAVE_PANEL
+            .with(FileDialogOptions::new().allowed_types(vec![EXPORT_FILE_TYPE])),
     )
     .hotkey(SysMods::Cmd, "e");
 
@@ -146,7 +140,7 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
 
     let mark = MenuItem::new(
         LocalizedString::new("scribl-menu-edit-mark").with_placeholder("Set mark"),
-        Command::new(cmd::SET_MARK, None),
+        cmd::SET_MARK.with(None),
     )
     .hotkey(SysMods::Cmd, "m");
 
@@ -166,7 +160,7 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
 
     let delete = MenuItem::new(
         LocalizedString::new("scribl-menu-edit-delete").with_placeholder("Delete selected"),
-        Command::new(cmd::DELETE_SNIPPET, MaybeSnippetId::None),
+        cmd::DELETE_SNIPPET.with(MaybeSnippetId::None),
     )
     .hotkey(SysMods::None, KbKey::Delete)
     .disabled_if(|| data.selected_snippet.is_none());

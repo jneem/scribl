@@ -6,7 +6,7 @@ use druid::piet::{FontFamily, Text, TextLayout, TextLayoutBuilder};
 use druid::widget::prelude::*;
 use druid::widget::{Controller, ControllerHost, LabelText};
 use druid::{
-    Color, Command, Data, Point, Rect, Selector, SingleUse, TimerToken, Vec2, WidgetExt, WidgetPod,
+    Color, Data, Point, Rect, Selector, SingleUse, TimerToken, Vec2, WidgetExt, WidgetPod,
 };
 
 pub struct ModalHost<T, W> {
@@ -80,10 +80,7 @@ impl<T: Data, W: Widget<T>> Controller<T, W> for TooltipGuest<T> {
                     let elapsed = Instant::now().duration_since(move_time);
                     if elapsed > TOOLTIP_DELAY_CHECK {
                         self.text.resolve(data, env);
-                        ctx.submit_command(
-                            Command::new(SHOW_TOOLTIP, self.text.display_text().to_owned()),
-                            None,
-                        );
+                        ctx.submit_command(SHOW_TOOLTIP.with(self.text.display_text().to_owned()));
                         self.timer = TimerToken::INVALID;
                         self.last_mouse_move = None;
                     } else {
@@ -222,10 +219,10 @@ impl<W: Widget<EditorState>> Widget<EditorState> for ModalHost<EditorState, W> {
             let mut tooltip_origin = *point + TOOLTIP_OFFSET;
             let mut text = ctx.text();
             let font = text
-                .font_family(env.get(druid::theme::FONT_NAME))
+                .font_family(&env.get(druid::theme::FONT_NAME))
                 .unwrap_or(FontFamily::SANS_SERIF);
             let layout = text
-                .new_text_layout(string)
+                .new_text_layout(string.as_str())
                 .font(font, FONT_SIZE)
                 .text_color(TOOLTIP_TEXT_COLOR)
                 .build()

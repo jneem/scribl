@@ -52,10 +52,6 @@ pub const SET_MARK: Selector<Option<Time>> = Selector::new("scribl.set-mark");
 /// Changes the current animation time, assuming that the UI is in the idle state.
 pub const WARP_TIME_TO: Selector<Time> = Selector::new("scribl.warp-time-to");
 
-/// Updates the current animation time based on the system clock. This gets sent repeatedly while
-/// animating.
-pub const UPDATE_TIME: Selector<()> = Selector::new("scribl.update-time");
-
 /// Changes the pen color.
 pub const CHOOSE_COLOR: Selector<Color> = Selector::new("scribl.choose-color");
 

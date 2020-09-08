@@ -2,9 +2,8 @@ use druid::kurbo::{BezPath, Line, Vec2};
 use druid::theme;
 use druid::widget::{Controller, Scroll};
 use druid::{
-    Affine, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle,
-    LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetExt,
-    WidgetPod,
+    Affine, BoxConstraints, Color, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
+    PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetExt, WidgetPod,
 };
 use std::collections::HashMap;
 
@@ -603,14 +602,14 @@ impl Widget<EditorState> for TimelineInner {
             }
             Event::MouseDown(ev) => {
                 let time = Time::from_micros((ev.pos.x / PIXELS_PER_USEC) as i64);
-                ctx.submit_command(Command::new(cmd::WARP_TIME_TO, time), None);
+                ctx.submit_command(cmd::WARP_TIME_TO.with(time));
                 ctx.set_active(true);
             }
             Event::MouseMove(ev) => {
                 // On click-and-drag, we change the time with the drag.
                 if ctx.is_active() {
                     let time = Time::from_micros((ev.pos.x.max(0.0) / PIXELS_PER_USEC) as i64);
-                    ctx.submit_command(Command::new(cmd::WARP_TIME_TO, time), None);
+                    ctx.submit_command(cmd::WARP_TIME_TO.with(time));
                 }
             }
             Event::MouseUp(_) => {

@@ -10,12 +10,12 @@ pub fn make_unsaved_changes_alert() -> impl Widget<EditorState> {
     let close =
         Button::new("Close without saving").on_click(|ctx, data: &mut EditorState, _env| {
             data.action = CurrentAction::WaitingToExit;
-            ctx.submit_command(ModalHost::DISMISS_MODAL, None);
-            ctx.submit_command(druid::commands::CLOSE_WINDOW, None);
+            ctx.submit_command(ModalHost::DISMISS_MODAL);
+            ctx.submit_command(druid::commands::CLOSE_WINDOW);
         });
 
     let cancel = Button::new("Cancel").on_click(|ctx, _data, _env| {
-        ctx.submit_command(ModalHost::DISMISS_MODAL, None);
+        ctx.submit_command(ModalHost::DISMISS_MODAL);
     });
     let save = Button::dynamic(|data: &EditorState, _| {
         if data.save_path.is_some() {
@@ -25,19 +25,17 @@ pub fn make_unsaved_changes_alert() -> impl Widget<EditorState> {
         }
     })
     .on_click(|ctx, data, _env| {
-        ctx.submit_command(ModalHost::DISMISS_MODAL, None);
+        ctx.submit_command(ModalHost::DISMISS_MODAL);
         if data.save_path.is_some() {
-            ctx.submit_command(druid::commands::SAVE_FILE.with(None), None);
+            ctx.submit_command(druid::commands::SAVE_FILE.with(None));
         } else {
             ctx.submit_command(
                 druid::commands::SHOW_SAVE_PANEL.with(crate::menus::save_dialog_options()),
-                None,
             );
         }
         data.action = CurrentAction::WaitingToExit;
         ctx.submit_command(
             ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(make_waiting_to_exit_alert()))),
-            None,
         );
     });
 
@@ -85,7 +83,7 @@ impl<W: Widget<EditorState>> Controller<EditorState, W> for Waiter {
         env: &Env,
     ) {
         if data.status.in_progress.saving.is_none() && data.status.in_progress.encoding.is_none() {
-            ctx.submit_command(druid::commands::CLOSE_WINDOW, None);
+            ctx.submit_command(druid::commands::CLOSE_WINDOW);
         }
         child.update(ctx, old_data, data, env);
     }
@@ -102,7 +100,7 @@ impl<W: Widget<EditorState>> Controller<EditorState, W> for Waiter {
         // the condition was triggered before we were instantiated, in which case we'll get a
         // lifecycle event when we're added to the widget tree but we won't get any updates.
         if data.status.in_progress.saving.is_none() && data.status.in_progress.encoding.is_none() {
-            ctx.submit_command(druid::commands::CLOSE_WINDOW, None);
+            ctx.submit_command(druid::commands::CLOSE_WINDOW);
         }
         child.lifecycle(ctx, ev, data, env);
     }
