@@ -38,6 +38,10 @@ impl AudioHandle {
         }
     }
 
+    pub fn set_target(&mut self, target: Target) {
+        self.target = target;
+    }
+
     pub fn play(&self, snips: AudioSnippetsData, start_time: Time, velocity: f64) {
         if let Err(e) = self.cmd_tx.send(AudioCmd::Play(OutputData {
             snips,

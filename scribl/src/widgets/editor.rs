@@ -30,13 +30,6 @@ pub struct Editor {
     // We send the autosave data on this channel.
     autosave_tx: Option<Sender<AutosaveData>>,
 
-    // A command sender that we can hand out to other threads, in order that they can send us
-    // commands. It's a bit tricky to initialize this (we need to create the `AppLauncher` before
-    // we can get one, but that needs a `WindowDesc`, which needs the widget tree). Therefore, we
-    // make it an option and we initialize it by using the `ExtEventSink` to send a command
-    // containing a copy of the `ExtEventSink` :)
-    ext_cmd: Option<ExtEventSink>,
-
     inner: Box<dyn Widget<EditorState>>,
 }
 
@@ -245,7 +238,6 @@ impl Editor {
             autosave_timer_id: TimerToken::INVALID,
             last_autosave_data: None,
             autosave_tx: None,
-            ext_cmd: None,
         }
     }
 }
@@ -386,13 +378,14 @@ impl Editor {
 
             if data.status.in_progress.encoding.is_some() {
                 log::warn!("already encoding, not doing another one");
-            } else if let Some(ext_cmd) = self.ext_cmd.as_ref().cloned() {
+            } else {
                 // This is a little wasteful, but it's probably fine. We spin up a thread to
                 // translate between the Receiver that encode_blocking sends to, and the
                 // ExtEventSink that sends commands to us.
                 let export = export.clone();
                 let (tx, rx) = crossbeam_channel::unbounded();
                 let window_id = ctx.window_id();
+                let ext_cmd = ctx.get_external_handle();
                 std::thread::spawn(move || {
                     while let Ok(msg) = rx.recv() {
                         let _ =
@@ -525,7 +518,8 @@ impl Editor {
                 }
                 Some("scb") => {
                     data.status.in_progress.saving = Some(path.clone());
-                    self.spawn_async_save(
+                    spawn_async_save(
+                        ctx.get_external_handle(),
                         SaveFileData::from_editor_state(data),
                         path,
                         ctx.window_id(),
@@ -534,7 +528,8 @@ impl Editor {
                 _ => {
                     log::error!("unknown extension! Trying to save anyway");
                     data.status.in_progress.saving = Some(path.clone());
-                    self.spawn_async_save(
+                    spawn_async_save(
+                        ctx.get_external_handle(),
                         SaveFileData::from_editor_state(data),
                         path,
                         ctx.window_id(),
@@ -548,7 +543,11 @@ impl Editor {
             } else {
                 let info = cmd.get_unchecked(druid::commands::OPEN_FILE);
                 data.status.in_progress.loading = Some(info.path().to_owned());
-                self.spawn_async_load(info.path().to_owned(), ctx.window_id());
+                spawn_async_load(
+                    ctx.get_external_handle(),
+                    info.path().to_owned(),
+                    ctx.window_id(),
+                );
                 data.set_loading();
             }
             true
@@ -575,14 +574,6 @@ impl Editor {
                 );
                 true
             }
-        } else if cmd.is(cmd::INITIALIZE_EVENT_SINK) {
-            let ext_cmd = cmd.get_unchecked(cmd::INITIALIZE_EVENT_SINK);
-            self.ext_cmd = Some(ext_cmd.clone());
-            self.autosave_tx = Some(crate::autosave::spawn_autosave_thread(
-                ext_cmd.clone(),
-                ctx.window_id(),
-            ));
-            true
         } else if cmd.is(cmd::FINISHED_ASYNC_LOAD) {
             let result = cmd.get_unchecked(cmd::FINISHED_ASYNC_LOAD);
             data.update_load_status(result);
@@ -616,40 +607,32 @@ impl Editor {
         };
         ret
     }
+}
 
-    fn spawn_async_save(&mut self, save_data: SaveFileData, path: PathBuf, id: WindowId) {
-        if let Some(ext_cmd) = self.ext_cmd.clone() {
-            std::thread::spawn(move || {
-                let result = save_data.save_to_path(&path);
-                let _ = ext_cmd.submit_command(
-                    cmd::FINISHED_ASYNC_SAVE,
-                    Box::new(cmd::AsyncSaveResult {
-                        path,
-                        data: save_data,
-                        error: result.err().map(|e| e.to_string()),
-                        autosave: false,
-                    }),
-                    id,
-                );
-            });
-        } else {
-            log::error!("can't save: no command handle!");
-        }
-    }
+fn spawn_async_save(ext_cmd: ExtEventSink, save_data: SaveFileData, path: PathBuf, id: WindowId) {
+    std::thread::spawn(move || {
+        let result = save_data.save_to_path(&path);
+        let _ = ext_cmd.submit_command(
+            cmd::FINISHED_ASYNC_SAVE,
+            Box::new(cmd::AsyncSaveResult {
+                path,
+                data: save_data,
+                error: result.err().map(|e| e.to_string()),
+                autosave: false,
+            }),
+            id,
+        );
+    });
+}
 
-    fn spawn_async_load(&mut self, path: PathBuf, id: WindowId) {
-        if let Some(ext_cmd) = self.ext_cmd.clone() {
-            std::thread::spawn(move || {
-                let data = cmd::AsyncLoadResult {
-                    path: path.clone(),
-                    save_data: SaveFileData::load_from_path(&path).map_err(|e| e.to_string()),
-                };
-                let _ = ext_cmd.submit_command(cmd::FINISHED_ASYNC_LOAD, Box::new(data), id);
-            });
-        } else {
-            log::error!("can't load: no command handle!");
-        }
-    }
+fn spawn_async_load(ext_cmd: ExtEventSink, path: PathBuf, id: WindowId) {
+    std::thread::spawn(move || {
+        let data = cmd::AsyncLoadResult {
+            path: path.clone(),
+            save_data: SaveFileData::load_from_path(&path).map_err(|e| e.to_string()),
+        };
+        let _ = ext_cmd.submit_command(cmd::FINISHED_ASYNC_LOAD, Box::new(data), id);
+    });
 }
 
 impl Widget<EditorState> for Editor {
@@ -658,6 +641,7 @@ impl Widget<EditorState> for Editor {
             Event::WindowConnected => {
                 ctx.request_focus();
                 ctx.request_paint();
+                data.audio.set_target(ctx.widget_id().into());
             }
             Event::Command(cmd) => {
                 let handled = self.handle_command(ctx, cmd, data, env);
@@ -706,7 +690,13 @@ impl Widget<EditorState> for Editor {
         env: &Env,
     ) {
         match event {
-            LifeCycle::WidgetAdded => self.autosave_timer_id = ctx.request_timer(AUTOSAVE_INTERVAL),
+            LifeCycle::WidgetAdded => {
+                self.autosave_tx = Some(crate::autosave::spawn_autosave_thread(
+                    ctx.get_external_handle(),
+                    ctx.window_id(),
+                ));
+                self.autosave_timer_id = ctx.request_timer(AUTOSAVE_INTERVAL);
+            }
             LifeCycle::AnimFrame(_) => {
                 // We're not allowed to update the data in lifecycle, so on each animation frame we
                 // send ourselves a command to update the current time.

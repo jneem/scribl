@@ -1,4 +1,4 @@
-use druid::{Color, ExtEventSink, Selector};
+use druid::{Color, Selector};
 use std::path::PathBuf;
 
 use scribl_curves::{SnippetData, SnippetsData, Time};
@@ -74,10 +74,6 @@ pub const FINISHED_ASYNC_LOAD: Selector<AsyncLoadResult> =
 /// commands gets sent.
 pub const FINISHED_ASYNC_SAVE: Selector<AsyncSaveResult> =
     Selector::new("scribl.finished-async-save");
-
-/// This command provides an `ExtEventSink` to widgets that want one.
-pub const INITIALIZE_EVENT_SINK: Selector<ExtEventSink> =
-    Selector::new("scribl.initialize-event-sink");
 
 pub const ZOOM_IN: Selector<()> = Selector::new("scribl.zoom-in");
 pub const ZOOM_OUT: Selector<()> = Selector::new("scribl.zoom-out");

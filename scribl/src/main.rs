@@ -93,7 +93,6 @@ fn main() {
 
     let mut initial_state = AppState::default();
     let editor_window_desc = initial_state.add_editor(initial_editor);
-    let editor_window_id = editor_window_desc.id;
 
     let launcher = AppLauncher::with_window(editor_window_desc).configure_env(|e, _| {
         e.set(theme::BUTTON_LIGHT, Color::rgb8(0x70, 0x70, 0x70));
@@ -109,20 +108,8 @@ fn main() {
         e.set(FONT_NAME_MONO, "monospace");
     });
 
-    let ext_handle = launcher.get_external_handle();
-    if let Err(e) = ext_handle.submit_command(
-        crate::cmd::INITIALIZE_EVENT_SINK,
-        ext_handle.clone(),
-        editor_window_id,
-    ) {
-        log::error!(
-            "failed to initialize event sink, loading files won't work: {}",
-            e
-        );
-    }
-
     launcher
-        .delegate(app_delegate::Delegate::new(ext_handle))
+        .delegate(app_delegate::Delegate::default())
         .launch(initial_state)
         .expect("failed to launch");
 }
