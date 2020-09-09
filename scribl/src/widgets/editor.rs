@@ -675,6 +675,9 @@ impl Widget<EditorState> for Editor {
         data: &EditorState,
         env: &Env,
     ) {
+        if data.action.time_factor() != 0.0 {
+            ctx.request_anim_frame();
+        }
         self.inner.update(ctx, old_data, data, env);
     }
 

@@ -233,6 +233,7 @@ struct TimelineInner {
 pub fn make_timeline() -> impl Widget<EditorState> {
     let inner = TimelineInner::default();
     Scroll::new(inner)
+        .horizontal()
         .controller(TimelineScrollController)
         // This is a hack to hide the scrollbars. Hopefully in the future druid will
         // support this directly.
@@ -709,7 +710,8 @@ impl Widget<EditorState> for TimelineInner {
         data: &EditorState,
         env: &Env,
     ) -> Size {
-        let size = bc.constrain((std::f64::INFINITY, self.height));
+        // In principle the width could be infinite, but druid doesn't like that.
+        let size = bc.constrain((10e7, self.height));
 
         // The children have funny shapes, so rather than use druid's layout mechanisms to position
         // them, we just do it all manually. Nevertheless, we need to call "layout" on the children
