@@ -104,15 +104,13 @@ pub fn make_status_bar() -> impl Widget<EditorState> {
 struct Clock;
 
 fn get_layout(time: Time, t: &mut PietText, env: &Env) -> PietTextLayout {
-    let font_name = env.get(crate::FONT_NAME_MONO);
     let font_size = env.get(druid::theme::TEXT_SIZE_NORMAL);
-    let font = t.font_family(&font_name).unwrap_or(FontFamily::MONOSPACE);
     let usecs = time.as_micros();
     let mins = usecs / 60_000_000;
     let secs = (usecs / 1_000_000) % 60;
     let cents = (usecs / 10_000) % 100;
     t.new_text_layout(format!("{:02}:{:02}.{:02}", mins, secs, cents))
-        .font(font, font_size)
+        .font(FontFamily::MONOSPACE, font_size)
         .text_color(Color::WHITE)
         .build()
         .unwrap()
