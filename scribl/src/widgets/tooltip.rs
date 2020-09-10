@@ -2,11 +2,12 @@ use std::time::{Duration, Instant};
 
 use crate::EditorState;
 
-use druid::piet::{FontFamily, Text, TextLayout, TextLayoutBuilder};
+use druid::piet::FontFamily;
 use druid::widget::prelude::*;
 use druid::widget::{Controller, ControllerHost, LabelText};
 use druid::{
-    Color, Data, Point, Rect, Selector, SingleUse, TimerToken, Vec2, WidgetExt, WidgetPod,
+    Color, Data, FontDescriptor, Point, Rect, Selector, SingleUse, TextLayout, TimerToken, Vec2,
+    WidgetExt, WidgetPod,
 };
 
 pub struct ModalHost<T, W> {
@@ -14,6 +15,7 @@ pub struct ModalHost<T, W> {
     inner: W,
     marker: std::marker::PhantomData<T>,
     cur_tooltip: Option<(Point, String)>,
+    tooltip_layout: TextLayout,
     modal: Option<WidgetPod<T, Box<dyn Widget<T>>>>,
 }
 
@@ -110,6 +112,7 @@ impl<W: Widget<EditorState>> ModalHost<EditorState, W> {
             inner,
             marker: std::marker::PhantomData,
             cur_tooltip: None,
+            tooltip_layout: TextLayout::new(""),
             modal: None,
         }
     }
@@ -217,30 +220,26 @@ impl<W: Widget<EditorState>> Widget<EditorState> for ModalHost<EditorState, W> {
 
         if let Some((point, string)) = &self.cur_tooltip {
             let mut tooltip_origin = *point + TOOLTIP_OFFSET;
-            let mut text = ctx.text();
-            let font = text
-                .font_family(&env.get(druid::theme::FONT_NAME))
-                .unwrap_or(FontFamily::SANS_SERIF);
-            let layout = text
-                .new_text_layout(string.as_str())
-                .font(font, FONT_SIZE)
-                .text_color(TOOLTIP_TEXT_COLOR)
-                .build()
-                .unwrap();
+            self.tooltip_layout
+                .set_font(FontDescriptor::new(FontFamily::SANS_SERIF).with_size(FONT_SIZE));
+            self.tooltip_layout.set_text(string.as_str());
+            self.tooltip_layout.set_text_color(TOOLTIP_TEXT_COLOR);
+            self.tooltip_layout.rebuild_if_needed(&mut ctx.text(), env);
             let line_height = FONT_SIZE * LINE_HEIGHT_FACTOR;
             let size = ctx.size();
+            let text_size = self.tooltip_layout.size();
 
             // If necessary, try to offset the tooltip so that it fits in the widget.
             if tooltip_origin.y + line_height > size.height {
                 tooltip_origin.y = size.height - line_height;
             }
-            if tooltip_origin.x + layout.size().width > size.width {
-                tooltip_origin.x = size.width - layout.size().width;
+            if tooltip_origin.x + text_size.width > size.width {
+                tooltip_origin.x = size.width - text_size.width;
             }
 
             let rect = Rect::from_origin_size(
                 tooltip_origin,
-                (layout.size().width + X_PADDING * 2.0, line_height),
+                (text_size.width + X_PADDING * 2.0, line_height),
             )
             .inset(-TOOLTIP_STROKE_WIDTH / 2.0)
             .to_rounded_rect(env.get(druid::theme::BUTTON_BORDER_RADIUS));
@@ -249,7 +248,7 @@ impl<W: Widget<EditorState>> Widget<EditorState> for ModalHost<EditorState, W> {
 
             ctx.fill(rect, &TOOLTIP_COLOR);
             ctx.stroke(rect, &TOOLTIP_STROKE_COLOR, TOOLTIP_STROKE_WIDTH);
-            ctx.draw_text(&layout, text_origin);
+            self.tooltip_layout.draw(ctx, text_origin);
         }
     }
 }
