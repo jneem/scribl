@@ -1,4 +1,6 @@
 //! This module is in charge of audio (both recording and playback).
+// TODO: this file is getting big, and it contains several different things (e.g. the AudioSnippet
+// stuff and also the interface to gstreamer). Consider splitting it.
 
 use anyhow::{anyhow, Result};
 use crossbeam_channel::{select, unbounded, Receiver, Sender};
@@ -22,13 +24,23 @@ use scribl_curves::{Cursor, Span, Time, TimeDiff};
 use crate::cmd;
 use crate::config::AudioInput as InputConfig;
 
+/// This is the main interface to an audio thread. It exposes various functions for playing and
+/// recording audio.
 #[derive(Clone)]
 pub struct AudioHandle {
+    // Most of the audio action happens on a separate thread; we use this channel to communicate
+    // with it.
     cmd_tx: Sender<AudioCmd>,
+    // Communication from the thread to the main app happens via an `ExtEventSink`. Here, we store
+    // the target that will be used for the submitted commands.
     target: Target,
 }
 
 impl AudioHandle {
+    /// Spins up an audio thread, returning a handle to it.
+    ///
+    /// TODO: figure out, and describe here, the conditions under which the audio thread shuts
+    /// down.
     pub fn initialize_audio() -> AudioHandle {
         let (tx, rx) = unbounded();
         std::thread::spawn(move || audio_loop(rx));
@@ -38,10 +50,13 @@ impl AudioHandle {
         }
     }
 
+    /// The audio thread communicates to the main app by sending commands through an
+    /// `ExtEventSink`. This sets the target of those commands.
     pub fn set_target(&mut self, target: Target) {
         self.target = target;
     }
 
+    /// Start playing audio.
     pub fn play(&self, snips: AudioSnippetsData, start_time: Time, velocity: f64) {
         if let Err(e) = self.cmd_tx.send(AudioCmd::Play(OutputData {
             snips,
@@ -52,12 +67,17 @@ impl AudioHandle {
         }
     }
 
+    /// Stop playing audio.
     pub fn stop_playing(&self) {
         if let Err(e) = self.cmd_tx.send(AudioCmd::StopPlaying) {
             log::error!("audio thread exited unexpectedly: {}", e);
         }
     }
 
+    /// Start recording audio.
+    ///
+    /// The event sink `sink` is used for sending periodic notifications back to the main app. When
+    /// recording is stopped, it will also be used for sending the audio data back to the main app.
     pub fn start_recording(&self, config: InputConfig, sink: ExtEventSink) {
         if let Err(e) = self
             .cmd_tx
@@ -67,6 +87,9 @@ impl AudioHandle {
         }
     }
 
+    /// Stop recording audio.
+    ///
+    /// The resulting audio buffer will be sent as a `ADD_AUDIO_SNIPPET` command.
     pub fn stop_recording(&self, start_time: Time) {
         if let Err(e) = self
             .cmd_tx
@@ -76,6 +99,7 @@ impl AudioHandle {
         }
     }
 
+    /// Seeks the audio to a new location, and possibly also a different speed.
     pub fn seek(&self, time: Time, velocity: f64) {
         if let Err(e) = self.cmd_tx.send(AudioCmd::Seek(time, velocity)) {
             log::error!("audio thread exited unexpectedly: {}", e);
@@ -129,15 +153,22 @@ struct InputData {
     loudness: EbuR128,
 }
 
+/// The result of recording audio: a buffer, and a bit of metadata.
 pub struct AudioRecording {
+    /// The audio signal.
     pub buf: Vec<i16>,
+    /// The perceptual loudness (in dB) of the audio.
     pub loudness: f64,
+    /// The peak (as a number in [0.0, 1.0]) of the signal.
     pub peak: f64,
 }
 
+/// These status messages are sent periodically from the audio thread to the main thread.
 #[derive(Clone)]
 pub struct AudioRecordingStatus {
+    /// The perceptual loudness (in dB) of some recent chunk of audio input.
     pub loudness: f32,
+    /// The estimated probability that the input is speech.
     pub vad: f32,
 }
 
@@ -357,7 +388,7 @@ impl AudioState {
         }
     }
 
-    pub fn start_playing(&mut self, data: OutputData) {
+    fn start_playing(&mut self, data: OutputData) {
         self.output_data = data;
         if self.output_tx.send(self.output_data.clone()).is_err() {
             log::error!("audio thread not present");
@@ -372,7 +403,7 @@ impl AudioState {
         self.seek(self.output_data.start_time, self.output_data.velocity);
     }
 
-    pub fn stop_playing(&mut self) {
+    fn stop_playing(&mut self) {
         if let Some(pipe) = self.output_pipeline.as_ref() {
             if let Err(e) = pipe.set_state(gst::State::Paused) {
                 log::error!("failed to stop audio: {}", e);
