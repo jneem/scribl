@@ -23,6 +23,7 @@ use scribl_curves::{Cursor, Span, Time, TimeDiff};
 
 use crate::cmd;
 use crate::config::AudioInput as InputConfig;
+use crate::editor_state::AudioState as State;
 
 /// This is the main interface to an audio thread. It exposes various functions for playing and
 /// recording audio.
@@ -31,9 +32,6 @@ pub struct AudioHandle {
     // Most of the audio action happens on a separate thread; we use this channel to communicate
     // with it.
     cmd_tx: Sender<AudioCmd>,
-    // Communication from the thread to the main app happens via an `ExtEventSink`. Here, we store
-    // the target that will be used for the submitted commands.
-    target: Target,
 }
 
 impl AudioHandle {
@@ -41,23 +39,56 @@ impl AudioHandle {
     ///
     /// TODO: figure out, and describe here, the conditions under which the audio thread shuts
     /// down.
-    pub fn initialize_audio() -> AudioHandle {
+    pub fn initialize_audio(sink: ExtEventSink, target: Target) -> AudioHandle {
         let (tx, rx) = unbounded();
-        std::thread::spawn(move || audio_loop(rx));
-        AudioHandle {
-            cmd_tx: tx,
-            target: Target::Global,
+        std::thread::spawn(move || audio_loop(rx, sink, target));
+        AudioHandle { cmd_tx: tx }
+    }
+
+    pub fn update(&mut self, old_state: State, new_state: State) {
+        use State::*;
+
+        if old_state == new_state {
+            return;
+        }
+
+        // A special case if we're keeping playing but just changing the speed.
+        if let (
+            Playing {
+                snips: old_snips, ..
+            },
+            Playing {
+                start_time,
+                velocity,
+                snips,
+            },
+        ) = (&old_state, &new_state)
+        {
+            if snips == old_snips {
+                self.seek(*start_time, *velocity);
+                return;
+            }
+        }
+
+        match old_state {
+            Playing { .. } => self.stop_playing(),
+            Recording { start_time, .. } => self.stop_recording(start_time),
+            Idle => {}
+        }
+
+        match new_state {
+            Playing {
+                snips,
+                start_time,
+                velocity,
+            } => self.play(snips, start_time, velocity),
+            Recording { config, .. } => self.start_recording(config),
+            Idle => {}
         }
     }
 
-    /// The audio thread communicates to the main app by sending commands through an
-    /// `ExtEventSink`. This sets the target of those commands.
-    pub fn set_target(&mut self, target: Target) {
-        self.target = target;
-    }
-
     /// Start playing audio.
-    pub fn play(&self, snips: AudioSnippetsData, start_time: Time, velocity: f64) {
+    fn play(&self, snips: AudioSnippetsData, start_time: Time, velocity: f64) {
         if let Err(e) = self.cmd_tx.send(AudioCmd::Play(OutputData {
             snips,
             start_time,
@@ -68,7 +99,7 @@ impl AudioHandle {
     }
 
     /// Stop playing audio.
-    pub fn stop_playing(&self) {
+    fn stop_playing(&self) {
         if let Err(e) = self.cmd_tx.send(AudioCmd::StopPlaying) {
             log::error!("audio thread exited unexpectedly: {}", e);
         }
@@ -78,11 +109,8 @@ impl AudioHandle {
     ///
     /// The event sink `sink` is used for sending periodic notifications back to the main app. When
     /// recording is stopped, it will also be used for sending the audio data back to the main app.
-    pub fn start_recording(&self, config: InputConfig, sink: ExtEventSink) {
-        if let Err(e) = self
-            .cmd_tx
-            .send(AudioCmd::Record(config, sink, self.target))
-        {
+    fn start_recording(&self, config: InputConfig) {
+        if let Err(e) = self.cmd_tx.send(AudioCmd::Record(config)) {
             log::error!("audio thread exited unexpectedly: {}", e);
         }
     }
@@ -90,17 +118,14 @@ impl AudioHandle {
     /// Stop recording audio.
     ///
     /// The resulting audio buffer will be sent as a `ADD_AUDIO_SNIPPET` command.
-    pub fn stop_recording(&self, start_time: Time) {
-        if let Err(e) = self
-            .cmd_tx
-            .send(AudioCmd::StopRecording(self.target, start_time))
-        {
+    fn stop_recording(&self, start_time: Time) {
+        if let Err(e) = self.cmd_tx.send(AudioCmd::StopRecording(start_time)) {
             log::error!("audio thread exited unexpectedly: {}", e);
         }
     }
 
     /// Seeks the audio to a new location, and possibly also a different speed.
-    pub fn seek(&self, time: Time, velocity: f64) {
+    fn seek(&self, time: Time, velocity: f64) {
         if let Err(e) = self.cmd_tx.send(AudioCmd::Seek(time, velocity)) {
             log::error!("audio thread exited unexpectedly: {}", e);
         }
@@ -130,8 +155,8 @@ struct AudioState {
 enum AudioCmd {
     Play(OutputData),
     StopPlaying,
-    Record(InputConfig, ExtEventSink, Target),
-    StopRecording(Target, Time),
+    Record(InputConfig),
+    StopRecording(Time),
     Seek(Time, f64),
 }
 
@@ -192,7 +217,7 @@ pub struct AudioSnippetId(u64);
 /// The actual data is beind a pointer, so this is cheap to clone.
 // This is serialized as part of saving files, so its serialization format needs to remain
 // stable.
-#[derive(Deserialize, Serialize, Clone, Data)]
+#[derive(Deserialize, Serialize, Clone, Data, PartialEq)]
 pub struct AudioSnippetData {
     buf: Arc<Vec<i16>>,
     multiplier: f32,
@@ -201,7 +226,7 @@ pub struct AudioSnippetData {
 
 /// A collection of [`AudioSnippetData`](struct.AudioSnippetData.html), each one
 /// identified by an [`AudioSnippetId`](struct.AudioSnippetId.html).
-#[derive(Clone, Data, Default)]
+#[derive(Clone, Data, Default, PartialEq)]
 pub struct AudioSnippetsData {
     last_id: u64,
     snippets: OrdMap<AudioSnippetId, AudioSnippetData>,
@@ -744,10 +769,8 @@ impl<'de> Deserialize<'de> for AudioSnippetsData {
     }
 }
 
-fn audio_loop(cmd: Receiver<AudioCmd>) {
+fn audio_loop(cmd: Receiver<AudioCmd>, sink: ExtEventSink, target: Target) {
     let mut state = AudioState::init();
-    let mut sink: Option<ExtEventSink> = None;
-    let mut target: Option<Target> = None;
 
     loop {
         select! {
@@ -757,12 +780,10 @@ fn audio_loop(cmd: Receiver<AudioCmd>) {
                     Ok(Play(data)) => state.start_playing(data),
                     Ok(Seek(time, velocity)) => state.seek(time, velocity),
                     Ok(StopPlaying) => state.stop_playing(),
-                    Ok(Record(config, new_sink, new_target)) => {
-                        sink = Some(new_sink);
-                        target = Some(new_target);
+                    Ok(Record(config)) => {
                         state.start_recording(config);
                     }
-                    Ok(StopRecording(target, time)) => {
+                    Ok(StopRecording(time)) => {
                         let rec = state.stop_recording();
 
                         // By default, we normalize to loudness -20. This is quieter than many
@@ -781,12 +802,7 @@ fn audio_loop(cmd: Receiver<AudioCmd>) {
                             .min(1.0 / rec.peak.max(1.0 / 50.0));
 
                         let snip = AudioSnippetData::new(rec.buf, time, multiplier as f32);
-
-                        if let Some(sink) = sink.as_ref() {
-                            let _ = sink.submit_command(cmd::ADD_AUDIO_SNIPPET, snip, target);
-                        } else {
-                            log::error!("couldn't submit audio snippet");
-                        }
+                        let _ = sink.submit_command(cmd::ADD_AUDIO_SNIPPET, snip, target);
                     }
                     Err(_) => {
                         // Failure to receive here just means that the main program exited.
@@ -795,11 +811,7 @@ fn audio_loop(cmd: Receiver<AudioCmd>) {
                 }
             }
             recv(state.input_status_rx) -> msg => {
-                if let (Some(sink), Some(target)) = (&sink, target) {
                     let _ = sink.submit_command(cmd::RECORDING_AUDIO_STATUS, msg.unwrap(), target);
-                } else {
-                    log::error!("couldn't submit audio snippet");
-                }
             }
 
         }

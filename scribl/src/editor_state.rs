@@ -1,5 +1,5 @@
 use druid::kurbo::BezPath;
-use druid::{Data, ExtEventSink, Lens, Point, RenderContext};
+use druid::{Data, Lens, Point, RenderContext};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use scribl_curves::{
     Time, TimeDiff,
 };
 
-use crate::audio::{AudioHandle, AudioSnippetId, AudioSnippetsData};
+use crate::audio::{AudioSnippetId, AudioSnippetsData};
 use crate::config::Config;
 use crate::encode::EncodingStatus;
 use crate::save_state::SaveFileData;
@@ -222,9 +222,6 @@ pub struct EditorState {
     /// The current denoise setting, as selected in the UI.
     pub denoise_setting: DenoiseSetting,
 
-    #[data(ignore)]
-    pub audio: AudioHandle,
-
     pub palette: crate::widgets::PaletteData,
 
     // There are several actions that we do asynchronously. Here, we have the most recent status of
@@ -269,7 +266,6 @@ impl Default for EditorState {
             fade_enabled: false,
             pen_size: PenSize::Medium,
             denoise_setting,
-            audio: AudioHandle::initialize_audio(),
             palette: crate::widgets::PaletteData::default(),
 
             status: AsyncOpsStatus::default(),
@@ -337,25 +333,9 @@ impl EditorState {
         self.take_time_snapshot();
     }
 
-    fn start_playing_audio(&mut self) {
-        let time_factor = self.action.time_factor();
-        if time_factor != 0.0 {
-            self.audio
-                .play(self.audio_snippets.clone(), self.time, time_factor);
-        }
-    }
-
-    fn stop_all_audio(&mut self) {
-        self.audio.stop_playing();
-        if matches!(self.action, CurrentAction::RecordingAudio(_)) {
-            let _ = self.stop_recording_audio();
-        }
-    }
-
     /// Stops recording drawing, returning the snippet that we just finished recording (if it was
     /// non-empty).
     pub fn stop_recording(&mut self) -> Option<SnippetData> {
-        self.stop_all_audio();
         self.finish_stroke();
         let old_action = std::mem::replace(&mut self.action, CurrentAction::Idle);
         self.take_time_snapshot();
@@ -377,17 +357,15 @@ impl EditorState {
         assert!(matches!(self.action, CurrentAction::Idle));
         self.action = CurrentAction::Playing;
         self.take_time_snapshot();
-        self.start_playing_audio();
     }
 
     pub fn stop_playing(&mut self) {
         assert!(matches!(self.action, CurrentAction::Playing));
         self.action = CurrentAction::Idle;
         self.take_time_snapshot();
-        self.audio.stop_playing();
     }
 
-    pub fn start_recording_audio(&mut self, sink: ExtEventSink) {
+    pub fn start_recording_audio(&mut self) {
         assert!(matches!(self.action, CurrentAction::Idle));
         self.action = CurrentAction::RecordingAudio(self.time);
         self.take_time_snapshot();
@@ -406,7 +384,6 @@ impl EditorState {
                 config.remove_noise = true;
             }
         }
-        self.audio.start_recording(config, sink);
     }
 
     /// Stops recording audio.
@@ -414,28 +391,14 @@ impl EditorState {
     /// If all goes well, the audio thread will soon send a command containing the newly recorded
     /// audio.
     pub fn stop_recording_audio(&mut self) {
-        if let CurrentAction::RecordingAudio(rec_start) = self.action {
-            self.action = CurrentAction::Idle;
-            self.take_time_snapshot();
-            self.audio.stop_recording(rec_start);
-        } else {
-            log::error!("tried to stop recording, but we weren't recording");
-        }
+        self.action = CurrentAction::Idle;
+        self.take_time_snapshot();
     }
 
     pub fn scan(&mut self, velocity: f64) {
         match self.action {
-            CurrentAction::Scanning(cur_vel) if cur_vel != velocity => {
+            CurrentAction::Scanning(_) | CurrentAction::Idle => {
                 self.action = CurrentAction::Scanning(velocity);
-                // The audio player doesn't support changing direction midstream, and our UI should
-                // never put us in that situation, because they have to lift one arrow key before
-                // pressing the other.
-                assert_eq!(velocity.signum(), cur_vel.signum());
-                self.audio.seek(self.time, velocity);
-            }
-            CurrentAction::Idle => {
-                self.action = CurrentAction::Scanning(velocity);
-                self.start_playing_audio();
             }
             _ => {
                 log::warn!("not scanning, because I'm busy doing {:?}", self.action);
@@ -447,11 +410,10 @@ impl EditorState {
     pub fn stop_scanning(&mut self) {
         match self.action {
             CurrentAction::Scanning(_) => {
-                self.audio.stop_playing();
                 self.action = CurrentAction::Idle;
                 self.take_time_snapshot();
             }
-            _ => panic!("not scanning"),
+            _ => log::error!("not scanning"),
         }
     }
 
@@ -490,8 +452,9 @@ impl EditorState {
             log::error!("tried to add a point, but we weren't recording");
         }
         if unpause {
+            // We take a time snapshot when unpausing, because that's when the time starts moving
+            // forward.
             self.take_time_snapshot();
-            self.start_playing_audio();
         }
     }
 
@@ -593,7 +556,6 @@ impl EditorState {
         self.mark = undo.mark;
         self.warp_time_to(undo.time);
         self.action = CurrentAction::Idle;
-        self.stop_all_audio();
 
         // This is a bit of a special-case hack. If there get to be more of
         // these, it might be worth storing some metadata in the undo state.
@@ -685,6 +647,28 @@ impl EditorState {
     pub fn changed_since_last_save(&self) -> bool {
         let new_save = SaveFileData::from_editor_state(self);
         !self.saved_data.same(&Some(new_save))
+    }
+
+    pub fn audio_state(&self) -> AudioState {
+        use CurrentAction::*;
+
+        let snips = self.audio_snippets.clone();
+        let play = |velocity: f64| AudioState::Playing {
+            start_time: self.time_snapshot.1,
+            snips,
+            velocity,
+        };
+
+        match &self.action {
+            Playing => play(1.0),
+            Scanning(x) => play(*x),
+            Recording(state) if !state.paused => play(state.time_factor),
+            RecordingAudio(t) => AudioState::Recording {
+                start_time: *t,
+                config: self.config.audio_input.clone(),
+            },
+            _ => AudioState::Idle,
+        }
     }
 }
 
@@ -821,4 +805,19 @@ pub enum DenoiseSetting {
     DenoiseOff,
     DenoiseOn,
     Vad,
+}
+
+/// The current state of the audio subsystem.
+#[derive(Clone, PartialEq)]
+pub enum AudioState {
+    Idle,
+    Playing {
+        snips: AudioSnippetsData,
+        start_time: Time,
+        velocity: f64,
+    },
+    Recording {
+        start_time: Time,
+        config: crate::config::AudioInput,
+    },
 }

@@ -8,6 +8,7 @@ use druid::{
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::audio::AudioHandle;
 use crate::autosave::AutosaveData;
 use crate::cmd;
 use crate::editor_state::{
@@ -29,6 +30,12 @@ pub struct Editor {
     last_autosave_data: Option<SaveFileData>,
     // We send the autosave data on this channel.
     autosave_tx: Option<Sender<AutosaveData>>,
+    // A handle to the audio thread. We initialize this on WidgetAdded, so it should rarely be
+    // `None`.
+    //
+    // The audio state is derived from our EditorState, and our `update` method is where the actual
+    // commands get sent to the audio thread.
+    audio: Option<AudioHandle>,
 
     inner: Box<dyn Widget<EditorState>>,
 }
@@ -236,6 +243,7 @@ impl Editor {
         Editor {
             inner: Box::new(ModalHost::new(Align::centered(column))),
             autosave_timer_id: TimerToken::INVALID,
+            audio: None,
             last_autosave_data: None,
             autosave_tx: None,
         }
@@ -250,14 +258,14 @@ impl Editor {
         data: &mut EditorState,
         _env: &Env,
     ) {
-        // If they push another key while holding down the arrow, cancel the scanning.
+        // If they push another non-shift key while holding down the arrow, cancel the scanning.
         if let CurrentAction::Scanning(speed) = data.action {
             let direction = if speed > 0.0 {
                 KbKey::ArrowRight
             } else {
                 KbKey::ArrowLeft
             };
-            if ev.key != direction {
+            if ev.key != direction && ev.key != KbKey::Shift {
                 data.stop_scanning();
             }
             ctx.set_handled();
@@ -281,6 +289,9 @@ impl Editor {
                 }
                 ctx.set_handled();
             }
+            KbKey::Shift if data.action.is_scanning() => {
+                data.scan(3.0 * data.action.time_factor().signum());
+            }
             _ => {}
         }
     }
@@ -298,6 +309,11 @@ impl Editor {
                     data.stop_scanning();
                 }
                 ctx.set_handled();
+            }
+            KbKey::Shift => {
+                if data.action.is_scanning() {
+                    data.scan(1.5 * data.action.time_factor().signum());
+                }
             }
             KbKey::ArrowUp => ctx.submit_command(cmd::SELECT_SNIPPET_ABOVE),
             KbKey::ArrowDown => ctx.submit_command(cmd::SELECT_SNIPPET_BELOW),
@@ -461,7 +477,7 @@ impl Editor {
             true
         } else if cmd.is(cmd::TALK) {
             if data.action.is_idle() {
-                data.start_recording_audio(ctx.get_external_handle());
+                data.start_recording_audio();
                 ctx.request_anim_frame();
             } else {
                 log::error!("can't talk, current action is {:?}", data.action);
@@ -632,7 +648,6 @@ impl Widget<EditorState> for Editor {
             Event::WindowConnected => {
                 ctx.request_focus();
                 ctx.request_paint();
-                data.audio.set_target(ctx.widget_id().into());
             }
             Event::Command(cmd) => {
                 let handled = self.handle_command(ctx, cmd, data, env);
@@ -679,6 +694,12 @@ impl Widget<EditorState> for Editor {
             ctx.request_anim_frame();
         }
         self.inner.update(ctx, old_data, data, env);
+
+        let old_audio_state = old_data.audio_state();
+        let new_audio_state = data.audio_state();
+        if let Some(audio) = &mut self.audio {
+            audio.update(old_audio_state, new_audio_state);
+        }
     }
 
     fn lifecycle(
@@ -695,6 +716,10 @@ impl Widget<EditorState> for Editor {
                     ctx.window_id(),
                 ));
                 self.autosave_timer_id = ctx.request_timer(AUTOSAVE_INTERVAL);
+                self.audio = Some(AudioHandle::initialize_audio(
+                    ctx.get_external_handle(),
+                    ctx.widget_id().into(),
+                ));
             }
             _ => {}
         }

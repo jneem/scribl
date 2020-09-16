@@ -35,7 +35,7 @@ pub struct Export {
     pub fps: f64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct AudioInput {
     /// Should we do noise removal on the incoming audio?
     #[serde(default = "default_remove_noise")]
