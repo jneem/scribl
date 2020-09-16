@@ -185,8 +185,7 @@ pub struct EditorState {
     pub action: CurrentAction,
     pub recording_speed: RecordingSpeed,
 
-    // TODO: there doesn't seem to be a lens(ignore) attribute?
-    #[lens(name = "ignore_undo")]
+    #[lens(ignore)]
     #[data(ignore)]
     pub undo: Arc<RefCell<UndoStack>>,
 
