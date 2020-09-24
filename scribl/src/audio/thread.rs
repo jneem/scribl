@@ -343,9 +343,12 @@ fn create_input_pipeline(
 ) -> Result<gst::Pipeline> {
     let pipeline = gst::Pipeline::new(None);
     let src = gst::ElementFactory::make("autoaudiosrc", Some("record-source"))?;
+    let resample = gst::ElementFactory::make("audioresample", Some("record-resample"))?;
+    let convert = gst::ElementFactory::make("audioconvert", Some("record-convert"))?;
+    let queue = gst::ElementFactory::make("queue", Some("record-queue"))?;
     let sink = gst::ElementFactory::make("appsink", Some("record-sink"))?;
-    pipeline.add_many(&[&src, &sink])?;
-    gst::Element::link_many(&[&src, &sink])?;
+    pipeline.add_many(&[&src, &resample, &convert, &queue, &sink])?;
+    gst::Element::link_many(&[&src, &resample, &convert, &queue, &sink])?;
 
     let sink = sink
         .dynamic_cast::<gst_app::AppSink>()
@@ -434,10 +437,12 @@ fn create_output_pipeline(rx: Receiver<OutputData>) -> Result<gst::Pipeline> {
     let src = create_appsrc(rx, "playback-source")?;
     let scale = gst::ElementFactory::make("scaletempo", Some("playback-scale"))?;
     let resample = gst::ElementFactory::make("audioresample", Some("playback-resample"))?;
+    let convert = gst::ElementFactory::make("audioconvert", Some("playback-convert"))?;
+    let queue = gst::ElementFactory::make("queue", Some("playback-queue"))?;
     let sink = gst::ElementFactory::make("autoaudiosink", Some("playback-sink"))?;
 
-    pipeline.add_many(&[&src, &scale, &resample, &sink])?;
-    gst::Element::link_many(&[&src, &scale, &resample, &sink])?;
+    pipeline.add_many(&[&src, &scale, &resample, &convert, &queue, &sink])?;
+    gst::Element::link_many(&[&src, &scale, &resample, &convert, &queue, &sink])?;
 
     Ok(pipeline)
 }
