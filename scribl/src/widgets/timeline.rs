@@ -707,17 +707,14 @@ impl Widget<EditorState> for TimelineInner {
                     let time = Time::from_micros((ev.pos.x.max(0.0) / PIXELS_PER_USEC) as i64);
                     let factor =
                         CURSOR_DRAG_SCROLL_SPEED / CURSOR_BOUNDARY_PADDING.as_micros() as f64;
-                    if time < self.visible_times.0 + CURSOR_BOUNDARY_PADDING {
-                        if self.visible_times.0 > Time::ZERO {
-                            let speed = (time - self.visible_times.0 - CURSOR_BOUNDARY_PADDING)
-                                .as_micros() as f64
-                                * factor;
-                            self.cursor_drag_scroll_speed =
-                                Some(speed.max(-CURSOR_DRAG_SCROLL_SPEED));
-                            ctx.request_anim_frame();
-                        } else {
-                            self.cursor_drag_scroll_speed = None;
-                        }
+                    if time < self.visible_times.0 + CURSOR_BOUNDARY_PADDING
+                        && self.visible_times.0 > Time::ZERO
+                    {
+                        let speed = (time - self.visible_times.0 - CURSOR_BOUNDARY_PADDING)
+                            .as_micros() as f64
+                            * factor;
+                        self.cursor_drag_scroll_speed = Some(speed.max(-CURSOR_DRAG_SCROLL_SPEED));
+                        ctx.request_anim_frame();
                     } else if time >= self.visible_times.1 - CURSOR_BOUNDARY_PADDING {
                         let speed = (time - self.visible_times.1 + CURSOR_BOUNDARY_PADDING)
                             .as_micros() as f64
