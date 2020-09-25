@@ -147,6 +147,15 @@ impl Lerp {
         &self.lerped_values
     }
 
+    /// Returns a clone of this `Lerp`, with all times shifted by `shift`.
+    pub fn shifted(&self, shift: TimeDiff) -> Lerp {
+        let lerped_values = self.lerped_values.iter().map(|&v| v + shift).collect();
+        Lerp {
+            original_values: self.original_values.clone(),
+            lerped_values,
+        }
+    }
+
     pub fn lerp(&self, t: Time) -> Option<Time> {
         use LerpResult::*;
         match lerp_interval(t, &self.original_values, &self.lerped_values) {

@@ -4,7 +4,7 @@ use druid::{Data, Rect, RenderContext};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::Arc;
 
-use crate::{span_cursor, Lerp, StrokeSeq, Time};
+use crate::{span_cursor, Lerp, StrokeSeq, Time, TimeDiff};
 
 /// Snippets are identified by unique ids.
 #[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -116,6 +116,17 @@ impl SnippetData {
         }
     }
 
+    pub fn shifted(&self, shift: TimeDiff) -> SnippetData {
+        let lerp = self.lerp.shifted(shift);
+        let times = lerp_times(&self.strokes, &lerp);
+        SnippetData {
+            strokes: Arc::clone(&self.strokes),
+            lerp: Arc::new(lerp),
+            times: Arc::new(times),
+            end: self.end.map(|x| x + shift),
+        }
+    }
+
     pub fn start_time(&self) -> Time {
         self.times[0][0]
     }
@@ -166,6 +177,11 @@ impl SnippetsData {
     pub fn with_truncated_snippet(&self, id: SnippetId, time: Time) -> SnippetsData {
         let mut snip = self.snippet(id).clone();
         snip.end = Some(time);
+        self.with_replacement_snippet(id, snip)
+    }
+
+    pub fn with_shifted_snippet(&self, id: SnippetId, shift: TimeDiff) -> SnippetsData {
+        let snip = self.snippet(id).shifted(shift);
         self.with_replacement_snippet(id, snip)
     }
 

@@ -1,7 +1,7 @@
 use druid::{Color, Selector};
 use std::path::PathBuf;
 
-use scribl_curves::{SnippetData, SnippetsData, Time};
+use scribl_curves::{SnippetData, SnippetsData, Time, TimeDiff};
 
 use crate::audio::{AudioRecordingStatus, AudioSnippetData, AudioSnippetsData};
 use crate::editor_state::MaybeSnippetId;
@@ -41,6 +41,10 @@ pub const ADD_AUDIO_SNIPPET: Selector<AudioSnippetData> = Selector::new("scribl.
 
 /// Truncates the currently selected snippet at the current time.
 pub const TRUNCATE_SNIPPET: Selector = Selector::new("scribl.truncate-snippet");
+
+/// Shifts the given snippet in time.
+pub const SHIFT_SNIPPET: Selector<(MaybeSnippetId, TimeDiff)> =
+    Selector::new("scribl.shift-snippet");
 
 /// Adds a lerp to the selected snippet, lerping the current time to the marked time.
 pub const LERP_SNIPPET: Selector = Selector::new("scribl.lerp-snippet");

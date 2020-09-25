@@ -2,8 +2,9 @@ use druid::kurbo::{BezPath, Line, Vec2};
 use druid::theme;
 use druid::widget::{Controller, Scroll};
 use druid::{
-    Affine, BoxConstraints, Color, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
-    PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetExt, WidgetPod,
+    Affine, BoxConstraints, Color, Data, Env, Event, EventCtx, KbKey, LayoutCtx, LifeCycle,
+    LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetExt,
+    WidgetPod,
 };
 use std::collections::HashMap;
 
@@ -362,6 +363,8 @@ impl TimelineInner {
                     id,
                     path: shape.to_path(LAYOUT_PARAMS.overlap),
                     hot: false,
+                    drag_start: None,
+                    drag_shift: None,
                     shape,
                     interior,
                 }),
@@ -378,6 +381,8 @@ impl TimelineInner {
                     id,
                     path: shape.to_path(LAYOUT_PARAMS.overlap),
                     hot: false,
+                    drag_start: None,
+                    drag_shift: None,
                     shape: shape.clone(),
                     interior,
                 }),
@@ -400,6 +405,10 @@ struct TimelineSnippet {
     id: Id,
     // Because a timeline snippet isn't rectangle-shaped, we do our own hot-state tracking.
     hot: bool,
+    // If they're dragging the snippet, this is the mouse position when they started.
+    drag_start: Option<Time>,
+    // If they're dragging the snippet, this is by how much they've dragged it.
+    drag_shift: Option<TimeDiff>,
     path: BezPath,
     shape: SnippetShape,
     interior: SnippetInterior,
@@ -527,18 +536,27 @@ impl Widget<EditorState> for TimelineSnippet {
         match event {
             Event::MouseDown(ev) if ev.button.is_left() && self.contains(ev.pos) => {
                 ctx.set_active(true);
+                if ev.mods.shift() {
+                    self.drag_start = Some(x_pix(ev.pos.x));
+                    ctx.request_focus();
+                }
                 ctx.set_handled();
             }
-            Event::MouseUp(ev) if ev.button.is_left() && self.contains(ev.pos) => {
+            Event::MouseUp(ev) if ev.button.is_left() => {
                 if ctx.is_active() {
                     ctx.set_active(false);
-                    if self.hot {
-                        match self.id {
-                            Id::Drawing(id) => data.selected_snippet = id.into(),
-                            Id::Audio(id) => data.selected_snippet = id.into(),
-                        }
+                    if self.hot && self.contains(ev.pos) {
+                        data.selected_snippet = self.id.to_maybe_id();
                         ctx.set_handled();
                         ctx.set_menu(crate::menus::make_menu(data));
+                    }
+                    if let Some(drag_shift) = self.drag_shift {
+                        self.drag_start = None;
+                        self.drag_shift = None;
+                        ctx.submit_command(
+                            cmd::SHIFT_SNIPPET.with((self.id.to_maybe_id(), drag_shift)),
+                        );
+                        ctx.request_paint();
                     }
                 }
             }
@@ -546,6 +564,17 @@ impl Widget<EditorState> for TimelineSnippet {
                 let new_hot = self.contains(ev.pos);
                 if self.hot != new_hot {
                     self.hot = new_hot;
+                    ctx.request_paint();
+                }
+                if let Some(drag_start) = self.drag_start {
+                    self.drag_shift = Some(x_pix(ev.pos.x.max(0.0)) - drag_start);
+                    ctx.request_paint();
+                }
+            }
+            Event::KeyUp(ev) => {
+                if ev.key == KbKey::Shift && self.drag_start.is_some() {
+                    self.drag_start = None;
+                    self.drag_shift = None;
                     ctx.request_paint();
                 }
             }
@@ -620,6 +649,16 @@ impl Widget<EditorState> for TimelineSnippet {
             }
             if self.hot {
                 ctx.stroke(&path, &SNIPPET_STROKE_COLOR, SNIPPET_STROKE_THICKNESS);
+            }
+
+            if let Some(drag_shift) = self.drag_shift {
+                ctx.paint_with_z_index(1, move |ctx| {
+                    ctx.with_save(|ctx| {
+                        ctx.transform(Affine::translate((pix_width(drag_shift), 0.0)));
+                        // TODO: paint this on top
+                        ctx.stroke(&path, &SNIPPET_STROKE_COLOR, SNIPPET_STROKE_THICKNESS);
+                    });
+                });
             }
         });
     }

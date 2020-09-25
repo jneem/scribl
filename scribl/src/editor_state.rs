@@ -105,6 +105,14 @@ impl MaybeSnippetId {
             None
         }
     }
+
+    pub fn or(&self, other: MaybeSnippetId) -> MaybeSnippetId {
+        if self.is_none() {
+            other
+        } else {
+            *self
+        }
+    }
 }
 
 impl From<SnippetId> for MaybeSnippetId {

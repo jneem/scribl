@@ -444,6 +444,25 @@ impl Editor {
                 );
             }
             true
+        } else if let Some((id, shift)) = cmd.get(cmd::SHIFT_SNIPPET) {
+            match id.or(data.selected_snippet) {
+                MaybeSnippetId::Draw(id) => {
+                    let prev_state = data.undo_state();
+                    data.snippets = data.snippets.with_shifted_snippet(id, *shift);
+                    data.push_undo_state(prev_state, "time-shift drawing");
+                    ctx.set_menu(crate::menus::make_menu(data));
+                }
+                MaybeSnippetId::Audio(id) => {
+                    let prev_state = data.undo_state();
+                    data.audio_snippets = data.audio_snippets.with_shifted_snippet(id, *shift);
+                    data.push_undo_state(prev_state, "time-shift speech");
+                    ctx.set_menu(crate::menus::make_menu(data));
+                }
+                MaybeSnippetId::None => {
+                    log::error!("can't shift: no snippet selected");
+                }
+            }
+            true
         } else if cmd.is(druid::commands::UNDO) {
             data.undo();
             ctx.set_menu(crate::menus::make_menu(data));

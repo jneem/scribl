@@ -60,6 +60,14 @@ impl AudioSnippetData {
         self.start_time() + length
     }
 
+    pub fn shifted(&self, shift: TimeDiff) -> AudioSnippetData {
+        AudioSnippetData {
+            buf: Arc::clone(&self.buf),
+            multiplier: self.multiplier,
+            start_time: self.start_time + shift,
+        }
+    }
+
     pub fn multiplier(&self) -> f32 {
         self.multiplier
     }
@@ -70,6 +78,13 @@ impl AudioSnippetsData {
         let mut ret = self.clone();
         ret.last_id += 1;
         let id = AudioSnippetId(ret.last_id);
+        ret.snippets.insert(id, snip);
+        ret
+    }
+
+    pub fn with_shifted_snippet(&self, id: AudioSnippetId, shift: TimeDiff) -> AudioSnippetsData {
+        let mut ret = self.clone();
+        let snip = ret.snippet(id).shifted(shift);
         ret.snippets.insert(id, snip);
         ret
     }
