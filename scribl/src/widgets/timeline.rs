@@ -29,6 +29,15 @@ const SNIPPET_SELECTED_STROKE_THICKNESS: f64 = 3.0;
 const SNIPPET_WAVEFORM_COLOR: Color = crate::UI_DARK_BLUE;
 
 const MIN_TIMELINE_HEIGHT: f64 = 100.0;
+
+/// We don't allow the cursor to get closer to the edge of the window than this (unless it's at the
+/// very beginning). If the cursor gets closer than this, we scroll the timeline to get it within
+/// the bounds.
+const CURSOR_BOUNDARY_PADDING: TimeDiff = TimeDiff::from_micros(1_000_000);
+/// When they drag the cursor into the boundary region, we scroll by at most this speed factor (as
+/// a multiple of real-time).
+const CURSOR_DRAG_SCROLL_SPEED: f64 = 32.0;
+
 const LAYOUT_PARAMS: crate::snippet_layout::Parameters = crate::snippet_layout::Parameters {
     thick_height: 18.0,
     thin_height: 2.0,
@@ -226,7 +235,13 @@ impl Snip {
 
 /// The main timeline widget.
 struct TimelineInner {
+    /// The range of times that are currently visible. This needs to be manually synced with the
+    /// scroll region's offset; this is handled by TimelineScrollController.
+    visible_times: (Time, Time),
     height: f64,
+    /// If the cursor is being dragged to near the edge of the timeline, this is how fast we should
+    /// scroll in response.
+    cursor_drag_scroll_speed: Option<f64>,
     children: HashMap<Id, WidgetPod<EditorState, TimelineSnippet>>,
 }
 
@@ -247,12 +262,25 @@ pub fn make_timeline() -> impl Widget<EditorState> {
 /// the cursor.
 struct TimelineScrollController;
 
-impl<W: Widget<EditorState>> Controller<EditorState, Scroll<EditorState, W>>
-    for TimelineScrollController
-{
+impl Controller<EditorState, Scroll<EditorState, TimelineInner>> for TimelineScrollController {
+    fn event(
+        &mut self,
+        child: &mut Scroll<EditorState, TimelineInner>,
+        ctx: &mut EventCtx,
+        ev: &Event,
+        data: &mut EditorState,
+        env: &Env,
+    ) {
+        child.event(ctx, ev, data, env);
+        let offset = child.offset().x;
+        child
+            .child_mut()
+            .set_visible(x_pix(offset), x_pix(offset + ctx.size().width));
+    }
+
     fn update(
         &mut self,
-        child: &mut Scroll<EditorState, W>,
+        child: &mut Scroll<EditorState, TimelineInner>,
         ctx: &mut UpdateCtx,
         old_data: &EditorState,
         data: &EditorState,
@@ -266,7 +294,7 @@ impl<W: Widget<EditorState>> Controller<EditorState, Scroll<EditorState, W>>
             let max_vis_time = x_pix(child.offset().x + size.width);
 
             // Scroll this much past the cursor, so it isn't right at the edge.
-            let padding = TimeDiff::from_micros(1_000_000).min(width_pix(size.width / 4.0));
+            let padding = CURSOR_BOUNDARY_PADDING.min(width_pix(size.width / 4.0));
 
             let delta_x = if time + padding > max_vis_time {
                 pix_width(time - max_vis_time + padding)
@@ -282,13 +310,35 @@ impl<W: Widget<EditorState>> Controller<EditorState, Scroll<EditorState, W>>
             child.scroll(Vec2 { x: delta_x, y: 0.0 }, size);
         }
         child.update(ctx, old_data, data, env);
+
+        let offset = child.offset().x;
+        child
+            .child_mut()
+            .set_visible(x_pix(offset), x_pix(offset + ctx.size().width));
+    }
+
+    fn lifecycle(
+        &mut self,
+        child: &mut Scroll<EditorState, TimelineInner>,
+        ctx: &mut LifeCycleCtx,
+        ev: &LifeCycle,
+        data: &EditorState,
+        env: &Env,
+    ) {
+        child.lifecycle(ctx, ev, data, env);
+        let offset = child.offset().x;
+        child
+            .child_mut()
+            .set_visible(x_pix(offset), x_pix(offset + ctx.size().width));
     }
 }
 
 impl Default for TimelineInner {
     fn default() -> TimelineInner {
         TimelineInner {
+            visible_times: (Time::ZERO, Time::ZERO),
             height: MIN_TIMELINE_HEIGHT,
+            cursor_drag_scroll_speed: None,
             children: HashMap::new(),
         }
     }
@@ -593,6 +643,10 @@ impl TimelineInner {
             MaybeSnippetId::Audio(id) => self.children.get(&Id::Audio(id)).map(|w| w.widget()),
         }
     }
+
+    fn set_visible(&mut self, start_time: Time, end_time: Time) {
+        self.visible_times = (start_time, end_time);
+    }
 }
 
 impl Widget<EditorState> for TimelineInner {
@@ -609,14 +663,39 @@ impl Widget<EditorState> for TimelineInner {
             Event::MouseMove(ev) => {
                 // On click-and-drag, we change the time with the drag.
                 if ctx.is_active() {
+                    // If the mouse is near the boundary, we scroll smoothly instead of snapping to
+                    // that position.
                     let time = Time::from_micros((ev.pos.x.max(0.0) / PIXELS_PER_USEC) as i64);
-                    ctx.submit_command(cmd::WARP_TIME_TO.with(time));
+                    let factor =
+                        CURSOR_DRAG_SCROLL_SPEED / CURSOR_BOUNDARY_PADDING.as_micros() as f64;
+                    if time < self.visible_times.0 + CURSOR_BOUNDARY_PADDING {
+                        if self.visible_times.0 > Time::ZERO {
+                            let speed = (time - self.visible_times.0 - CURSOR_BOUNDARY_PADDING)
+                                .as_micros() as f64
+                                * factor;
+                            self.cursor_drag_scroll_speed =
+                                Some(speed.max(-CURSOR_DRAG_SCROLL_SPEED));
+                            ctx.request_anim_frame();
+                        } else {
+                            self.cursor_drag_scroll_speed = None;
+                        }
+                    } else if time >= self.visible_times.1 - CURSOR_BOUNDARY_PADDING {
+                        let speed = (time - self.visible_times.1 + CURSOR_BOUNDARY_PADDING)
+                            .as_micros() as f64
+                            * factor;
+                        self.cursor_drag_scroll_speed = Some(speed.min(CURSOR_DRAG_SCROLL_SPEED));
+                        ctx.request_anim_frame();
+                    } else {
+                        self.cursor_drag_scroll_speed = None;
+                        ctx.submit_command(cmd::WARP_TIME_TO.with(time));
+                    }
                 }
             }
             Event::MouseUp(_) => {
                 if ctx.is_active() {
                     ctx.set_active(false);
                 }
+                self.cursor_drag_scroll_speed = None;
             }
             Event::Command(c) => {
                 let x = pix_x(data.time());
@@ -646,6 +725,18 @@ impl Widget<EditorState> for TimelineInner {
                     if let Some(id) = id {
                         data.selected_snippet = id.to_maybe_id();
                     }
+                }
+            }
+            Event::AnimFrame(ns_elapsed) => {
+                if let Some(speed) = self.cursor_drag_scroll_speed {
+                    let time = data.time()
+                        + TimeDiff::from_micros((speed * *ns_elapsed as f64 / 1000.0) as i64);
+                    // Modify the data directly instead of with a command, because the command
+                    // won't arrive until the next frame at the earliest.
+                    if data.action.is_idle() {
+                        data.warp_time_to(time);
+                    }
+                    ctx.request_anim_frame();
                 }
             }
             _ => {}
