@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::EditorState;
@@ -6,16 +7,16 @@ use druid::piet::FontFamily;
 use druid::widget::prelude::*;
 use druid::widget::{Controller, ControllerHost, LabelText};
 use druid::{
-    Color, Data, FontDescriptor, Point, Rect, Selector, SingleUse, TextLayout, TimerToken, Vec2,
-    WidgetExt, WidgetPod,
+    ArcStr, Color, Data, FontDescriptor, Point, Rect, Selector, SingleUse, TextLayout, TimerToken,
+    Vec2, WidgetExt, WidgetPod,
 };
 
 pub struct ModalHost<T, W> {
     mouse_pos: Point,
     inner: W,
     marker: std::marker::PhantomData<T>,
-    cur_tooltip: Option<(Point, String)>,
-    tooltip_layout: TextLayout,
+    cur_tooltip: Option<(Point, ArcStr)>,
+    tooltip_layout: TextLayout<ArcStr>,
     modal: Option<WidgetPod<T, Box<dyn Widget<T>>>>,
 }
 
@@ -57,7 +58,7 @@ const TEXT_TOP_GUESS_FACTOR: f64 = 0.15;
 const X_PADDING: f64 = 6.0;
 
 /// The argument is a string containing the tooltip text.
-const SHOW_TOOLTIP: Selector<String> = Selector::new("scribl.show-tooltip");
+const SHOW_TOOLTIP: Selector<ArcStr> = Selector::new("scribl.show-tooltip");
 
 impl<T: Data, W: Widget<T>> Controller<T, W> for TooltipGuest<T> {
     fn event(&mut self, child: &mut W, ctx: &mut EventCtx, ev: &Event, data: &mut T, env: &Env) {
@@ -82,7 +83,7 @@ impl<T: Data, W: Widget<T>> Controller<T, W> for TooltipGuest<T> {
                     let elapsed = Instant::now().duration_since(move_time);
                     if elapsed > TOOLTIP_DELAY_CHECK {
                         self.text.resolve(data, env);
-                        ctx.submit_command(SHOW_TOOLTIP.with(self.text.display_text().to_owned()));
+                        ctx.submit_command(SHOW_TOOLTIP.with(self.text.display_text()));
                         self.timer = TimerToken::INVALID;
                         self.last_mouse_move = None;
                     } else {
@@ -112,7 +113,7 @@ impl<W: Widget<EditorState>> ModalHost<EditorState, W> {
             inner,
             marker: std::marker::PhantomData,
             cur_tooltip: None,
-            tooltip_layout: TextLayout::new(""),
+            tooltip_layout: TextLayout::new(),
             modal: None,
         }
     }
@@ -127,7 +128,7 @@ impl<W: Widget<EditorState>> Widget<EditorState> for ModalHost<EditorState, W> {
             }
             Event::Command(c) => {
                 if let Some(string) = c.get(SHOW_TOOLTIP) {
-                    self.cur_tooltip = Some((self.mouse_pos, string.clone()));
+                    self.cur_tooltip = Some((self.mouse_pos, Arc::clone(string)));
                     ctx.request_paint();
                     ctx.set_handled();
                 } else if let Some(modal) = c.get(ModalHost::SHOW_MODAL) {
@@ -222,7 +223,7 @@ impl<W: Widget<EditorState>> Widget<EditorState> for ModalHost<EditorState, W> {
             let mut tooltip_origin = *point + TOOLTIP_OFFSET;
             self.tooltip_layout
                 .set_font(FontDescriptor::new(FontFamily::SANS_SERIF).with_size(FONT_SIZE));
-            self.tooltip_layout.set_text(string.as_str());
+            self.tooltip_layout.set_text(Arc::clone(string));
             self.tooltip_layout.set_text_color(TOOLTIP_TEXT_COLOR);
             self.tooltip_layout.rebuild_if_needed(&mut ctx.text(), env);
             let line_height = FONT_SIZE * LINE_HEIGHT_FACTOR;

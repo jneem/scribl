@@ -1,7 +1,7 @@
 use druid::piet::{FontFamily, PietText};
 use druid::widget::prelude::*;
 use druid::widget::{Align, Either, Flex, Label, ProgressBar, WidgetExt};
-use druid::{lens, Color, Data, FontDescriptor, LensExt, Point, TextLayout};
+use druid::{lens, ArcStr, Color, Data, FontDescriptor, LensExt, Point, TextLayout};
 use std::borrow::Cow;
 use std::path::Path;
 
@@ -101,7 +101,7 @@ pub fn make_status_bar() -> impl Widget<EditorState> {
 // This is basically a Label, but with a fixed width: Label calls `request_layout` every time its
 // text changes, which is too much for this purpose.
 struct Clock {
-    text: TextLayout,
+    text: TextLayout<ArcStr>,
     // Does the layout need to be changed?
     needs_update: bool,
 }
@@ -109,7 +109,7 @@ struct Clock {
 impl Clock {
     fn new() -> Clock {
         Clock {
-            text: TextLayout::new(""),
+            text: TextLayout::new(),
             needs_update: true,
         }
     }
@@ -122,7 +122,7 @@ impl Clock {
             let secs = (usecs / 1_000_000) % 60;
             let cents = (usecs / 10_000) % 100;
             self.text
-                .set_text(format!("{:02}:{:02}.{:02}", mins, secs, cents));
+                .set_text(format!("{:02}:{:02}.{:02}", mins, secs, cents).into());
             self.text
                 .set_font(FontDescriptor::new(FontFamily::MONOSPACE).with_size(font_size));
             self.text.set_text_color(Color::WHITE);
