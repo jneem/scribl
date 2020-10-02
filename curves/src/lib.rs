@@ -8,7 +8,7 @@ mod smooth;
 mod span_cursor;
 mod time;
 
-pub use crate::curve::{StrokeRef, StrokeSeq, StrokeStyle};
+pub use crate::curve::{StrokeInProgress, StrokeRef, StrokeSeq, StrokeStyle};
 pub use crate::draw_snippet::{DrawCursor, DrawSnippet, DrawSnippetId, DrawSnippets};
 pub use crate::effect::{Effect, Effects, FadeEffect};
 pub use crate::lerp::Lerp;

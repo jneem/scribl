@@ -1,9 +1,11 @@
 use druid::im::Vector;
 use druid::kurbo::{BezPath, ParamCurve, PathEl, PathSeg, Point, Shape};
 use druid::piet::{self, LineCap, LineJoin};
-use druid::{Color, Rect, RenderContext};
+use druid::{Color, Data, Rect, RenderContext};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::cell::RefCell;
+use std::sync::Arc;
 
 use crate::effect::Effects;
 use crate::time::Time;
@@ -17,6 +19,73 @@ mod serde_color {
 
     pub fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<Color, D::Error> {
         Ok(Color::from_rgba32_u32(u32::deserialize(de)?))
+    }
+}
+
+/// While drawing, this stores one continuous poly-line (from pen-down to
+/// pen-up). Because we expect lots of fast changes to this, it uses interior
+/// mutability to avoid repeated allocations.
+#[derive(Clone, Data, Debug, Default)]
+pub struct StrokeInProgress {
+    #[data(ignore)]
+    points: Arc<RefCell<Vec<Point>>>,
+
+    #[data(ignore)]
+    times: Arc<RefCell<Vec<Time>>>,
+
+    // Data comparison is done using the number of points, which grows with every modification.
+    len: usize,
+}
+
+impl StrokeInProgress {
+    /// Adds a point, drawn at the given time (which must be at or after the previous last time).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `t` is too soon.
+    pub fn add_point(&mut self, p: Point, t: Time) {
+        if let Some(last) = self.times.borrow().last() {
+            assert!(*last <= t);
+        }
+        self.points.borrow_mut().push(p);
+        self.times.borrow_mut().push(t);
+        self.len += 1;
+    }
+
+    /// Returns the last point in the stroke.
+    pub fn last_point(&self) -> Option<Point> {
+        self.points.borrow().last().copied()
+    }
+
+    /// Returns the time of the first point in the stroke.
+    pub fn start_time(&self) -> Option<Time> {
+        self.times.borrow().first().copied()
+    }
+
+    /// Renders the part of this stroke that is visible at the time `time`.
+    pub fn render(&self, ctx: &mut impl RenderContext, style: StrokeStyle, time: Time) {
+        let stroke_style = piet::StrokeStyle {
+            line_join: Some(LineJoin::Round),
+            line_cap: Some(LineCap::Round),
+            ..piet::StrokeStyle::new()
+        };
+
+        let ps = self.points.borrow();
+        if ps.is_empty() {
+            return;
+        }
+        let mut path = BezPath::new();
+        path.move_to(ps[0]);
+        for p in &ps[1..] {
+            path.line_to(*p);
+        }
+        let last = *self.times.borrow().last().unwrap();
+        let color = if let Some(fade) = style.effects.fade() {
+            style.color.with_alpha(fade.opacity_at_time(time - last))
+        } else {
+            style.color
+        };
+        ctx.stroke_styled(&path, &color, style.thickness, &stroke_style);
     }
 }
 
@@ -85,29 +154,39 @@ impl StrokeSeq {
         self.strokes.push_back(Stroke { path, times, style });
     }
 
+    /// Appends a `StrokeInProgress` to this stroke sequence.
+    ///
+    /// `distance_threshold` and `angle_threshold` are parameters that control the simplification
+    /// and smoothing that we apply to the incoming points.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `stroke` starts before the last existing stroke ends.
     pub fn append_stroke(
         &mut self,
-        points: &[Point],
-        times: &[Time],
+        stroke: StrokeInProgress,
         style: StrokeStyle,
         distance_threshold: f64,
         angle_threshold: f64,
     ) {
-        assert_eq!(points.len(), times.len());
+        let points = stroke.points.borrow();
+        let times = stroke.times.borrow();
         if points.is_empty() {
             return;
         }
+
         if !self.is_empty() {
             assert!(self.last_time() <= times[0]);
         }
 
-        let point_indices = crate::simplify::simplify(points, distance_threshold);
+        let point_indices = crate::simplify::simplify(&points[..], distance_threshold);
         let times: Vec<Time> = point_indices.iter().map(|&i| times[i]).collect();
         let points: Vec<Point> = point_indices.iter().map(|&i| points[i]).collect();
         let path = crate::smooth::smooth(&points, 0.4, angle_threshold);
         self.append_path(path, times, style);
     }
 
+    /// Returns an iterator over all the strokes in this sequence.
     pub fn strokes<'a>(&'a self) -> impl Iterator<Item = StrokeRef<'a>> + 'a {
         self.strokes.iter().map(|s| s.as_stroke_ref())
     }
@@ -123,6 +202,7 @@ impl StrokeSeq {
         })
     }
 
+    /// Renders the part of this stroke sequence that is visible at time `time`.
     pub fn render(&self, ctx: &mut impl RenderContext, time: Time) {
         let stroke_style = piet::StrokeStyle {
             line_join: Some(LineJoin::Round),
@@ -394,21 +474,17 @@ pub mod tests {
             thickness: 1.0,
             effects: Effects::default(),
         };
-        c.append_stroke(
-            &[p(0.0, 0.0), p(1.0, 1.0), p(2.0, 2.0)],
-            &[t(1), t(2), t(3)],
-            style.clone(),
-            0.01,
-            2.0,
-        );
+        let mut s = StrokeInProgress::default();
+        s.add_point(p(0.0, 0.0), t(1));
+        s.add_point(p(1.0, 1.0), t(2));
+        s.add_point(p(2.0, 2.0), t(3));
+        c.append_stroke(s, style.clone(), 0.01, 2.0);
 
-        c.append_stroke(
-            &[p(4.0, 0.0), p(1.0, 1.0), p(2.0, 2.0)],
-            &[t(6), t(7), t(8)],
-            style.clone(),
-            0.01,
-            2.0,
-        );
+        let mut s = StrokeInProgress::default();
+        s.add_point(p(4.0, 4.0), t(6));
+        s.add_point(p(1.0, 1.0), t(7));
+        s.add_point(p(2.0, 2.0), t(8));
+        c.append_stroke(s, style.clone(), 0.01, 2.0);
 
         c
     }

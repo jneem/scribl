@@ -1,13 +1,12 @@
-use druid::kurbo::BezPath;
-use druid::{Data, Lens, Point, RenderContext};
+use druid::{Data, Lens, Point};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
 use scribl_curves::{
-    DrawSnippet, DrawSnippetId, DrawSnippets, Effect, Effects, FadeEffect, StrokeSeq, StrokeStyle,
-    Time, TimeDiff,
+    DrawSnippet, DrawSnippetId, DrawSnippets, Effect, Effects, FadeEffect, StrokeInProgress,
+    StrokeSeq, StrokeStyle, Time, TimeDiff,
 };
 
 use crate::audio::{TalkSnippetId, TalkSnippets};
@@ -19,63 +18,6 @@ use crate::widgets::ToggleButtonState;
 
 /// How far are they allowed to zoom in?
 pub const MAX_ZOOM: f64 = 8.0;
-
-/// While drawing, this stores one continuous poly-line (from pen-down to
-/// pen-up). Because we expect lots of fast changes to this, it uses interior
-/// mutability to avoid repeated allocations.
-#[derive(Clone, Data, Debug, Default)]
-pub struct StrokeInProgress {
-    #[data(ignore)]
-    points: Arc<RefCell<Vec<Point>>>,
-
-    #[data(ignore)]
-    times: Arc<RefCell<Vec<Time>>>,
-
-    // Data comparison is done using the number of points, which grows with every modification.
-    len: usize,
-}
-
-impl StrokeInProgress {
-    pub fn add_point(&mut self, p: Point, t: Time) {
-        self.points.borrow_mut().push(p);
-        self.times.borrow_mut().push(t);
-        self.len += 1;
-    }
-
-    pub fn last_point(&self) -> Option<Point> {
-        self.points.borrow().last().copied()
-    }
-
-    pub fn start_time(&self) -> Option<Time> {
-        self.times.borrow().first().copied()
-    }
-
-    pub fn render(&self, ctx: &mut impl RenderContext, style: StrokeStyle, time: Time) {
-        use druid::piet::{self, LineCap, LineJoin};
-        let stroke_style = piet::StrokeStyle {
-            line_join: Some(LineJoin::Round),
-            line_cap: Some(LineCap::Round),
-            ..piet::StrokeStyle::new()
-        };
-
-        let ps = self.points.borrow();
-        if ps.is_empty() {
-            return;
-        }
-        let mut path = BezPath::new();
-        path.move_to(ps[0]);
-        for p in &ps[1..] {
-            path.line_to(*p);
-        }
-        let last = *self.times.borrow().last().unwrap();
-        let color = if let Some(fade) = style.effects.fade() {
-            style.color.with_alpha(fade.opacity_at_time(time - last))
-        } else {
-            style.color
-        };
-        ctx.stroke_styled(&path, &color, style.thickness, &stroke_style);
-    }
-}
 
 impl From<DrawSnippetId> for SnippetId {
     fn from(id: DrawSnippetId) -> SnippetId {
@@ -437,16 +379,8 @@ impl EditorState {
             // Note that cloning and appending to a StrokeSeq is cheap, because it uses im::Vector
             // internally.
             let mut seq = rec_state.new_stroke_seq.as_ref().clone();
-            if !stroke.points.borrow().is_empty() {
-                seq.append_stroke(
-                    &stroke.points.borrow(),
-                    &stroke.times.borrow(),
-                    style,
-                    0.0005,
-                    std::f64::consts::PI / 4.0,
-                );
-                rec_state.new_stroke_seq = Arc::new(seq);
-            }
+            seq.append_stroke(stroke, style, 0.0005, std::f64::consts::PI / 4.0);
+            rec_state.new_stroke_seq = Arc::new(seq);
 
             self.push_transient_undo_state(prev_state.with_time(start_time), "add stroke");
         } else {
