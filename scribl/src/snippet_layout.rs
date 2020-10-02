@@ -8,9 +8,9 @@ use druid::kurbo::{BezPath, Point, Rect, Vec2};
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use scribl_curves::{SnippetData, SnippetId, Time};
+use scribl_curves::{DrawSnippet, DrawSnippetId, Time};
 
-use crate::audio::{AudioSnippetData, AudioSnippetId};
+use crate::audio::{TalkSnippet, TalkSnippetId};
 
 /// An element of the skyline. We don't store the beginning -- it's the end of the previous
 /// building.
@@ -497,7 +497,7 @@ pub struct Parameters {
 }
 
 /// The result of laying out the snippets. The type parameter `T` is a snippet id (probably
-/// `SnippetId` or `AudioSnippetId`).
+/// `DrawSnippetId` or `TalkSnippetId`).
 pub struct Layout<T> {
     /// A map from the snippet's id to its shape.
     pub positions: HashMap<T, SnippetShape>,
@@ -517,8 +517,8 @@ pub struct SnippetBounds<T> {
     id: T,
 }
 
-impl From<(SnippetId, &SnippetData)> for SnippetBounds<SnippetId> {
-    fn from(data: (SnippetId, &SnippetData)) -> SnippetBounds<SnippetId> {
+impl From<(DrawSnippetId, &DrawSnippet)> for SnippetBounds<DrawSnippetId> {
+    fn from(data: (DrawSnippetId, &DrawSnippet)) -> SnippetBounds<DrawSnippetId> {
         let last_draw = data.1.last_draw_time();
         let thin = if let Some(end) = data.1.end_time() {
             if end <= last_draw {
@@ -538,8 +538,8 @@ impl From<(SnippetId, &SnippetData)> for SnippetBounds<SnippetId> {
     }
 }
 
-impl From<(AudioSnippetId, &AudioSnippetData)> for SnippetBounds<AudioSnippetId> {
-    fn from(data: (AudioSnippetId, &AudioSnippetData)) -> SnippetBounds<AudioSnippetId> {
+impl From<(TalkSnippetId, &TalkSnippet)> for SnippetBounds<TalkSnippetId> {
+    fn from(data: (TalkSnippetId, &TalkSnippet)) -> SnippetBounds<TalkSnippetId> {
         SnippetBounds {
             start: data.1.start_time(),
             thin: None,

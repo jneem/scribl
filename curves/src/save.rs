@@ -4,7 +4,7 @@ use druid::Point;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
-use crate::{SnippetId, StrokeStyle, Time};
+use crate::{DrawSnippetId, StrokeStyle, Time};
 
 /// This module implements serialization and deserialization for version 0 of our save file format.
 /// We probably don't actually need to support reading v0 files (it was around the 0.1.0 release,
@@ -29,33 +29,33 @@ pub mod v0 {
     }
 
     #[derive(Deserialize)]
-    pub struct SnippetData {
+    pub struct DrawSnippet {
         curve: StrokeSeq,
         lerp: Lerp,
         end: Option<Time>,
     }
 
-    impl From<SnippetData> for crate::SnippetData {
-        fn from(data: SnippetData) -> crate::SnippetData {
-            crate::SnippetData::new_complete(data.curve.into(), data.lerp.into(), data.end)
+    impl From<DrawSnippet> for crate::DrawSnippet {
+        fn from(data: DrawSnippet) -> crate::DrawSnippet {
+            crate::DrawSnippet::new_complete(data.curve.into(), data.lerp.into(), data.end)
         }
     }
 
     #[derive(Deserialize)]
     #[serde(transparent)]
-    pub struct SnippetsData {
-        snippets: BTreeMap<SnippetId, SnippetData>,
+    pub struct DrawSnippets {
+        snippets: BTreeMap<DrawSnippetId, DrawSnippet>,
     }
 
-    impl From<SnippetsData> for crate::SnippetsData {
-        fn from(data: SnippetsData) -> crate::SnippetsData {
-            let max_id = data.snippets.keys().max().unwrap_or(&SnippetId(0)).0;
-            let snippets: OrdMap<SnippetId, crate::SnippetData> = data
+    impl From<DrawSnippets> for crate::DrawSnippets {
+        fn from(data: DrawSnippets) -> crate::DrawSnippets {
+            let max_id = data.snippets.keys().max().unwrap_or(&DrawSnippetId(0)).0;
+            let snippets: OrdMap<DrawSnippetId, crate::DrawSnippet> = data
                 .snippets
                 .into_iter()
-                .map(|(id, snip)| (id, Into::<crate::SnippetData>::into(snip)))
+                .map(|(id, snip)| (id, Into::<crate::DrawSnippet>::into(snip)))
                 .collect();
-            crate::SnippetsData {
+            crate::DrawSnippets {
                 last_id: max_id,
                 snippets,
             }

@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::path::Path;
 
-use scribl_curves::SnippetsData;
+use scribl_curves::DrawSnippets;
 
-use crate::audio::AudioSnippetsData;
+use crate::audio::TalkSnippets;
 use crate::EditorState;
 
 /// This is the data that we put into the saved files.
@@ -18,8 +18,8 @@ pub struct SaveFileData {
     /// The current version is 1.
     pub version: u8,
 
-    pub snippets: SnippetsData,
-    pub audio_snippets: AudioSnippetsData,
+    pub snippets: DrawSnippets,
+    pub audio_snippets: TalkSnippets,
 
     /// The aspect ratio of the animation. Currently this is fixed at 4:3, but eventually we'll
     /// want to support other values, so let's put it in the save file format.
@@ -34,8 +34,8 @@ pub mod v0 {
     #[derive(serde::Deserialize)]
     pub struct SaveFileData {
         pub version: u8,
-        pub snippets: scribl_curves::save::v0::SnippetsData,
-        pub audio_snippets: crate::audio::AudioSnippetsData,
+        pub snippets: scribl_curves::save::v0::DrawSnippets,
+        pub audio_snippets: crate::audio::TalkSnippets,
     }
 
     impl From<SaveFileData> for super::SaveFileData {

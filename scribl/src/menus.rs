@@ -3,7 +3,7 @@ use druid::platform_menus;
 use druid::{FileDialogOptions, FileSpec, KbKey, LocalizedString, MenuDesc, MenuItem, SysMods};
 
 use crate::cmd;
-use crate::editor_state::{CurrentAction, MaybeSnippetId};
+use crate::editor_state::CurrentAction;
 use crate::widgets::ToggleButtonState;
 
 const SCRIBL_FILE_TYPE: FileSpec = FileSpec::new("Scribl animation (.scb)", &["scb"]);
@@ -160,7 +160,7 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
 
     let delete = MenuItem::new(
         LocalizedString::new("scribl-menu-edit-delete").with_placeholder("Delete selected"),
-        cmd::DELETE_SNIPPET.with(MaybeSnippetId::None),
+        cmd::DELETE_SNIPPET,
     )
     .hotkey(SysMods::None, KbKey::Delete)
     .disabled_if(|| data.selected_snippet.is_none());

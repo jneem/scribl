@@ -4,7 +4,7 @@ use druid::{
     PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
 };
 
-use scribl_curves::{SnippetsCursor, Time};
+use scribl_curves::{DrawCursor, Time};
 
 use crate::cursor::CursorCache;
 use crate::editor_state::EditorState;
@@ -20,7 +20,7 @@ const PAPER_COLOR: Color = Color::rgb8(0xff, 0xff, 0xff);
 
 pub struct DrawingPane {
     paper_rect: Rect,
-    cursor: SnippetsCursor,
+    cursor: DrawCursor,
     /// Which point of the image should be visible at the top-left of the region?
     /// (This is used to derive `paper_rect`, which is then the authoritative source for answering
     /// this question, because it might contain some adjustments due to aspect ratio).
@@ -82,7 +82,7 @@ impl Default for DrawingPane {
     fn default() -> DrawingPane {
         DrawingPane {
             paper_rect: Rect::ZERO,
-            cursor: SnippetsCursor::empty(Time::ZERO),
+            cursor: DrawCursor::empty(Time::ZERO),
             offset: Vec2::ZERO,
             last_mouse_pos: Point::ZERO,
             // TODO: detect the default cursor size somehow

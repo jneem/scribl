@@ -16,7 +16,7 @@ use super::SAMPLE_RATE;
 // stable.
 #[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct AudioSnippetId(u64);
+pub struct TalkSnippetId(u64);
 
 /// A buffer of audio data, starting at a particular time.
 ///
@@ -24,23 +24,23 @@ pub struct AudioSnippetId(u64);
 // This is serialized as part of saving files, so its serialization format needs to remain
 // stable.
 #[derive(Deserialize, Serialize, Clone, Data, PartialEq)]
-pub struct AudioSnippetData {
+pub struct TalkSnippet {
     buf: Arc<Vec<i16>>,
     multiplier: f32,
     start_time: Time,
 }
 
-/// A collection of [`AudioSnippetData`](struct.AudioSnippetData.html), each one
-/// identified by an [`AudioSnippetId`](struct.AudioSnippetId.html).
+/// A collection of [`TalkSnippet`](struct.TalkSnippet.html), each one
+/// identified by an [`TalkSnippetId`](struct.TalkSnippetId.html).
 #[derive(Clone, Data, Default, PartialEq)]
-pub struct AudioSnippetsData {
+pub struct TalkSnippets {
     last_id: u64,
-    snippets: OrdMap<AudioSnippetId, AudioSnippetData>,
+    snippets: OrdMap<TalkSnippetId, TalkSnippet>,
 }
 
-impl AudioSnippetData {
-    pub fn new(buf: Vec<i16>, start_time: Time, multiplier: f32) -> AudioSnippetData {
-        AudioSnippetData {
+impl TalkSnippet {
+    pub fn new(buf: Vec<i16>, start_time: Time, multiplier: f32) -> TalkSnippet {
+        TalkSnippet {
             buf: Arc::new(buf),
             multiplier,
             start_time,
@@ -60,8 +60,8 @@ impl AudioSnippetData {
         self.start_time() + length
     }
 
-    pub fn shifted(&self, shift: TimeDiff) -> AudioSnippetData {
-        AudioSnippetData {
+    pub fn shifted(&self, shift: TimeDiff) -> TalkSnippet {
+        TalkSnippet {
             buf: Arc::clone(&self.buf),
             multiplier: self.multiplier,
             start_time: self.start_time + shift,
@@ -73,33 +73,33 @@ impl AudioSnippetData {
     }
 }
 
-impl AudioSnippetsData {
-    pub fn with_new_snippet(&self, snip: AudioSnippetData) -> AudioSnippetsData {
+impl TalkSnippets {
+    pub fn with_new_snippet(&self, snip: TalkSnippet) -> TalkSnippets {
         let mut ret = self.clone();
         ret.last_id += 1;
-        let id = AudioSnippetId(ret.last_id);
+        let id = TalkSnippetId(ret.last_id);
         ret.snippets.insert(id, snip);
         ret
     }
 
-    pub fn with_shifted_snippet(&self, id: AudioSnippetId, shift: TimeDiff) -> AudioSnippetsData {
+    pub fn with_shifted_snippet(&self, id: TalkSnippetId, shift: TimeDiff) -> TalkSnippets {
         let mut ret = self.clone();
         let snip = ret.snippet(id).shifted(shift);
         ret.snippets.insert(id, snip);
         ret
     }
 
-    pub fn without_snippet(&self, id: AudioSnippetId) -> AudioSnippetsData {
+    pub fn without_snippet(&self, id: TalkSnippetId) -> TalkSnippets {
         let mut ret = self.clone();
         ret.snippets.remove(&id);
         ret
     }
 
-    pub fn snippet(&self, id: AudioSnippetId) -> &AudioSnippetData {
+    pub fn snippet(&self, id: TalkSnippetId) -> &TalkSnippet {
         self.snippets.get(&id).unwrap()
     }
 
-    pub fn snippets(&self) -> impl Iterator<Item = (AudioSnippetId, &AudioSnippetData)> {
+    pub fn snippets(&self) -> impl Iterator<Item = (TalkSnippetId, &TalkSnippet)> {
         self.snippets.iter().map(|(k, v)| (*k, v))
     }
 
@@ -114,7 +114,7 @@ impl AudioSnippetsData {
     /// Fills the provided buffer with samples from the cursor, and advance the cursor.
     pub fn mix_to<B: DerefMut<Target = [i16]>>(
         &self,
-        cursor: &Cursor<usize, AudioSnippetId>,
+        cursor: &Cursor<usize, TalkSnippetId>,
         mut buf: B,
     ) {
         for sp in cursor.active_spans() {
@@ -133,7 +133,7 @@ impl AudioSnippetsData {
         }
     }
 
-    pub fn snippet_spans<'a>(&'a self) -> impl Iterator<Item = Span<usize, AudioSnippetId>> + 'a {
+    pub fn snippet_spans<'a>(&'a self) -> impl Iterator<Item = Span<usize, TalkSnippetId>> + 'a {
         self.snippets.iter().map(|(&id, snip)| {
             let start = snip.start_time().as_audio_idx(SAMPLE_RATE);
             let end = start + snip.buf.len();
@@ -150,19 +150,19 @@ impl AudioSnippetsData {
 // stable, because it is used for file saving.
 //
 // Specifically, we serialize the audio state as a map id -> snippet data. Any other fields
-// on `AudioSnippetsData` are ignored, and must be reconstituted from the snippet map on
+// on `TalkSnippets` are ignored, and must be reconstituted from the snippet map on
 // deserialization.
-impl Serialize for AudioSnippetsData {
+impl Serialize for TalkSnippets {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         self.snippets.serialize(ser)
     }
 }
 
-impl<'de> Deserialize<'de> for AudioSnippetsData {
-    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<AudioSnippetsData, D::Error> {
-        let snips: OrdMap<AudioSnippetId, AudioSnippetData> = Deserialize::deserialize(de)?;
-        let max_id = snips.keys().max().unwrap_or(&AudioSnippetId(0)).0;
-        Ok(AudioSnippetsData {
+impl<'de> Deserialize<'de> for TalkSnippets {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<TalkSnippets, D::Error> {
+        let snips: OrdMap<TalkSnippetId, TalkSnippet> = Deserialize::deserialize(de)?;
+        let max_id = snips.keys().max().unwrap_or(&TalkSnippetId(0)).0;
+        Ok(TalkSnippets {
             snippets: snips,
             last_id: max_id,
         })
@@ -176,11 +176,11 @@ mod tests {
     macro_rules! snips {
         ($($time:expr => $buf:expr),*) => {
             {
-                let mut ret = AudioSnippetsData::default();
+                let mut ret = TalkSnippets::default();
                 $(
                     let buf: &[i16] = $buf;
                     let time = Time::from_audio_idx($time, SAMPLE_RATE);
-                    ret = ret.with_new_snippet(AudioSnippetData::new(buf.to_owned(), time, 1.0));
+                    ret = ret.with_new_snippet(TalkSnippet::new(buf.to_owned(), time, 1.0));
                 )*
 
                 ret

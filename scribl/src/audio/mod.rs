@@ -11,7 +11,7 @@ mod thread;
 
 pub use appsrc::create_appsrc;
 pub use handle::AudioHandle;
-pub use snippets::{AudioSnippetData, AudioSnippetId, AudioSnippetsData};
+pub use snippets::{TalkSnippet, TalkSnippetId, TalkSnippets};
 
 /// We do all of our internal audio processing at 48kHz.
 pub const SAMPLE_RATE: u32 = 48000;
@@ -20,7 +20,7 @@ pub const SAMPLE_RATE: u32 = 48000;
 #[derive(Clone)]
 pub struct OutputData {
     /// The collection of audio snippets. They will be mixed into the final audio output.
-    pub snips: AudioSnippetsData,
+    pub snips: TalkSnippets,
     /// The time at which to start playing.
     pub start_time: Time,
     /// The velocity at which to play back the audio. (1.0 is normal, forwards, playback)
@@ -49,7 +49,7 @@ pub struct AudioRecordingStatus {
 impl OutputData {
     fn new() -> OutputData {
         OutputData {
-            snips: AudioSnippetsData::default(),
+            snips: TalkSnippets::default(),
             start_time: Time::ZERO,
             velocity: 1.0,
         }

@@ -8,11 +8,11 @@ use druid::{
 };
 use std::collections::HashMap;
 
-use scribl_curves::{SnippetData, SnippetId, SnippetsData, Time, TimeDiff};
+use scribl_curves::{DrawSnippet, DrawSnippets, Time, TimeDiff};
 
-use crate::audio::{AudioSnippetData, AudioSnippetId, AudioSnippetsData};
+use crate::audio::{TalkSnippet, TalkSnippets};
 use crate::cmd;
-use crate::editor_state::{EditorState, MaybeSnippetId};
+use crate::editor_state::{EditorState, SnippetId};
 use crate::snippet_layout::{self, SnippetShape};
 
 const SNIPPET_HEIGHT: f64 = 20.0;
@@ -42,9 +42,9 @@ const CURSOR_DRAG_SCROLL_SPEED: f64 = 32.0;
 const LAYOUT_PARAMS: crate::snippet_layout::Parameters = crate::snippet_layout::Parameters {
     thick_height: 18.0,
     thin_height: 2.0,
-    h_padding: 5.0,
+    h_padding: 2.0,
     v_padding: 2.0,
-    min_width: 20.0,
+    min_width: 10.0,
     overlap: 5.0,
     end_x: 3_600_000_000.0 * PIXELS_PER_USEC,
     pixels_per_usec: PIXELS_PER_USEC,
@@ -72,23 +72,6 @@ fn x_pix(p: f64) -> Time {
     Time::from_micros((p / PIXELS_PER_USEC) as i64)
 }
 
-/// The id of a snippet (either a drawing snippet or an audio snippet).
-// TODO: do we need both this and MaybeSnippetId?
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-enum Id {
-    Drawing(SnippetId),
-    Audio(AudioSnippetId),
-}
-
-impl Id {
-    fn to_maybe_id(&self) -> MaybeSnippetId {
-        match self {
-            Id::Drawing(id) => MaybeSnippetId::Draw(*id),
-            Id::Audio(id) => MaybeSnippetId::Audio(*id),
-        }
-    }
-}
-
 /// The cached "waveform" of an audio snippet.
 struct AudioWaveform {
     // The shape of the waveform.
@@ -108,12 +91,12 @@ enum SnippetInterior {
 /// The data of a snippet (either a drawing snippet or an audio snippet).
 #[derive(Clone, Data)]
 enum Snip {
-    Drawing(SnippetData),
-    Audio(AudioSnippetData),
+    Drawing(DrawSnippet),
+    Audio(TalkSnippet),
 }
 
 impl AudioWaveform {
-    fn new(data: AudioSnippetData, shape: &crate::snippet_layout::SnippetShape) -> AudioWaveform {
+    fn new(data: TalkSnippet, shape: &crate::snippet_layout::SnippetShape) -> AudioWaveform {
         if shape.rects.is_empty() {
             return AudioWaveform {
                 wave: BezPath::new(),
@@ -174,7 +157,7 @@ impl AudioWaveform {
 }
 
 impl DrawingWaveform {
-    fn new(data: &SnippetData) -> DrawingWaveform {
+    fn new(data: &DrawSnippet) -> DrawingWaveform {
         let mut strokes = Vec::new();
         let mut last_color: Option<Color> = None;
         for stroke in data.strokes() {
@@ -243,7 +226,7 @@ struct TimelineInner {
     /// If the cursor is being dragged to near the edge of the timeline, this is how fast we should
     /// scroll in response.
     cursor_drag_scroll_speed: Option<f64>,
-    children: HashMap<Id, WidgetPod<EditorState, TimelineSnippet>>,
+    children: HashMap<SnippetId, WidgetPod<EditorState, TimelineSnippet>>,
 }
 
 pub fn make_timeline() -> impl Widget<EditorState> {
@@ -347,7 +330,7 @@ impl Default for TimelineInner {
 
 impl TimelineInner {
     // Recreates the child widgets, and organizes them into rows so that they don't overlap.
-    fn recreate_children(&mut self, snippets: &SnippetsData, audio: &AudioSnippetsData) {
+    fn recreate_children(&mut self, snippets: &DrawSnippets, audio: &TalkSnippets) {
         let draw_shapes = snippet_layout::layout(snippets.snippets(), &LAYOUT_PARAMS);
         let audio_shapes = snippet_layout::layout(audio.snippets(), &LAYOUT_PARAMS);
         self.height = (draw_shapes.max_y + audio_shapes.max_y).max(MIN_TIMELINE_HEIGHT);
@@ -355,7 +338,7 @@ impl TimelineInner {
         self.children.clear();
         for (id, shape) in draw_shapes.positions {
             let snip = snippets.snippet(id);
-            let id = Id::Drawing(id);
+            let id = SnippetId::Draw(id);
             let interior = SnippetInterior::Drawing(DrawingWaveform::new(&snip));
             self.children.insert(
                 id,
@@ -373,7 +356,7 @@ impl TimelineInner {
         for (id, mut shape) in audio_shapes.positions {
             shape.reflect_y(self.height);
             let audio_data = audio.snippet(id);
-            let id = Id::Audio(id);
+            let id = SnippetId::Talk(id);
             let interior = SnippetInterior::Audio(AudioWaveform::new(audio_data.clone(), &shape));
             self.children.insert(
                 id,
@@ -402,7 +385,7 @@ impl TimelineInner {
 /// A widget representing a single snippet (audio or drawing) in the timeline.
 struct TimelineSnippet {
     // The id of the snippet that this widget represents.
-    id: Id,
+    id: SnippetId,
     // Because a timeline snippet isn't rectangle-shaped, we do our own hot-state tracking.
     hot: bool,
     // If they're dragging the snippet, this is the mouse position when they started.
@@ -417,8 +400,8 @@ struct TimelineSnippet {
 impl TimelineSnippet {
     fn snip(&self, data: &EditorState) -> Snip {
         match self.id {
-            Id::Drawing(id) => Snip::Drawing(data.snippets.snippet(id).clone()),
-            Id::Audio(id) => Snip::Audio(data.audio_snippets.snippet(id).clone()),
+            SnippetId::Draw(id) => Snip::Drawing(data.snippets.snippet(id).clone()),
+            SnippetId::Talk(id) => Snip::Audio(data.audio_snippets.snippet(id).clone()),
         }
     }
 
@@ -433,9 +416,9 @@ impl TimelineSnippet {
 
     fn fill_color(&self, data: &EditorState) -> Option<Color> {
         match self.id {
-            Id::Drawing(_) => None,
-            Id::Audio(id) => {
-                if data.selected_snippet == id.into() {
+            SnippetId::Draw(_) => None,
+            SnippetId::Talk(_) => {
+                if data.selected_snippet == Some(self.id) {
                     Some(AUDIO_SNIPPET_SELECTED_COLOR)
                 } else {
                     Some(AUDIO_SNIPPET_COLOR)
@@ -546,16 +529,14 @@ impl Widget<EditorState> for TimelineSnippet {
                 if ctx.is_active() {
                     ctx.set_active(false);
                     if self.hot && self.contains(ev.pos) {
-                        data.selected_snippet = self.id.to_maybe_id();
+                        data.selected_snippet = Some(self.id);
                         ctx.set_handled();
                         ctx.set_menu(crate::menus::make_menu(data));
                     }
                     if let Some(drag_shift) = self.drag_shift {
                         self.drag_start = None;
                         self.drag_shift = None;
-                        ctx.submit_command(
-                            cmd::SHIFT_SNIPPET.with((self.id.to_maybe_id(), drag_shift)),
-                        );
+                        ctx.submit_command(cmd::SHIFT_SNIPPET.with((self.id, drag_shift)));
                         ctx.request_paint();
                     }
                 }
@@ -624,7 +605,7 @@ impl Widget<EditorState> for TimelineSnippet {
     fn paint(&mut self, ctx: &mut PaintCtx, data: &EditorState, _env: &Env) {
         let snippet = self.snip(data);
         let height = ctx.size().height;
-        let is_selected = data.selected_snippet == self.id.to_maybe_id();
+        let is_selected = data.selected_snippet == Some(self.id);
         let path = self.path().clone();
         let fill_color = self.fill_color(data);
 
@@ -655,7 +636,6 @@ impl Widget<EditorState> for TimelineSnippet {
                 ctx.paint_with_z_index(1, move |ctx| {
                     ctx.with_save(|ctx| {
                         ctx.transform(Affine::translate((pix_width(drag_shift), 0.0)));
-                        // TODO: paint this on top
                         ctx.stroke(&path, &SNIPPET_STROKE_COLOR, SNIPPET_STROKE_THICKNESS);
                     });
                 });
@@ -665,7 +645,7 @@ impl Widget<EditorState> for TimelineSnippet {
 }
 
 impl TimelineInner {
-    fn y_intervals<'a>(&'a self, x: f64) -> impl Iterator<Item = (Id, f64, f64)> + 'a {
+    fn y_intervals<'a>(&'a self, x: f64) -> impl Iterator<Item = (SnippetId, f64, f64)> + 'a {
         self.children.iter().filter_map(move |(&id, snip)| {
             if let Some((y0, y1)) = snip.widget().y_interval(x) {
                 Some((id, y0, y1))
@@ -676,11 +656,8 @@ impl TimelineInner {
     }
 
     fn selected<'a>(&'a self, data: &EditorState) -> Option<&'a TimelineSnippet> {
-        match data.selected_snippet {
-            MaybeSnippetId::None => None,
-            MaybeSnippetId::Draw(id) => self.children.get(&Id::Drawing(id)).map(|w| w.widget()),
-            MaybeSnippetId::Audio(id) => self.children.get(&Id::Audio(id)).map(|w| w.widget()),
-        }
+        data.selected_snippet
+            .and_then(|id| self.children.get(&id).map(|w| w.widget()))
     }
 
     fn set_visible(&mut self, start_time: Time, end_time: Time) {
@@ -746,8 +723,8 @@ impl Widget<EditorState> for TimelineInner {
                         .filter(|&(_id, _y0, y1)| y1 <= y)
                         .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap())
                         .map(|a| a.0);
-                    if let Some(id) = id {
-                        data.selected_snippet = id.to_maybe_id();
+                    if id.is_some() {
+                        data.selected_snippet = id;
                     }
                 } else if c.is(cmd::SELECT_SNIPPET_BELOW) {
                     ctx.set_handled();
@@ -758,8 +735,8 @@ impl Widget<EditorState> for TimelineInner {
                         .filter(|&(_id, y0, _y1)| y0 >= y)
                         .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap())
                         .map(|a| a.0);
-                    if let Some(id) = id {
-                        data.selected_snippet = id.to_maybe_id();
+                    if id.is_some() {
+                        data.selected_snippet = id;
                     }
                 }
             }

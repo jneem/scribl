@@ -9,7 +9,7 @@ use crate::{span_cursor, Lerp, StrokeSeq, Time, TimeDiff};
 /// Snippets are identified by unique ids.
 #[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct SnippetId(pub(crate) u64);
+pub struct DrawSnippetId(pub(crate) u64);
 
 /// A snippet is a sequence of strokes, possibly modified by a time distortion.
 ///
@@ -19,7 +19,7 @@ pub struct SnippetId(pub(crate) u64);
 /// [`Lerp`]: struct.Lerp.html
 /// [`druid::Data`]: ../druid/trait.Data.html
 #[derive(Data, Debug, Clone)]
-pub struct SnippetData {
+pub struct DrawSnippet {
     pub(crate) strokes: Arc<StrokeSeq>,
     /// The time-distortion applied to the strokes.
     pub(crate) lerp: Arc<Lerp>,
@@ -32,20 +32,20 @@ pub struct SnippetData {
     pub(crate) end: Option<Time>,
 }
 
-/// A collection of `SnippetData`s, which can be accessed using their [id].
+/// A collection of `DrawSnippet`s, which can be accessed using their [id].
 ///
 /// This struct implements [`druid::Data`]. In particular, it is cheap to clone: most of the actual
 /// data lives behind shared references.
 ///
-/// [id]: struct.SnippetId.html
+/// [id]: struct.DrawSnippetId.html
 /// [`druid::Data`]: ../druid/trait.Data.html
 #[derive(Clone, Data, Default)]
-pub struct SnippetsData {
+pub struct DrawSnippets {
     pub(crate) last_id: u64,
-    pub(crate) snippets: OrdMap<SnippetId, SnippetData>,
+    pub(crate) snippets: OrdMap<DrawSnippetId, DrawSnippet>,
 }
 
-pub type SnippetsCursor = span_cursor::Cursor<Time, SnippetId>;
+pub type DrawCursor = span_cursor::Cursor<Time, DrawSnippetId>;
 
 fn lerp_times(input: &StrokeSeq, lerp: &Lerp) -> Vec<Vec<Time>> {
     input
@@ -54,8 +54,8 @@ fn lerp_times(input: &StrokeSeq, lerp: &Lerp) -> Vec<Vec<Time>> {
         .collect()
 }
 
-impl SnippetData {
-    pub fn new(strokes: StrokeSeq) -> SnippetData {
+impl DrawSnippet {
+    pub fn new(strokes: StrokeSeq) -> DrawSnippet {
         if strokes.is_empty() {
             panic!("tried to create a snippet from an empty stroke sequence");
         }
@@ -63,7 +63,7 @@ impl SnippetData {
         let end = strokes.last_time();
         let lerp = Lerp::identity(start, end);
         let times = lerp_times(&strokes, &lerp);
-        SnippetData {
+        DrawSnippet {
             strokes: Arc::new(strokes),
             lerp: Arc::new(lerp),
             times: Arc::new(times),
@@ -71,9 +71,9 @@ impl SnippetData {
         }
     }
 
-    pub(crate) fn new_complete(strokes: StrokeSeq, lerp: Lerp, end: Option<Time>) -> SnippetData {
+    pub(crate) fn new_complete(strokes: StrokeSeq, lerp: Lerp, end: Option<Time>) -> DrawSnippet {
         let times = lerp_times(&strokes, &lerp);
-        SnippetData {
+        DrawSnippet {
             strokes: Arc::new(strokes),
             lerp: Arc::new(lerp),
             times: Arc::new(times),
@@ -91,11 +91,11 @@ impl SnippetData {
         self.end
     }
 
-    pub fn with_new_lerp(&self, lerp_from: Time, lerp_to: Time) -> SnippetData {
+    pub fn with_new_lerp(&self, lerp_from: Time, lerp_to: Time) -> DrawSnippet {
         let mut lerp = (*self.lerp).clone();
         lerp.add_lerp(lerp_from, lerp_to);
         let times = lerp_times(&self.strokes, &lerp);
-        SnippetData {
+        DrawSnippet {
             strokes: Arc::clone(&self.strokes),
             lerp: Arc::new(lerp),
             times: Arc::new(times),
@@ -116,10 +116,10 @@ impl SnippetData {
         }
     }
 
-    pub fn shifted(&self, shift: TimeDiff) -> SnippetData {
+    pub fn shifted(&self, shift: TimeDiff) -> DrawSnippet {
         let lerp = self.lerp.shifted(shift);
         let times = lerp_times(&self.strokes, &lerp);
-        SnippetData {
+        DrawSnippet {
             strokes: Arc::clone(&self.strokes),
             lerp: Arc::new(lerp),
             times: Arc::new(times),
@@ -145,23 +145,23 @@ impl SnippetData {
     }
 }
 
-impl SnippetsData {
-    pub fn with_new_snippet(&self, snip: SnippetData) -> (SnippetsData, SnippetId) {
+impl DrawSnippets {
+    pub fn with_new_snippet(&self, snip: DrawSnippet) -> (DrawSnippets, DrawSnippetId) {
         let mut ret = self.clone();
         ret.last_id += 1;
-        let id = SnippetId(ret.last_id);
+        let id = DrawSnippetId(ret.last_id);
         ret.snippets.insert(id, snip);
         (ret, id)
     }
 
-    pub fn with_replacement_snippet(&self, id: SnippetId, new: SnippetData) -> SnippetsData {
+    pub fn with_replacement_snippet(&self, id: DrawSnippetId, new: DrawSnippet) -> DrawSnippets {
         assert!(id.0 <= self.last_id);
         let mut ret = self.clone();
         ret.snippets.insert(id, new);
         ret
     }
 
-    pub fn without_snippet(&self, id: SnippetId) -> SnippetsData {
+    pub fn without_snippet(&self, id: DrawSnippetId) -> DrawSnippets {
         let mut ret = self.clone();
         if ret.snippets.remove(&id).is_none() {
             log::error!("tried to remove invalid snippet id {:?}", id);
@@ -169,27 +169,27 @@ impl SnippetsData {
         ret
     }
 
-    pub fn with_new_lerp(&self, id: SnippetId, lerp_from: Time, lerp_to: Time) -> SnippetsData {
+    pub fn with_new_lerp(&self, id: DrawSnippetId, lerp_from: Time, lerp_to: Time) -> DrawSnippets {
         let snip = self.snippet(id).with_new_lerp(lerp_from, lerp_to);
         self.with_replacement_snippet(id, snip)
     }
 
-    pub fn with_truncated_snippet(&self, id: SnippetId, time: Time) -> SnippetsData {
+    pub fn with_truncated_snippet(&self, id: DrawSnippetId, time: Time) -> DrawSnippets {
         let mut snip = self.snippet(id).clone();
         snip.end = Some(time);
         self.with_replacement_snippet(id, snip)
     }
 
-    pub fn with_shifted_snippet(&self, id: SnippetId, shift: TimeDiff) -> SnippetsData {
+    pub fn with_shifted_snippet(&self, id: DrawSnippetId, shift: TimeDiff) -> DrawSnippets {
         let snip = self.snippet(id).shifted(shift);
         self.with_replacement_snippet(id, snip)
     }
 
-    pub fn snippet(&self, id: SnippetId) -> &SnippetData {
+    pub fn snippet(&self, id: DrawSnippetId) -> &DrawSnippet {
         self.snippets.get(&id).unwrap()
     }
 
-    pub fn snippets(&self) -> impl Iterator<Item = (SnippetId, &SnippetData)> {
+    pub fn snippets(&self) -> impl Iterator<Item = (DrawSnippetId, &DrawSnippet)> {
         self.snippets.iter().map(|(k, v)| (*k, v))
     }
 
@@ -201,7 +201,7 @@ impl SnippetsData {
             .unwrap_or(Time::ZERO)
     }
 
-    pub fn create_cursor(&self, time: Time) -> SnippetsCursor {
+    pub fn create_cursor(&self, time: Time) -> DrawCursor {
         let spans = self.snippets.iter().map(|(id, snip)| span_cursor::Span {
             start: snip.start_time(),
             end: snip.end_time(),
@@ -211,10 +211,10 @@ impl SnippetsData {
     }
 }
 
-impl SnippetsCursor {
+impl DrawCursor {
     pub fn bboxes<'a, 'b: 'a, 'c: 'a>(
         &'b self,
-        snippets: &'c SnippetsData,
+        snippets: &'c DrawSnippets,
     ) -> impl Iterator<Item = Rect> + 'a {
         self.active_ids()
             .map(move |id| snippets.snippet(id))
@@ -224,7 +224,7 @@ impl SnippetsCursor {
             .flat_map(move |snip| {
                 let (start, end) = self.current();
                 // TODO: this is linear in the number of strokes, but probably most strokes will be
-                // uninteresting. Using some extra cached computations in SnippetData, this could
+                // uninteresting. Using some extra cached computations in DrawSnippet, this could
                 // be made (linear in useful strokes + logarithmic in total strokes).
                 snip.strokes().filter_map(move |stroke| {
                     if let Some(snip_end) = snip.end_time() {
@@ -248,19 +248,19 @@ impl SnippetsCursor {
     }
 }
 
-// The serialization of SnippetData is part of our save file format, so we want to keep it stable.
+// The serialization of DrawSnippet is part of our save file format, so we want to keep it stable.
 // Here is the stable version:
 #[derive(Deserialize, Serialize)]
-struct SnippetDataSave {
+struct DrawSnippetSave {
     strokes: Arc<StrokeSeq>,
     lerp: Arc<Lerp>,
     end: Option<Time>,
 }
 
-impl From<SnippetDataSave> for SnippetData {
-    fn from(save: SnippetDataSave) -> SnippetData {
+impl From<DrawSnippetSave> for DrawSnippet {
+    fn from(save: DrawSnippetSave) -> DrawSnippet {
         let times = lerp_times(&save.strokes, &save.lerp);
-        SnippetData {
+        DrawSnippet {
             strokes: save.strokes,
             lerp: save.lerp,
             times: Arc::new(times),
@@ -269,9 +269,9 @@ impl From<SnippetDataSave> for SnippetData {
     }
 }
 
-impl From<SnippetData> for SnippetDataSave {
-    fn from(snip: SnippetData) -> SnippetDataSave {
-        SnippetDataSave {
+impl From<DrawSnippet> for DrawSnippetSave {
+    fn from(snip: DrawSnippet) -> DrawSnippetSave {
+        DrawSnippetSave {
             strokes: snip.strokes,
             lerp: snip.lerp,
             end: snip.end,
@@ -279,32 +279,32 @@ impl From<SnippetData> for SnippetDataSave {
     }
 }
 
-impl Serialize for SnippetData {
+impl Serialize for DrawSnippet {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
-        SnippetDataSave::from(self.clone()).serialize(ser)
+        DrawSnippetSave::from(self.clone()).serialize(ser)
     }
 }
 
-impl<'de> Deserialize<'de> for SnippetData {
-    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<SnippetData, D::Error> {
-        let snip: SnippetDataSave = Deserialize::deserialize(de)?;
+impl<'de> Deserialize<'de> for DrawSnippet {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<DrawSnippet, D::Error> {
+        let snip: DrawSnippetSave = Deserialize::deserialize(de)?;
         Ok(snip.into())
     }
 }
 
-// The serialization of SnippetsData is part of our save file format, and so it needs
-// to remain stable. Here, we serialize SnippetsData as an id -> SnippetData map.
-impl Serialize for SnippetsData {
+// The serialization of DrawSnippets is part of our save file format, and so it needs
+// to remain stable. Here, we serialize DrawSnippets as an id -> DrawSnippet map.
+impl Serialize for DrawSnippets {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         self.snippets.serialize(ser)
     }
 }
 
-impl<'de> Deserialize<'de> for SnippetsData {
-    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<SnippetsData, D::Error> {
-        let map: OrdMap<SnippetId, SnippetData> = Deserialize::deserialize(de)?;
-        let max_id = map.keys().max().unwrap_or(&SnippetId(0)).0;
-        Ok(SnippetsData {
+impl<'de> Deserialize<'de> for DrawSnippets {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<DrawSnippets, D::Error> {
+        let map: OrdMap<DrawSnippetId, DrawSnippet> = Deserialize::deserialize(de)?;
+        let max_id = map.keys().max().unwrap_or(&DrawSnippetId(0)).0;
+        Ok(DrawSnippets {
             last_id: max_id,
             snippets: map,
         })
@@ -318,9 +318,9 @@ mod tests {
     #[test]
     fn serde_snippet() {
         let curve = crate::curve::tests::basic_curve();
-        let snip = SnippetData::new(curve);
+        let snip = DrawSnippet::new(curve);
         let written = serde_cbor::to_vec(&snip).unwrap();
-        let read: SnippetData = serde_cbor::from_slice(&written[..]).unwrap();
+        let read: DrawSnippet = serde_cbor::from_slice(&written[..]).unwrap();
         assert_eq!(snip.lerp, read.lerp);
     }
 }

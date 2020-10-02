@@ -4,7 +4,7 @@ use druid::{ExtEventSink, Target};
 use scribl_curves::Time;
 
 use super::thread::{audio_loop, Cmd};
-use super::{AudioSnippetsData, OutputData};
+use super::{OutputData, TalkSnippets};
 use crate::config::AudioInput as InputConfig;
 use crate::editor_state::AudioState as State;
 
@@ -75,7 +75,7 @@ impl AudioHandle {
     }
 
     /// Start playing audio.
-    fn play(&self, snips: AudioSnippetsData, start_time: Time, velocity: f64) {
+    fn play(&self, snips: TalkSnippets, start_time: Time, velocity: f64) {
         if let Err(e) = self.cmd_tx.send(Cmd::Play(OutputData {
             snips,
             start_time,

@@ -12,7 +12,7 @@ use crate::audio::AudioHandle;
 use crate::autosave::AutosaveData;
 use crate::cmd;
 use crate::editor_state::{
-    CurrentAction, DenoiseSetting, EditorState, MaybeSnippetId, PenSize, RecordingSpeed,
+    CurrentAction, DenoiseSetting, EditorState, PenSize, RecordingSpeed, SnippetId,
 };
 use crate::save_state::SaveFileData;
 use crate::widgets::tooltip::{ModalHost, TooltipExt};
@@ -350,28 +350,23 @@ impl Editor {
             let snip = cmd.get_unchecked(cmd::ADD_SNIPPET);
             let (new_snippets, new_id) = data.snippets.with_new_snippet(snip.clone());
             data.snippets = new_snippets;
-            data.selected_snippet = new_id.into();
+            data.selected_snippet = Some(new_id.into());
             data.push_undo_state(prev_state.with_time(snip.start_time()), "add drawing");
             ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::DELETE_SNIPPET) {
-            let id = cmd.get_unchecked(cmd::DELETE_SNIPPET);
-            if let Some(id) = id.as_draw().or(data.selected_snippet.as_draw()) {
+            if let Some(SnippetId::Draw(id)) = data.selected_snippet {
                 let prev_state = data.undo_state();
                 let new_snippets = data.snippets.without_snippet(id);
                 data.snippets = new_snippets;
-                if data.selected_snippet == id.into() {
-                    data.selected_snippet = MaybeSnippetId::None;
-                }
+                data.selected_snippet = None;
                 data.push_undo_state(prev_state, "delete drawing");
                 ctx.set_menu(crate::menus::make_menu(data));
-            } else if let Some(id) = id.as_audio().or(data.selected_snippet.as_audio()) {
+            } else if let Some(SnippetId::Talk(id)) = data.selected_snippet {
                 let prev_state = data.undo_state();
                 let new_snippets = data.audio_snippets.without_snippet(id);
                 data.audio_snippets = new_snippets;
-                if data.selected_snippet == id.into() {
-                    data.selected_snippet = MaybeSnippetId::None;
-                }
+                data.selected_snippet = None;
                 data.push_undo_state(prev_state, "delete audio");
                 ctx.set_menu(crate::menus::make_menu(data));
             } else {
@@ -420,7 +415,7 @@ impl Editor {
             ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::TRUNCATE_SNIPPET) {
-            if let Some(id) = data.selected_snippet.as_draw() {
+            if let Some(SnippetId::Draw(id)) = data.selected_snippet {
                 let prev_state = data.undo_state();
                 data.snippets = data.snippets.with_truncated_snippet(id, data.time());
                 data.push_undo_state(prev_state, "truncate drawing");
@@ -430,7 +425,8 @@ impl Editor {
             }
             true
         } else if cmd.is(cmd::LERP_SNIPPET) {
-            if let (Some(mark_time), Some(id)) = (data.mark, data.selected_snippet.as_draw()) {
+            if let (Some(mark_time), Some(SnippetId::Draw(id))) = (data.mark, data.selected_snippet)
+            {
                 let prev_state = data.undo_state();
                 data.snippets = data.snippets.with_new_lerp(id, data.time(), mark_time);
                 data.warp_time_to(mark_time);
@@ -445,21 +441,18 @@ impl Editor {
             }
             true
         } else if let Some((id, shift)) = cmd.get(cmd::SHIFT_SNIPPET) {
-            match id.or(data.selected_snippet) {
-                MaybeSnippetId::Draw(id) => {
+            match id {
+                SnippetId::Draw(id) => {
                     let prev_state = data.undo_state();
-                    data.snippets = data.snippets.with_shifted_snippet(id, *shift);
+                    data.snippets = data.snippets.with_shifted_snippet(*id, *shift);
                     data.push_undo_state(prev_state, "time-shift drawing");
                     ctx.set_menu(crate::menus::make_menu(data));
                 }
-                MaybeSnippetId::Audio(id) => {
+                SnippetId::Talk(id) => {
                     let prev_state = data.undo_state();
-                    data.audio_snippets = data.audio_snippets.with_shifted_snippet(id, *shift);
+                    data.audio_snippets = data.audio_snippets.with_shifted_snippet(*id, *shift);
                     data.push_undo_state(prev_state, "time-shift speech");
                     ctx.set_menu(crate::menus::make_menu(data));
-                }
-                MaybeSnippetId::None => {
-                    log::error!("can't shift: no snippet selected");
                 }
             }
             true

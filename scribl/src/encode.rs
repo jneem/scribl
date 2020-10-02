@@ -11,9 +11,9 @@ use gstreamer_video as gst_video;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use scribl_curves::{SnippetsData, Time, TimeDiff};
+use scribl_curves::{DrawSnippets, Time, TimeDiff};
 
-use crate::audio::AudioSnippetsData;
+use crate::audio::TalkSnippets;
 
 // Note that the aspect ratio here needs to match the aspect ratio
 // of the drawing, which is currently fixed at 4:3 in widgets/drawing_pane.rs.
@@ -43,8 +43,8 @@ impl<'a> From<gst::message::Error<'a>> for PipelineError {
 }
 
 fn create_pipeline(
-    anim: SnippetsData,
-    audio: AudioSnippetsData,
+    anim: DrawSnippets,
+    audio: TalkSnippets,
     frame_count: u32,
     path: &Path,
     config: crate::config::Export,
@@ -167,7 +167,7 @@ fn render_loop(
     cmd: Receiver<RenderLoopCmd>,
     progress: Sender<EncodingStatus>,
     app_src: gst_app::AppSrc,
-    snippets: SnippetsData,
+    snippets: DrawSnippets,
     width: u32,
     height: u32,
     fps: f64,

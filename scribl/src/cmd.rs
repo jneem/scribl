@@ -1,10 +1,10 @@
 use druid::{Color, Selector};
 use std::path::PathBuf;
 
-use scribl_curves::{SnippetData, SnippetsData, Time, TimeDiff};
+use scribl_curves::{DrawSnippet, DrawSnippets, Time, TimeDiff};
 
-use crate::audio::{AudioRecordingStatus, AudioSnippetData, AudioSnippetsData};
-use crate::editor_state::MaybeSnippetId;
+use crate::audio::{AudioRecordingStatus, TalkSnippet, TalkSnippets};
+use crate::editor_state::SnippetId;
 use crate::encode::EncodingStatus;
 use crate::save_state::SaveFileData;
 
@@ -21,10 +21,10 @@ pub const PLAY: Selector = Selector::new("scribl.play");
 pub const STOP: Selector = Selector::new("scribl.stop");
 
 /// Adds a new snippet.
-pub const ADD_SNIPPET: Selector<SnippetData> = Selector::new("scribl.add-snippet");
+pub const ADD_SNIPPET: Selector<DrawSnippet> = Selector::new("scribl.add-snippet");
 
-/// Deletes a snipppet. If the argument is `None`, the currently selected snippet is deleted.
-pub const DELETE_SNIPPET: Selector<MaybeSnippetId> = Selector::new("scribl.delete-snippet");
+/// Deletes the currently selected snippet.
+pub const DELETE_SNIPPET: Selector = Selector::new("scribl.delete-snippet");
 
 /// Selects the snippet below (in the timeline) the currently selected snippet.
 pub const SELECT_SNIPPET_BELOW: Selector = Selector::new("scribl.select-snippet-below");
@@ -37,14 +37,13 @@ pub const RECORDING_AUDIO_STATUS: Selector<AudioRecordingStatus> =
     Selector::new("scribl.recording-audio-status");
 
 /// Adds a new audio snippet.
-pub const ADD_AUDIO_SNIPPET: Selector<AudioSnippetData> = Selector::new("scribl.add-audio-snippet");
+pub const ADD_AUDIO_SNIPPET: Selector<TalkSnippet> = Selector::new("scribl.add-audio-snippet");
 
 /// Truncates the currently selected snippet at the current time.
 pub const TRUNCATE_SNIPPET: Selector = Selector::new("scribl.truncate-snippet");
 
 /// Shifts the given snippet in time.
-pub const SHIFT_SNIPPET: Selector<(MaybeSnippetId, TimeDiff)> =
-    Selector::new("scribl.shift-snippet");
+pub const SHIFT_SNIPPET: Selector<(SnippetId, TimeDiff)> = Selector::new("scribl.shift-snippet");
 
 /// Adds a lerp to the selected snippet, lerping the current time to the marked time.
 pub const LERP_SNIPPET: Selector = Selector::new("scribl.lerp-snippet");
@@ -95,8 +94,8 @@ pub struct AsyncSaveResult {
 
 #[derive(Clone)]
 pub struct ExportCmd {
-    pub snippets: SnippetsData,
-    pub audio_snippets: AudioSnippetsData,
+    pub snippets: DrawSnippets,
+    pub audio_snippets: TalkSnippets,
     pub filename: PathBuf,
     pub config: crate::config::Export,
 }

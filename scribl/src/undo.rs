@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 
-use scribl_curves::{SnippetsData, Time};
+use scribl_curves::{DrawSnippets, Time};
 
-use crate::audio::AudioSnippetsData;
-use crate::editor_state::{CurrentAction, MaybeSnippetId};
+use crate::audio::TalkSnippets;
+use crate::editor_state::{CurrentAction, SnippetId};
 
 const MAX_UNDO_STACK: usize = 128;
 
@@ -12,9 +12,9 @@ const MAX_UNDO_STACK: usize = 128;
 /// (for example, if we undo while drawing, we pause the clock).
 #[derive(Clone, Default)]
 pub struct UndoState {
-    pub snippets: SnippetsData,
-    pub audio_snippets: AudioSnippetsData,
-    pub selected_snippet: MaybeSnippetId,
+    pub snippets: DrawSnippets,
+    pub audio_snippets: TalkSnippets,
+    pub selected_snippet: Option<SnippetId>,
     pub mark: Option<Time>,
     pub time: Time,
     pub action: CurrentAction,

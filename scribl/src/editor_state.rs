@@ -6,11 +6,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use scribl_curves::{
-    Effect, Effects, FadeEffect, SnippetData, SnippetId, SnippetsData, StrokeSeq, StrokeStyle,
+    DrawSnippet, DrawSnippetId, DrawSnippets, Effect, Effects, FadeEffect, StrokeSeq, StrokeStyle,
     Time, TimeDiff,
 };
 
-use crate::audio::{AudioSnippetId, AudioSnippetsData};
+use crate::audio::{TalkSnippetId, TalkSnippets};
 use crate::config::Config;
 use crate::encode::EncodingStatus;
 use crate::save_state::SaveFileData;
@@ -77,59 +77,15 @@ impl StrokeInProgress {
     }
 }
 
-/// A snippet id, an audio snippet id, or neither.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Data)]
-pub enum MaybeSnippetId {
-    Draw(SnippetId),
-    Audio(AudioSnippetId),
-    None,
-}
-
-impl MaybeSnippetId {
-    pub fn is_none(&self) -> bool {
-        matches!(self, MaybeSnippetId::None)
-    }
-
-    pub fn as_draw(&self) -> Option<SnippetId> {
-        if let MaybeSnippetId::Draw(id) = self {
-            Some(*id)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_audio(&self) -> Option<AudioSnippetId> {
-        if let MaybeSnippetId::Audio(id) = self {
-            Some(*id)
-        } else {
-            None
-        }
-    }
-
-    pub fn or(&self, other: MaybeSnippetId) -> MaybeSnippetId {
-        if self.is_none() {
-            other
-        } else {
-            *self
-        }
+impl From<DrawSnippetId> for SnippetId {
+    fn from(id: DrawSnippetId) -> SnippetId {
+        SnippetId::Draw(id)
     }
 }
 
-impl From<SnippetId> for MaybeSnippetId {
-    fn from(id: SnippetId) -> MaybeSnippetId {
-        MaybeSnippetId::Draw(id)
-    }
-}
-
-impl From<AudioSnippetId> for MaybeSnippetId {
-    fn from(id: AudioSnippetId) -> MaybeSnippetId {
-        MaybeSnippetId::Audio(id)
-    }
-}
-
-impl Default for MaybeSnippetId {
-    fn default() -> MaybeSnippetId {
-        MaybeSnippetId::None
+impl From<TalkSnippetId> for SnippetId {
+    fn from(id: TalkSnippetId) -> SnippetId {
+        SnippetId::Talk(id)
     }
 }
 
@@ -181,12 +137,18 @@ pub struct RecordingState {
     pub new_stroke_seq: Arc<StrokeSeq>,
 }
 
+#[derive(Copy, Clone, Data, Debug, Eq, Hash, PartialEq)]
+pub enum SnippetId {
+    Draw(DrawSnippetId),
+    Talk(TalkSnippetId),
+}
+
 /// This data contains the state of an editor window.
 #[derive(Clone, Data, Lens)]
 pub struct EditorState {
-    pub snippets: SnippetsData,
-    pub audio_snippets: AudioSnippetsData,
-    pub selected_snippet: MaybeSnippetId,
+    pub snippets: DrawSnippets,
+    pub audio_snippets: TalkSnippets,
+    pub selected_snippet: Option<SnippetId>,
 
     pub mark: Option<Time>,
 
@@ -258,9 +220,9 @@ impl Default for EditorState {
             DenoiseSetting::Vad
         };
         let mut ret = EditorState {
-            snippets: SnippetsData::default(),
-            audio_snippets: AudioSnippetsData::default(),
-            selected_snippet: MaybeSnippetId::None,
+            snippets: DrawSnippets::default(),
+            audio_snippets: TalkSnippets::default(),
+            selected_snippet: None,
             mark: None,
 
             action: CurrentAction::Idle,
@@ -342,7 +304,7 @@ impl EditorState {
 
     /// Stops recording drawing, returning the snippet that we just finished recording (if it was
     /// non-empty).
-    pub fn stop_recording(&mut self) -> Option<SnippetData> {
+    pub fn stop_recording(&mut self) -> Option<DrawSnippet> {
         self.finish_stroke();
         let old_action = std::mem::replace(&mut self.action, CurrentAction::Idle);
         self.take_time_snapshot();
@@ -352,7 +314,7 @@ impl EditorState {
             if seq.is_empty() {
                 None
             } else {
-                Some(SnippetData::new(seq))
+                Some(DrawSnippet::new(seq))
             }
         } else {
             log::error!("tried to stop recording, but we weren't recording");
@@ -819,7 +781,7 @@ pub enum DenoiseSetting {
 pub enum AudioState {
     Idle,
     Playing {
-        snips: AudioSnippetsData,
+        snips: TalkSnippets,
         start_time: Time,
         velocity: f64,
     },

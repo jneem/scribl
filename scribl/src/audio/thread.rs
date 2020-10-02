@@ -15,7 +15,7 @@ use scribl_curves::Time;
 use crate::cmd;
 
 use super::{
-    create_appsrc, AudioRecording, AudioRecordingStatus, AudioSnippetData, InputConfig, OutputData,
+    create_appsrc, AudioRecording, AudioRecordingStatus, InputConfig, OutputData, TalkSnippet,
     SAMPLE_RATE,
 };
 
@@ -319,7 +319,7 @@ pub fn audio_loop(cmd: Receiver<Cmd>, sink: ExtEventSink, target: Target) {
                             // close to it.)
                             .min(1.0 / rec.peak.max(1.0 / 50.0));
 
-                        let snip = AudioSnippetData::new(rec.buf, time, multiplier as f32);
+                        let snip = TalkSnippet::new(rec.buf, time, multiplier as f32);
                         let _ = sink.submit_command(cmd::ADD_AUDIO_SNIPPET, snip, target);
                     }
                     Err(_) => {
