@@ -10,6 +10,7 @@ mod audio;
 mod autosave;
 mod cmd;
 mod config;
+mod cursor;
 mod editor_state;
 mod encode;
 mod menus;

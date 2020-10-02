@@ -6,6 +6,7 @@ use druid::{
 
 use scribl_curves::{SnippetsCursor, Time};
 
+use crate::cursor::CursorCache;
 use crate::editor_state::EditorState;
 
 // The drawing coordinates are chosen so that the width of the image is always
@@ -26,6 +27,7 @@ pub struct DrawingPane {
     offset: Vec2,
     /// The last interesting position of the mouse (used for figuring out how much to pan by).
     last_mouse_pos: Point,
+    cursors: CursorCache,
 }
 
 impl DrawingPane {
@@ -83,6 +85,8 @@ impl Default for DrawingPane {
             cursor: SnippetsCursor::empty(Time::ZERO),
             offset: Vec2::ZERO,
             last_mouse_pos: Point::ZERO,
+            // TODO: detect the default cursor size somehow
+            cursors: CursorCache::new(32),
         }
     }
 }
@@ -114,6 +118,13 @@ impl Widget<EditorState> for DrawingPane {
                         // TODO: change the mouse cursor
                     }
                     self.last_mouse_pos = ev.pos;
+                }
+
+                if data.action.is_recording() {
+                    let cursor = self
+                        .cursors
+                        .pen(ctx.window(), data.palette.selected_color());
+                    ctx.set_cursor(cursor);
                 }
             }
             Event::MouseDown(ev) if ev.button.is_left() => {

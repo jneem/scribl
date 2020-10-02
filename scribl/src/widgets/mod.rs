@@ -2,7 +2,7 @@ mod alert;
 mod audio_indicator;
 mod drawing_pane;
 mod editor;
-mod icons;
+pub mod icons;
 mod labelled_container;
 mod palette;
 pub mod radio_icon;
