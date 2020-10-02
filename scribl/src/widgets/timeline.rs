@@ -1,4 +1,4 @@
-use druid::kurbo::{BezPath, Line, Vec2};
+use druid::kurbo::{BezPath, Line, Shape, Vec2};
 use druid::theme;
 use druid::widget::{Controller, Scroll};
 use druid::{
@@ -340,11 +340,13 @@ impl TimelineInner {
             let snip = snippets.snippet(id);
             let id = SnippetId::Draw(id);
             let interior = SnippetInterior::Drawing(DrawingWaveform::new(&snip));
+            let path = shape.to_path(LAYOUT_PARAMS.overlap);
             self.children.insert(
                 id,
                 WidgetPod::new(TimelineSnippet {
                     id,
-                    path: shape.to_path(LAYOUT_PARAMS.overlap),
+                    bbox: path.bounding_box(),
+                    path,
                     hot: false,
                     drag_start: None,
                     drag_shift: None,
@@ -358,11 +360,13 @@ impl TimelineInner {
             let audio_data = audio.snippet(id);
             let id = SnippetId::Talk(id);
             let interior = SnippetInterior::Audio(AudioWaveform::new(audio_data.clone(), &shape));
+            let path = shape.to_path(LAYOUT_PARAMS.overlap);
             self.children.insert(
                 id,
                 WidgetPod::new(TimelineSnippet {
                     id,
-                    path: shape.to_path(LAYOUT_PARAMS.overlap),
+                    bbox: path.bounding_box(),
+                    path,
                     hot: false,
                     drag_start: None,
                     drag_shift: None,
@@ -393,6 +397,8 @@ struct TimelineSnippet {
     // If they're dragging the snippet, this is by how much they've dragged it.
     drag_shift: Option<TimeDiff>,
     path: BezPath,
+    // It's expensive to always hit-test on the path.
+    bbox: Rect,
     shape: SnippetShape,
     interior: SnippetInterior,
 }
@@ -432,7 +438,7 @@ impl TimelineSnippet {
     }
 
     fn contains(&self, p: Point) -> bool {
-        self.shape.rects.iter().any(|r| r.contains(p))
+        self.bbox.contains(p) && self.shape.rects.iter().any(|r| r.contains(p))
     }
 
     /// If this snippet intersects the horizontal position `x`, returns the y interval
@@ -545,11 +551,17 @@ impl Widget<EditorState> for TimelineSnippet {
                 let new_hot = self.contains(ev.pos);
                 if self.hot != new_hot {
                     self.hot = new_hot;
-                    ctx.request_paint();
+                    ctx.request_paint_rect(self.bbox);
                 }
                 if let Some(drag_start) = self.drag_start {
+                    let old_drag_shift = self.drag_shift.unwrap_or(TimeDiff::from_micros(0));
                     self.drag_shift = Some(x_pix(ev.pos.x.max(0.0)) - drag_start);
                     ctx.request_paint();
+                    let old_pos = pix_width(old_drag_shift);
+                    let new_pos = pix_width(self.drag_shift.unwrap());
+                    let bbox = self.bbox.inset(SNIPPET_STROKE_THICKNESS / 2.0);
+                    ctx.request_paint_rect(bbox + Vec2::new(old_pos, 0.0));
+                    ctx.request_paint_rect(bbox + Vec2::new(new_pos, 0.0));
                 }
             }
             Event::KeyUp(ev) => {
@@ -835,7 +847,9 @@ impl Widget<EditorState> for TimelineInner {
         ctx.fill(rect, &TIMELINE_BG_COLOR);
 
         for child in self.children.values_mut() {
-            child.paint(ctx, data, env);
+            if ctx.region().intersects(child.widget().bbox) {
+                child.paint(ctx, data, env);
+            }
         }
 
         // Draw the cursor.
