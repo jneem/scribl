@@ -291,7 +291,7 @@ impl Controller<EditorState, Scroll<EditorState, TimelineInner>> for TimelineScr
             if delta_x != 0.0 {
                 ctx.request_paint();
             }
-            child.scroll(Vec2 { x: delta_x, y: 0.0 }, size);
+            child.scroll_by(Vec2 { x: delta_x, y: 0.0 });
         }
         child.update(ctx, old_data, data, env);
 

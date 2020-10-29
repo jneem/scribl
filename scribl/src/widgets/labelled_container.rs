@@ -51,6 +51,7 @@ impl<T: Data> Widget<T> for LabelledContainer<T> {
 
     fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, ev: &LifeCycle, data: &T, env: &Env) {
         self.inner.lifecycle(ctx, ev, data, env);
+        self.label.lifecycle(ctx, ev, data, env);
     }
 
     fn update(&mut self, ctx: &mut UpdateCtx, _old_data: &T, data: &T, env: &Env) {
@@ -112,7 +113,7 @@ impl<T: Data> Widget<T> for LabelledContainer<T> {
         // a counter-clockwise inner rectangle. Clipping to this has the effect of clipping to
         // the complement of the inner rectangle.
         let r = self.label.layout_rect();
-        let mut path: BezPath = ctx.size().to_rect().to_bez_path(0.1).collect();
+        let mut path: BezPath = ctx.size().to_rect().into_path(0.1);
         path.move_to((r.x0, r.y0));
         path.line_to((r.x0, r.y1));
         path.line_to((r.x1, r.y1));

@@ -25,10 +25,14 @@ fn make_pen(window: &WindowHandle, color: &Color, size: u32) -> Cursor {
             ctx.stroke(&path, &Color::BLACK, 2.0);
         }
         let image = bitmap
-            .raw_pixels(ImageFormat::RgbaPremul)
+            .to_image_buf(ImageFormat::RgbaPremul)
             .map_err(|e| anyhow!("failed to get pixels: {}", e))?;
-        let image =
-            ImageBuf::from_raw(image, ImageFormat::RgbaPremul, size as usize, size as usize);
+        let image = ImageBuf::from_raw(
+            image.raw_pixels(),
+            ImageFormat::RgbaPremul,
+            size as usize,
+            size as usize,
+        );
         let cursor_desc = CursorDesc::new(image, (1.0, 1.0));
         window
             .make_cursor(&cursor_desc)

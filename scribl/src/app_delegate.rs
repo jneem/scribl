@@ -1,4 +1,4 @@
-use druid::{AppDelegate, Command, DelegateCtx, Env, Target, WindowId};
+use druid::{AppDelegate, Command, DelegateCtx, Env, Handled, Target, WindowId};
 
 use crate::app_state::AppState;
 use crate::editor_state::EditorState;
@@ -14,14 +14,14 @@ impl AppDelegate<AppState> for Delegate {
         cmd: &Command,
         data: &mut AppState,
         _env: &Env,
-    ) -> bool {
+    ) -> Handled {
         log::info!("command {:?}", cmd);
         if cmd.is(druid::commands::NEW_FILE) {
             let window_desc = data.add_editor(EditorState::default());
             ctx.new_window(window_desc);
-            false
+            Handled::Yes
         } else {
-            true
+            Handled::No
         }
     }
 
