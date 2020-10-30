@@ -17,7 +17,7 @@ pub fn make_radio_icon_group<'a, T: Data, I: IntoIterator<Item = (&'a Icon, T, L
     height: f64,
     children: I,
 ) -> impl Widget<T> {
-    let mut group = Flex::row();
+    let mut group = Flex::column();
     for (icon, variant, text) in children {
         let icon_scale = height / icon.height as f64;
         let icon_width = icon.width as f64 * icon_scale;

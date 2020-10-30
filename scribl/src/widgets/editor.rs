@@ -22,6 +22,7 @@ use crate::widgets::{
 };
 
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(60);
+const ICON_HEIGHT: f64 = 32.0;
 
 pub struct Editor {
     // Every AUTOSAVE_DURATION, we will attempt to save the current file.
@@ -43,7 +44,7 @@ pub struct Editor {
 fn make_draw_button_group() -> impl Widget<EditorState> {
     let rec_button = ToggleButton::new(
         &icons::VIDEO,
-        24.0,
+        ICON_HEIGHT,
         |state: &EditorState| state.action.rec_toggle(),
         |ctx, _, _| ctx.submit_command(cmd::DRAW),
         |ctx, _, _| ctx.submit_command(cmd::STOP),
@@ -58,7 +59,7 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
     });
 
     let rec_speed_group = crate::widgets::radio_icon::make_radio_icon_group(
-        24.0,
+        ICON_HEIGHT,
         vec![
             (
                 &icons::PAUSE,
@@ -85,7 +86,7 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
 
     let rec_fade_button = ToggleButton::new(
         &icons::FADE_OUT,
-        24.0,
+        ICON_HEIGHT,
         |&b: &bool| b.into(),
         |_, data, _| *data = true,
         |_, data, _| *data = false,
@@ -100,33 +101,10 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
     })
     .lens(EditorState::fade_enabled);
 
-    let palette = Palette::new(24.0)
-        .border(theme::BORDER_LIGHT, crate::BUTTON_GROUP_BORDER_WIDTH)
-        // TODO: Get from the theme
-        .rounded(5.0)
-        .lens(EditorState::palette);
-
-    let pen_size_group = crate::widgets::radio_icon::make_radio_icon_group(
-        24.0,
-        vec![
-            (&icons::BIG_CIRCLE, PenSize::Big, "BIG PEN! (Q)".into()),
-            (
-                &icons::MEDIUM_CIRCLE,
-                PenSize::Medium,
-                "Medium pen (W)".into(),
-            ),
-            (&icons::SMALL_CIRCLE, PenSize::Small, "Small pen (E)".into()),
-        ],
-    );
-
-    let draw_button_group = Flex::row()
+    let draw_button_group = Flex::column()
         .with_child(rec_button)
         .with_spacer(10.0)
         .with_child(rec_speed_group.lens(EditorState::recording_speed))
-        .with_spacer(10.0)
-        .with_child(pen_size_group.lens(EditorState::pen_size))
-        .with_spacer(10.0)
-        .with_child(palette)
         .with_spacer(10.0)
         .with_child(rec_fade_button)
         .padding(5.0);
@@ -138,10 +116,37 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
     draw_button_group
 }
 
+fn make_pen_group() -> Flex<EditorState> {
+    let palette = Palette::new(ICON_HEIGHT)
+        .border(theme::BORDER_LIGHT, crate::BUTTON_GROUP_BORDER_WIDTH)
+        // TODO: Get from the theme
+        .rounded(5.0)
+        .lens(EditorState::palette);
+
+    let pen_size_group = crate::widgets::radio_icon::make_radio_icon_group(
+        ICON_HEIGHT,
+        vec![
+            (&icons::BIG_CIRCLE, PenSize::Big, "BIG PEN! (Q)".into()),
+            (
+                &icons::MEDIUM_CIRCLE,
+                PenSize::Medium,
+                "Medium pen (W)".into(),
+            ),
+            (&icons::SMALL_CIRCLE, PenSize::Small, "Small pen (E)".into()),
+        ],
+    );
+
+    Flex::column()
+        .with_default_spacer()
+        .with_child(palette)
+        .with_default_spacer()
+        .with_child(pen_size_group.lens(EditorState::pen_size))
+}
+
 fn make_audio_button_group() -> impl Widget<EditorState> {
     let rec_audio_button = ToggleButton::new(
         &icons::MICROPHONE,
-        24.0,
+        ICON_HEIGHT,
         |state: &EditorState| state.action.rec_audio_toggle(),
         |ctx, _, _| ctx.submit_command(cmd::TALK),
         |ctx, _, _| ctx.submit_command(cmd::STOP),
@@ -155,10 +160,10 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
         .to_owned()
     });
 
-    let audio_indicator = AudioIndicator::new(24.0);
+    let audio_indicator = AudioIndicator::new(ICON_HEIGHT);
 
     let noise_group = crate::widgets::radio_icon::make_radio_icon_group(
-        24.0,
+        ICON_HEIGHT,
         vec![
             (
                 &icons::NOISE,
@@ -178,7 +183,7 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
         ],
     );
 
-    let audio_button_group = Flex::row()
+    let audio_button_group = Flex::column()
         .with_child(rec_audio_button)
         .with_spacer(10.0)
         .with_child(audio_indicator)
@@ -197,7 +202,7 @@ impl Editor {
         let drawing = DrawingPane::default();
         let play_button = ToggleButton::new(
             &icons::PLAY,
-            24.0,
+            ICON_HEIGHT,
             |state: &EditorState| state.action.play_toggle(),
             |ctx, _, _| ctx.submit_command(cmd::PLAY),
             |ctx, _, _| ctx.submit_command(cmd::STOP),
@@ -214,17 +219,18 @@ impl Editor {
         let draw_button_group = make_draw_button_group();
         let audio_button_group = make_audio_button_group();
 
-        let watch_button_group = Flex::row().with_child(play_button).padding(5.0);
+        let watch_button_group = Flex::column().with_child(play_button).padding(5.0);
         let watch_button_group = LabelledContainer::new(watch_button_group, "Watch")
             .border_color(Color::WHITE)
             .corner_radius(druid::theme::BUTTON_BORDER_RADIUS)
             .padding(5.0);
 
-        let button_row = Flex::row()
+        let button_col = Flex::column()
             .with_child(draw_button_group)
             .with_child(audio_button_group)
             .with_child(watch_button_group)
             .with_flex_spacer(1.0);
+        let pen_col = make_pen_group().with_flex_spacer(1.0);
         let timeline_id = WidgetId::next();
         let timeline = Timeline::new().with_id(timeline_id);
         /*
@@ -235,8 +241,13 @@ impl Editor {
             .draggable(true).debug_paint_layout();
         */
         let column = Flex::column()
-            .with_child(button_row)
-            .with_flex_child(drawing.padding(10.0), 1.0)
+            .with_flex_child(
+                Flex::row()
+                    .with_child(button_col)
+                    .with_flex_child(drawing.padding(10.0), 1.0)
+                    .with_child(pen_col),
+                1.0,
+            )
             .with_child(timeline)
             .with_child(make_status_bar());
 

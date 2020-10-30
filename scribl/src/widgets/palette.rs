@@ -1,13 +1,13 @@
 use druid::kurbo::Circle;
 use druid::widget::prelude::*;
-use druid::{Color, Data, Lens, Point, Rect, RenderContext, WidgetPod};
+use druid::{theme, Color, Data, Lens, Rect, RenderContext, WidgetPod};
 use std::sync::Arc;
 
 use crate::cmd;
 use crate::widgets::tooltip::TooltipExt;
 
 // The padding between and around the color swatches.
-const PALETTE_ELT_PADDING: f64 = 2.0;
+const PALETTE_ELT_PADDING: f64 = 4.0;
 
 #[derive(Clone, Data, Lens)]
 pub struct PaletteData {
@@ -19,8 +19,8 @@ impl Default for PaletteData {
     fn default() -> PaletteData {
         // The utexas color palette defined here: https://brand.utexas.edu/identity/color/
         let colors = vec![
-            (Color::rgb8(191, 87, 0), "Burnt orange".to_owned()),
             (Color::rgb8(51, 63, 72), "Charcoal".to_owned()),
+            (Color::rgb8(191, 87, 0), "Burnt orange".to_owned()),
             (Color::rgb8(248, 151, 31), "Kumquat".to_owned()),
             (Color::rgb8(255, 214, 0), "Golden".to_owned()),
             (Color::rgb8(166, 205, 87), "Yellow-green".to_owned()),
@@ -107,9 +107,11 @@ impl Widget<Color> for PaletteElement {
         bc.max()
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx, selected_color: &Color, _env: &Env) {
+    fn paint(&mut self, ctx: &mut PaintCtx, selected_color: &Color, env: &Env) {
         let is_selected = selected_color.as_rgba_u32() == self.color.as_rgba_u32();
-        let rect = Rect::from_origin_size(Point::ORIGIN, ctx.size());
+        let rect = ctx
+            .size()
+            .to_rounded_rect(env.get(theme::BUTTON_BORDER_RADIUS));
 
         ctx.fill(&rect, &self.color);
 
@@ -130,7 +132,7 @@ impl Palette {
     pub fn new(color_height: f64) -> Palette {
         Palette {
             children: Vec::new(),
-            height: color_height,
+            height: color_height - PALETTE_ELT_PADDING,
         }
     }
 
@@ -196,8 +198,8 @@ impl Widget<PaletteData> for Palette {
         data: &PaletteData,
         env: &Env,
     ) -> Size {
-        let height = self.height + PALETTE_ELT_PADDING * 2.0;
-        let width =
+        let width = self.height + PALETTE_ELT_PADDING * 2.0;
+        let height =
             (self.height + PALETTE_ELT_PADDING) * self.children.len() as f64 + PALETTE_ELT_PADDING;
         let size = bc.constrain(Size::new(width, height));
         let child_constraints = BoxConstraints::tight(Size::new(self.height, self.height));
@@ -205,8 +207,8 @@ impl Widget<PaletteData> for Palette {
             // We don't really need to layout the children, but if we don't call layout
             // on them then druid will constantly think that they need to be re-layouted.
             let _ = c.layout(ctx, &child_constraints, &data.colors[i].0, env);
-            let x = (self.height + PALETTE_ELT_PADDING) * i as f64 + PALETTE_ELT_PADDING;
-            let y = PALETTE_ELT_PADDING;
+            let x = PALETTE_ELT_PADDING;
+            let y = (self.height + PALETTE_ELT_PADDING) * i as f64 + PALETTE_ELT_PADDING;
             c.set_layout_rect(
                 ctx,
                 &data.colors[i as usize].0,
