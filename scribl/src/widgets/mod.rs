@@ -18,5 +18,5 @@ pub use icons::Icon;
 pub use labelled_container::LabelledContainer;
 pub use palette::{Palette, PaletteData};
 pub use status::make_status_bar;
-pub use timeline::make_timeline;
+pub use timeline::Timeline;
 pub use toggle_button::{ToggleButton, ToggleButtonState};

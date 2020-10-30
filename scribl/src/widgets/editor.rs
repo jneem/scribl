@@ -17,8 +17,8 @@ use crate::editor_state::{
 use crate::save_state::SaveFileData;
 use crate::widgets::tooltip::{ModalHost, TooltipExt};
 use crate::widgets::{
-    alert, icons, make_status_bar, make_timeline, AudioIndicator, DrawingPane, LabelledContainer,
-    Palette, ToggleButton, ToggleButtonState,
+    alert, icons, make_status_bar, AudioIndicator, DrawingPane, LabelledContainer, Palette,
+    Timeline, ToggleButton, ToggleButtonState,
 };
 
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(60);
@@ -226,7 +226,7 @@ impl Editor {
             .with_child(watch_button_group)
             .with_flex_spacer(1.0);
         let timeline_id = WidgetId::next();
-        let timeline = make_timeline().with_id(timeline_id);
+        let timeline = Timeline::new().with_id(timeline_id);
         /*
         TODO: Issues with split:
          - can't get timeline to use up the vertical space it has available

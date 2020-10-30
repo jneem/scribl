@@ -1,10 +1,8 @@
 use druid::kurbo::{BezPath, Line, Shape, Vec2};
-use druid::theme;
-use druid::widget::{Controller, Scroll};
+use druid::widget::ClipBox;
 use druid::{
     Affine, BoxConstraints, Color, Data, Env, Event, EventCtx, KbKey, LayoutCtx, LifeCycle,
-    LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetExt,
-    WidgetPod,
+    LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Widget, WidgetPod,
 };
 use std::collections::HashMap;
 
@@ -217,10 +215,17 @@ impl Snip {
     }
 }
 
+/// The "outer" timeline widget.
+///
+/// This basically just contains the scroll area, which contains the inner widget.
+pub struct Timeline {
+    inner: WidgetPod<EditorState, ClipBox<EditorState, TimelineInner>>,
+}
+
 /// The main timeline widget.
 struct TimelineInner {
     /// The range of times that are currently visible. This needs to be manually synced with the
-    /// scroll region's offset; this is handled by TimelineScrollController.
+    /// scroll region's offset; this is handled by the outer Timeline widget.
     visible_times: (Time, Time),
     height: f64,
     /// If the cursor is being dragged to near the edge of the timeline, this is how fast we should
@@ -229,42 +234,40 @@ struct TimelineInner {
     children: HashMap<SnippetId, WidgetPod<EditorState, TimelineSnippet>>,
 }
 
-pub fn make_timeline() -> impl Widget<EditorState> {
-    let inner = TimelineInner::default();
-    Scroll::new(inner)
-        .horizontal()
-        .controller(TimelineScrollController)
-        // This is a hack to hide the scrollbars. Hopefully in the future druid will
-        // support this directly.
-        .env_scope(|env, _data| {
-            env.set(theme::SCROLLBAR_WIDTH, 0.0);
-            env.set(theme::SCROLLBAR_EDGE_WIDTH, 0.0);
-        })
+impl Timeline {
+    pub fn new() -> Timeline {
+        let inner = TimelineInner::default();
+        let clip = ClipBox::new(inner)
+            .constrain_horizontal(false)
+            .constrain_vertical(true);
+        Timeline {
+            inner: WidgetPod::new(clip),
+        }
+    }
+
+    fn update_visible_times(&mut self, size: Size) {
+        let offset = self.inner.widget().viewport_origin().x;
+        self.inner
+            .widget_mut()
+            .child_mut()
+            .set_visible(x_pix(offset), x_pix(offset + size.width));
+    }
 }
 
-/// A widget wrapping the timeline's `Scroll` that updates the scroll to follow
-/// the cursor.
-struct TimelineScrollController;
-
-impl Controller<EditorState, Scroll<EditorState, TimelineInner>> for TimelineScrollController {
-    fn event(
-        &mut self,
-        child: &mut Scroll<EditorState, TimelineInner>,
-        ctx: &mut EventCtx,
-        ev: &Event,
-        data: &mut EditorState,
-        env: &Env,
-    ) {
-        child.event(ctx, ev, data, env);
-        let offset = child.offset().x;
-        child
-            .child_mut()
-            .set_visible(x_pix(offset), x_pix(offset + ctx.size().width));
+impl Widget<EditorState> for Timeline {
+    fn event(&mut self, ctx: &mut EventCtx, ev: &Event, data: &mut EditorState, env: &Env) {
+        if let Event::Wheel(wheel_ev) = ev {
+            let delta = Vec2::new(wheel_ev.wheel_delta.x, 0.0);
+            self.inner.widget_mut().pan_by(delta);
+            ctx.request_paint();
+            ctx.set_handled();
+        }
+        self.inner.event(ctx, ev, data, env);
+        self.update_visible_times(ctx.size());
     }
 
     fn update(
         &mut self,
-        child: &mut Scroll<EditorState, TimelineInner>,
         ctx: &mut UpdateCtx,
         old_data: &EditorState,
         data: &EditorState,
@@ -274,8 +277,9 @@ impl Controller<EditorState, Scroll<EditorState, TimelineInner>> for TimelineScr
             // Scroll the cursor to the new time.
             let time = data.time();
             let size = ctx.size();
-            let min_vis_time = x_pix(child.offset().x);
-            let max_vis_time = x_pix(child.offset().x + size.width);
+            let child = self.inner.widget();
+            let min_vis_time = x_pix(child.viewport_origin().x);
+            let max_vis_time = x_pix(child.viewport_origin().x + size.width);
 
             // Scroll this much past the cursor, so it isn't right at the edge.
             let padding = CURSOR_BOUNDARY_PADDING.min(width_pix(size.width / 4.0));
@@ -291,29 +295,32 @@ impl Controller<EditorState, Scroll<EditorState, TimelineInner>> for TimelineScr
             if delta_x != 0.0 {
                 ctx.request_paint();
             }
-            child.scroll_by(Vec2 { x: delta_x, y: 0.0 });
+            self.inner.widget_mut().pan_by(Vec2 { x: delta_x, y: 0.0 });
         }
-        child.update(ctx, old_data, data, env);
-
-        let offset = child.offset().x;
-        child
-            .child_mut()
-            .set_visible(x_pix(offset), x_pix(offset + ctx.size().width));
+        self.inner.update(ctx, data, env);
+        self.update_visible_times(ctx.size());
     }
 
-    fn lifecycle(
+    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, ev: &LifeCycle, data: &EditorState, env: &Env) {
+        self.inner.lifecycle(ctx, ev, data, env);
+        self.update_visible_times(ctx.size());
+    }
+
+    fn layout(
         &mut self,
-        child: &mut Scroll<EditorState, TimelineInner>,
-        ctx: &mut LifeCycleCtx,
-        ev: &LifeCycle,
+        ctx: &mut LayoutCtx,
+        bc: &BoxConstraints,
         data: &EditorState,
         env: &Env,
-    ) {
-        child.lifecycle(ctx, ev, data, env);
-        let offset = child.offset().x;
-        child
-            .child_mut()
-            .set_visible(x_pix(offset), x_pix(offset + ctx.size().width));
+    ) -> Size {
+        let child_size = self.inner.layout(ctx, bc, data, env);
+        self.inner
+            .set_layout_rect(ctx, data, env, child_size.to_rect());
+        child_size
+    }
+
+    fn paint(&mut self, ctx: &mut PaintCtx, data: &EditorState, env: &Env) {
+        self.inner.paint(ctx, data, env);
     }
 }
 
