@@ -1,6 +1,6 @@
 use druid::kurbo::TranslateScale;
 use druid::{
-    BoxConstraints, Color, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
+    BoxConstraints, Color, Cursor, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
     PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
 };
 
@@ -172,6 +172,15 @@ impl Widget<EditorState> for DrawingPane {
         data: &EditorState,
         _env: &Env,
     ) {
+        if data.action.is_recording() {
+            let cursor = self
+                .cursors
+                .pen(ctx.window(), data.palette.selected_color());
+            ctx.set_cursor(cursor);
+        } else if old_data.action.is_recording() {
+            ctx.set_cursor(&Cursor::Arrow);
+        }
+
         if !old_data.snippets.same(&data.snippets) {
             self.cursor = data.snippets.create_cursor(data.time());
             ctx.request_paint();
