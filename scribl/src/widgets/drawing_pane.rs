@@ -172,7 +172,7 @@ impl Widget<EditorState> for DrawingPane {
         data: &EditorState,
         _env: &Env,
     ) {
-        if data.action.is_recording() {
+        if data.action.is_recording() && ctx.is_hot() {
             let cursor = self
                 .cursors
                 .pen(ctx.window(), data.palette.selected_color());

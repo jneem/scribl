@@ -96,6 +96,7 @@ fn main() {
 
     let launcher = AppLauncher::with_window(editor_window_desc).configure_env(|e, _| {
         e.set(theme::BUTTON_LIGHT, Color::rgb8(0x70, 0x70, 0x70));
+        e.set(theme::BACKGROUND_LIGHT, Color::rgb8(0x60, 0x60, 0x60));
         e.set(BUTTON_BACKGROUND_DISABLED, Color::rgb8(0x55, 0x55, 0x55));
         e.set(BUTTON_FOREGROUND_DISABLED, Color::rgb8(0x33, 0x33, 0x33));
         e.set(BUTTON_ICON_DISABLED, Color::rgb8(0x70, 0x70, 0x70));

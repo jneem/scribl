@@ -1,9 +1,9 @@
 use crossbeam_channel::Sender;
 use druid::widget::{Align, Flex};
 use druid::{
-    theme, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, ExtEventSink, KbKey,
-    KeyEvent, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, SingleUse, Size, TimerToken, UpdateCtx,
-    Widget, WidgetExt, WidgetId, WindowId,
+    theme, BoxConstraints, Command, Data, Env, Event, EventCtx, ExtEventSink, KbKey, KeyEvent,
+    LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, SingleUse, Size, TimerToken, UpdateCtx, Widget,
+    WidgetExt, WidgetId, WindowId,
 };
 use std::path::PathBuf;
 use std::time::Duration;
@@ -19,8 +19,7 @@ use crate::editor_state::{
 use crate::save_state::SaveFileData;
 use crate::widgets::tooltip::{ModalHost, TooltipExt};
 use crate::widgets::{
-    alert, icons, make_status_bar, AudioIndicator, DrawingPane, LabelledContainer, Palette,
-    Timeline,
+    alert, icons, make_status_bar, AudioIndicator, DrawingPane, Palette, Timeline,
 };
 
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(60);
@@ -62,8 +61,8 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
         .to_owned()
     });
 
-    let rec_speed_group = crate::widgets::radio_icon::make_radio_icon_group(
-        ICON_HEIGHT,
+    let rec_speed_group = RadioGroup::column(
+        SECONDARY_ICON_WIDTH,
         vec![
             (
                 &icons::PAUSE,
@@ -111,11 +110,9 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
         .with_child(rec_speed_group.lens(EditorState::recording_speed))
         .with_spacer(10.0)
         .with_child(rec_fade_button)
-        .padding(5.0);
-    let draw_button_group = LabelledContainer::new(draw_button_group, "Draw")
-        .border_color(Color::WHITE)
-        .corner_radius(druid::theme::BUTTON_BORDER_RADIUS)
-        .padding(5.0);
+        .padding(10.0)
+        .background(theme::BACKGROUND_LIGHT)
+        .rounded(theme::BUTTON_BORDER_RADIUS);
 
     draw_button_group
 }
@@ -127,8 +124,8 @@ fn make_pen_group() -> Flex<EditorState> {
         .rounded(5.0)
         .lens(EditorState::palette);
 
-    let pen_size_group = crate::widgets::radio_icon::make_radio_icon_group(
-        ICON_HEIGHT,
+    let pen_size_group = RadioGroup::column(
+        SECONDARY_ICON_WIDTH,
         vec![
             (&icons::BIG_CIRCLE, PenSize::Big, "BIG PEN! (Q)".into()),
             (
@@ -166,8 +163,8 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
 
     let audio_indicator = AudioIndicator::new(ICON_HEIGHT);
 
-    let noise_group = crate::widgets::radio_icon::make_radio_icon_group(
-        ICON_HEIGHT,
+    let noise_group = RadioGroup::column(
+        SECONDARY_ICON_WIDTH,
         vec![
             (
                 &icons::NOISE,
@@ -187,18 +184,15 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
         ],
     );
 
-    let audio_button_group = Flex::column()
+    Flex::column()
         .with_child(rec_audio_button)
         .with_spacer(10.0)
         .with_child(audio_indicator)
         .with_spacer(10.0)
         .with_child(noise_group.lens(EditorState::denoise_setting))
-        .padding(5.0);
-
-    LabelledContainer::new(audio_button_group, "Talk")
-        .border_color(Color::WHITE)
-        .corner_radius(druid::theme::BUTTON_BORDER_RADIUS)
-        .padding(5.0)
+        .padding(10.0)
+        .background(theme::BACKGROUND_LIGHT)
+        .rounded(theme::BUTTON_BORDER_RADIUS)
 }
 
 impl Editor {
@@ -223,15 +217,17 @@ impl Editor {
         let draw_button_group = make_draw_button_group();
         let audio_button_group = make_audio_button_group();
 
-        let watch_button_group = Flex::column().with_child(play_button).padding(5.0);
-        let watch_button_group = LabelledContainer::new(watch_button_group, "Watch")
-            .border_color(Color::WHITE)
-            .corner_radius(druid::theme::BUTTON_BORDER_RADIUS)
-            .padding(5.0);
+        let watch_button_group = Flex::column()
+            .with_child(play_button)
+            .padding(10.0)
+            .background(theme::BACKGROUND_LIGHT)
+            .rounded(theme::BUTTON_BORDER_RADIUS);
 
         let button_col = Flex::column()
             .with_child(draw_button_group)
+            .with_default_spacer()
             .with_child(audio_button_group)
+            .with_default_spacer()
             .with_child(watch_button_group)
             .with_flex_spacer(1.0);
         let pen_col = make_pen_group().with_flex_spacer(1.0);
