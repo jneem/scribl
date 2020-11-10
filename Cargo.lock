@@ -1729,6 +1729,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "scribl_widget"
+version = "0.1.0"
+dependencies = [
+ "druid",
+ "log",
+]
+
+[[package]]
 name = "semver"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2286,10 +2294,6 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
 ]
-
-[[package]]
-name = "widget"
-version = "0.1.0"
 
 [[package]]
 name = "winapi"
