@@ -105,6 +105,7 @@ fn main() {
         e.set(BUTTON_ICON_PADDING, 2.0);
         e.set(BUTTON_GROUP_BORDER_WIDTH, 1.0);
         e.set(TEXT_SIZE_SMALL, 10.0);
+        scribl_widget::configure_env(e);
     });
 
     launcher

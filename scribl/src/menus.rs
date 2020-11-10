@@ -2,15 +2,14 @@ use druid::commands;
 use druid::platform_menus;
 use druid::{FileDialogOptions, FileSpec, KbKey, LocalizedString, MenuDesc, MenuItem, SysMods};
 
+use scribl_widget::ToggleButtonState;
+
+use crate::app_state::AppState;
 use crate::cmd;
-use crate::editor_state::CurrentAction;
-use crate::widgets::ToggleButtonState;
+use crate::editor_state::{CurrentAction, EditorState};
 
 const SCRIBL_FILE_TYPE: FileSpec = FileSpec::new("Scribl animation (.scb)", &["scb"]);
 const EXPORT_FILE_TYPE: FileSpec = FileSpec::new("mp4 video (.mp4)", &["mp4"]);
-
-use crate::app_state::AppState;
-use crate::editor_state::EditorState;
 
 pub fn save_dialog_options() -> FileDialogOptions {
     FileDialogOptions::new().allowed_types(vec![SCRIBL_FILE_TYPE])

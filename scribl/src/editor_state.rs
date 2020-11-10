@@ -8,13 +8,13 @@ use scribl_curves::{
     DrawSnippet, DrawSnippetId, DrawSnippets, Effect, Effects, FadeEffect, StrokeInProgress,
     StrokeSeq, StrokeStyle, Time, TimeDiff,
 };
+use scribl_widget::ToggleButtonState;
 
 use crate::audio::{TalkSnippetId, TalkSnippets};
 use crate::config::Config;
 use crate::encode::EncodingStatus;
 use crate::save_state::SaveFileData;
 use crate::undo::{UndoStack, UndoState};
-use crate::widgets::ToggleButtonState;
 
 /// How far are they allowed to zoom in?
 pub const MAX_ZOOM: f64 = 8.0;

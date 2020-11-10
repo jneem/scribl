@@ -3,8 +3,8 @@ use druid::widget::prelude::*;
 use druid::widget::{Flex, LabelText, WidgetExt};
 use druid::{theme, Data};
 
-use crate::widgets::icons::Icon;
 use crate::widgets::tooltip::TooltipExt;
+use scribl_widget::Icon;
 
 pub struct RadioIcon<T: Data> {
     icon_size: Size,

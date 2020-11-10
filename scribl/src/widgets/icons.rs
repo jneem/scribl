@@ -5,15 +5,7 @@
 //! available under a CC-BY license.
 //! (TODO: is this comment enough for the attribution requirements?)
 
-/// An icon made up of a single path (which should be filled with whatever color we want).
-pub struct Icon {
-    /// The width of the icon.
-    pub width: u32,
-    /// The height of the icon.
-    pub height: u32,
-    /// The icon's path, in SVG format.
-    pub path: &'static str,
-}
+use scribl_widget::Icon;
 
 #[allow(dead_code)]
 pub const CAMERA: Icon = Icon {

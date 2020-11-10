@@ -1708,6 +1708,7 @@ dependencies = [
  "nnnoiseless",
  "pkg-version",
  "scribl_curves",
+ "scribl_widget",
  "serde",
  "serde_cbor",
  "thiserror",

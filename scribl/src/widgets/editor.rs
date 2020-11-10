@@ -8,6 +8,8 @@ use druid::{
 use std::path::PathBuf;
 use std::time::Duration;
 
+use scribl_widget::{RadioGroup, ToggleButton, ToggleButtonState};
+
 use crate::audio::AudioHandle;
 use crate::autosave::AutosaveData;
 use crate::cmd;
@@ -18,11 +20,13 @@ use crate::save_state::SaveFileData;
 use crate::widgets::tooltip::{ModalHost, TooltipExt};
 use crate::widgets::{
     alert, icons, make_status_bar, AudioIndicator, DrawingPane, LabelledContainer, Palette,
-    Timeline, ToggleButton, ToggleButtonState,
+    Timeline,
 };
 
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(60);
 const ICON_HEIGHT: f64 = 32.0;
+const MAIN_ICON_WIDTH: f64 = 32.0;
+const SECONDARY_ICON_WIDTH: f64 = 24.0;
 
 pub struct Editor {
     // Every AUTOSAVE_DURATION, we will attempt to save the current file.
@@ -44,11 +48,11 @@ pub struct Editor {
 fn make_draw_button_group() -> impl Widget<EditorState> {
     let rec_button = ToggleButton::new(
         &icons::VIDEO,
-        ICON_HEIGHT,
         |state: &EditorState| state.action.rec_toggle(),
         |ctx, _, _| ctx.submit_command(cmd::DRAW),
         |ctx, _, _| ctx.submit_command(cmd::STOP),
     )
+    .width(MAIN_ICON_WIDTH)
     .tooltip(|state: &EditorState, _env: &Env| {
         if state.action.rec_toggle() == ToggleButtonState::ToggledOn {
             "Stop recording (Space)"
@@ -86,11 +90,11 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
 
     let rec_fade_button = ToggleButton::new(
         &icons::FADE_OUT,
-        ICON_HEIGHT,
         |&b: &bool| b.into(),
         |_, data, _| *data = true,
         |_, data, _| *data = false,
     )
+    .width(SECONDARY_ICON_WIDTH)
     .tooltip(|state: &bool, _env: &Env| {
         if *state {
             "Disable fade effect"
@@ -146,11 +150,11 @@ fn make_pen_group() -> Flex<EditorState> {
 fn make_audio_button_group() -> impl Widget<EditorState> {
     let rec_audio_button = ToggleButton::new(
         &icons::MICROPHONE,
-        ICON_HEIGHT,
         |state: &EditorState| state.action.rec_audio_toggle(),
         |ctx, _, _| ctx.submit_command(cmd::TALK),
         |ctx, _, _| ctx.submit_command(cmd::STOP),
     )
+    .width(MAIN_ICON_WIDTH)
     .tooltip(|state: &EditorState, _env: &Env| {
         if state.action.rec_audio_toggle() == ToggleButtonState::ToggledOn {
             "Stop recording (Shift+Space)"
@@ -202,11 +206,11 @@ impl Editor {
         let drawing = DrawingPane::default();
         let play_button = ToggleButton::new(
             &icons::PLAY,
-            ICON_HEIGHT,
             |state: &EditorState| state.action.play_toggle(),
             |ctx, _, _| ctx.submit_command(cmd::PLAY),
             |ctx, _, _| ctx.submit_command(cmd::STOP),
         )
+        .width(MAIN_ICON_WIDTH)
         .tooltip(|state: &EditorState, _env: &Env| {
             if state.action.play_toggle() == ToggleButtonState::ToggledOn {
                 "Pause playback (Enter)"
