@@ -1,6 +1,6 @@
 use druid::kurbo::BezPath;
 use druid::widget::prelude::*;
-use druid::{Affine, Data, Insets, RenderContext, Size, Vec2};
+use druid::{theme, Affine, Data, Insets, RenderContext, Size, Vec2};
 
 use crate::Icon;
 
@@ -33,8 +33,9 @@ impl From<bool> for ToggleButtonState {
 #[derive(PartialEq)]
 pub(crate) enum Layer {
     Top,
+    Shadow,
     Bottom,
-    Both,
+    All,
 }
 
 pub struct ToggleButton<T> {
@@ -61,7 +62,7 @@ impl<T: Data> ToggleButton<T> {
             icon_path: BezPath::from_svg(icon.path).unwrap(),
             icon_size,
             icon_scale: 1.0,
-            layer: Layer::Both,
+            layer: Layer::All,
             toggle_state: Box::new(toggle_state),
             toggle_action: Box::new(toggle_action),
             untoggle_action: Box::new(untoggle_action),
@@ -181,13 +182,15 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
         let icon_offset = (size.to_vec2() - self.icon_size().to_vec2()) / 2.0 - shadow_offset / 2.0;
         let button_rect = (self.icon_size().to_rect() + icon_offset).inset(padding);
         let shadow_rect = button_rect + shadow_offset;
-        let draw_bottom = self.layer != Layer::Top;
-        let draw_top = self.layer != Layer::Bottom;
+        let button_rect = button_rect.to_rounded_rect(env.get(theme::BUTTON_BORDER_RADIUS));
+        let draw_bottom = self.layer == Layer::All || self.layer == Layer::Bottom;
+        let draw_top = self.layer == Layer::All || self.layer == Layer::Top;
+        let draw_shadow = self.layer == Layer::All || self.layer == Layer::Shadow;
 
-        if !is_pressed && draw_top {
+        if !is_pressed && draw_shadow {
             ctx.blurred_rect(shadow_rect, shadow_radius, &shadow_color);
         }
-        if self.layer == Layer::Both || (is_pressed == draw_bottom) {
+        if (is_pressed && draw_bottom) || (!is_pressed && draw_top) {
             ctx.fill(button_rect, &button_color);
             ctx.with_save(|ctx| {
                 ctx.transform(Affine::translate(icon_offset) * Affine::scale(self.icon_scale));

@@ -115,6 +115,12 @@ impl<T: Data> Widget<T> for RadioGroup<T> {
         for c in &mut self.children {
             c.widget_mut()
                 .child_mut()
+                .set_layer(crate::toggle_button::Layer::Shadow);
+            c.paint(ctx, data, env);
+        }
+        for c in &mut self.children {
+            c.widget_mut()
+                .child_mut()
                 .set_layer(crate::toggle_button::Layer::Top);
             c.paint(ctx, data, env);
         }

@@ -117,6 +117,7 @@ impl<T: Data, W: Widget<T>> Widget<T> for TooltipHost<T, W> {
     fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints, data: &T, env: &Env) -> Size {
         let size = self.inner.layout(ctx, bc, data, env);
         self.inner.set_layout_rect(ctx, data, env, size.to_rect());
+        ctx.set_paint_insets(self.inner.paint_insets());
         size
     }
 
