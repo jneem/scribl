@@ -1,7 +1,7 @@
 use druid::widget::Flex;
 use druid::{AppLauncher, Color, Data, Lens, Widget, WidgetExt, WindowDesc};
 
-use scribl_widget::{Icon, RadioGroup, ToggleButton, ToggleButtonState};
+use scribl_widget::{Icon, RadioGroup, Separator, ToggleButton, ToggleButtonState};
 
 #[derive(Data, Clone, PartialEq)]
 enum Animal {
@@ -69,6 +69,8 @@ fn build_root() -> impl Widget<State> {
     .background(Color::WHITE)
     .border(Color::BLACK, 3.0);
 
+    let sep = Separator::new().height(50.0).color(Color::rgb8(80, 70, 60));
+
     let vgroup = RadioGroup::column(
         32.0,
         vec![
@@ -85,6 +87,7 @@ fn build_root() -> impl Widget<State> {
     Flex::column()
         .with_child(button)
         .with_child(group)
+        .with_child(sep)
         .with_child(vgroup)
         .with_flex_spacer(1.0)
 }

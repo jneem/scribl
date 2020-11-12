@@ -132,7 +132,7 @@ impl Palette {
     pub fn new(color_height: f64) -> Palette {
         Palette {
             children: Vec::new(),
-            height: color_height - PALETTE_ELT_PADDING,
+            height: color_height,
         }
     }
 
@@ -198,7 +198,7 @@ impl Widget<PaletteData> for Palette {
         data: &PaletteData,
         env: &Env,
     ) -> Size {
-        let width = self.height + PALETTE_ELT_PADDING * 2.0;
+        let width = self.height;
         let height =
             (self.height + PALETTE_ELT_PADDING) * self.children.len() as f64 + PALETTE_ELT_PADDING;
         let size = bc.constrain(Size::new(width, height));
@@ -207,13 +207,12 @@ impl Widget<PaletteData> for Palette {
             // We don't really need to layout the children, but if we don't call layout
             // on them then druid will constantly think that they need to be re-layouted.
             let _ = c.layout(ctx, &child_constraints, &data.colors[i].0, env);
-            let x = PALETTE_ELT_PADDING;
             let y = (self.height + PALETTE_ELT_PADDING) * i as f64 + PALETTE_ELT_PADDING;
             c.set_layout_rect(
                 ctx,
                 &data.colors[i as usize].0,
                 env,
-                Rect::from_origin_size((x, y), (self.height, self.height)),
+                Rect::from_origin_size((0.0, y), (self.height, self.height)),
             );
         }
 

@@ -1,5 +1,5 @@
 use crossbeam_channel::Sender;
-use druid::widget::{Align, Flex};
+use druid::widget::{Flex, Scroll};
 use druid::{
     theme, BoxConstraints, Command, Data, Env, Event, EventCtx, ExtEventSink, KbKey, KeyEvent,
     LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, SingleUse, Size, TimerToken, UpdateCtx, Widget,
@@ -8,7 +8,7 @@ use druid::{
 use std::path::PathBuf;
 use std::time::Duration;
 
-use scribl_widget::{RadioGroup, ToggleButton, ToggleButtonState};
+use scribl_widget::{RadioGroup, Separator, SunkenContainer, ToggleButton, ToggleButtonState};
 
 use crate::audio::AudioHandle;
 use crate::autosave::AutosaveData;
@@ -117,15 +117,15 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
     draw_button_group
 }
 
-fn make_pen_group() -> Flex<EditorState> {
-    let palette = Palette::new(ICON_HEIGHT)
-        .border(theme::BORDER_LIGHT, crate::BUTTON_GROUP_BORDER_WIDTH)
-        // TODO: Get from the theme
-        .rounded(5.0)
-        .lens(EditorState::palette);
+fn make_pen_group() -> impl Widget<EditorState> {
+    let palette = Palette::new(MAIN_ICON_WIDTH)
+        .lens(EditorState::palette)
+        .padding(10.0)
+        .background(theme::BACKGROUND_LIGHT)
+        .rounded(theme::BUTTON_BORDER_RADIUS);
 
     let pen_size_group = RadioGroup::column(
-        SECONDARY_ICON_WIDTH,
+        MAIN_ICON_WIDTH,
         vec![
             (&icons::BIG_CIRCLE, PenSize::Big, "BIG PEN! (Q)".into()),
             (
@@ -135,10 +135,12 @@ fn make_pen_group() -> Flex<EditorState> {
             ),
             (&icons::SMALL_CIRCLE, PenSize::Small, "Small pen (E)".into()),
         ],
-    );
+    )
+    .padding(10.0)
+    .background(theme::BACKGROUND_LIGHT)
+    .rounded(theme::BUTTON_BORDER_RADIUS);
 
     Flex::column()
-        .with_default_spacer()
         .with_child(palette)
         .with_default_spacer()
         .with_child(pen_size_group.lens(EditorState::pen_size))
@@ -228,9 +230,9 @@ impl Editor {
             .with_default_spacer()
             .with_child(audio_button_group)
             .with_default_spacer()
-            .with_child(watch_button_group)
-            .with_flex_spacer(1.0);
-        let pen_col = make_pen_group().with_flex_spacer(1.0);
+            .with_child(watch_button_group);
+        let button_col = Scroll::new(button_col).vertical();
+        let pen_col = Scroll::new(make_pen_group()).vertical();
         let timeline_id = WidgetId::next();
         let timeline = Timeline::new().with_id(timeline_id);
         /*
@@ -242,17 +244,21 @@ impl Editor {
         */
         let column = Flex::column()
             .with_flex_child(
-                Flex::row()
-                    .with_child(button_col)
-                    .with_flex_child(drawing.padding(10.0), 1.0)
-                    .with_child(pen_col),
+                SunkenContainer::new(
+                    Flex::row()
+                        .with_child(button_col)
+                        .with_flex_child(drawing, 1.0)
+                        .with_child(pen_col),
+                ),
                 1.0,
             )
+            .with_child(Separator::new().height(10.0).color(theme::BACKGROUND_LIGHT))
             .with_child(timeline)
-            .with_child(make_status_bar());
+            .with_child(make_status_bar())
+            .background(theme::BACKGROUND_DARK);
 
         Editor {
-            inner: Box::new(ModalHost::new(Align::centered(column))),
+            inner: Box::new(ModalHost::new(column)),
             autosave_timer_id: TimerToken::INVALID,
             audio: None,
             last_autosave_data: None,

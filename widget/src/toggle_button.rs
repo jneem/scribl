@@ -136,8 +136,8 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
 
     fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints, _data: &T, env: &Env) -> Size {
         let padding = env.get(crate::BUTTON_ICON_PADDING);
-        let shadow_offset = env.get(crate::BUTTON_ICON_SHADOW_OFFSET);
-        let shadow_radius = env.get(crate::BUTTON_ICON_SHADOW_RADIUS);
+        let shadow_offset = env.get(crate::DROP_SHADOW_OFFSET);
+        let shadow_radius = env.get(crate::DROP_SHADOW_RADIUS);
         let size = (
             self.icon_size().width + padding * 2.0,
             self.icon_size().height + padding * 2.0,
@@ -153,9 +153,9 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &T, env: &Env) {
         let padding = env.get(crate::BUTTON_ICON_PADDING);
-        let shadow_offset = env.get(crate::BUTTON_ICON_SHADOW_OFFSET);
-        let shadow_radius = env.get(crate::BUTTON_ICON_SHADOW_RADIUS);
-        let shadow_color = env.get(crate::BUTTON_ICON_SHADOW_COLOR);
+        let shadow_offset = env.get(crate::DROP_SHADOW_OFFSET);
+        let shadow_radius = env.get(crate::DROP_SHADOW_RADIUS);
+        let shadow_color = env.get(crate::DROP_SHADOW_COLOR);
         let button_color = env.get(crate::BUTTON_ICON_BUTTON_COLOR);
 
         let state = (self.toggle_state)(data);

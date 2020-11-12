@@ -7,6 +7,7 @@ use druid::{
 use std::collections::HashMap;
 
 use scribl_curves::{DrawSnippet, DrawSnippets, Time, TimeDiff};
+use scribl_widget::SunkenContainer;
 
 use crate::audio::{TalkSnippet, TalkSnippets};
 use crate::cmd;
@@ -15,7 +16,6 @@ use crate::snippet_layout::{self, SnippetShape};
 
 const SNIPPET_HEIGHT: f64 = 20.0;
 const PIXELS_PER_USEC: f64 = 40.0 / 1000000.0;
-const TIMELINE_BG_COLOR: Color = Color::rgb8(0x66, 0x66, 0x66);
 const CURSOR_COLOR: Color = Color::rgb8(0x10, 0x10, 0xaa);
 const CURSOR_THICKNESS: f64 = 3.0;
 
@@ -219,7 +219,8 @@ impl Snip {
 ///
 /// This basically just contains the scroll area, which contains the inner widget.
 pub struct Timeline {
-    inner: WidgetPod<EditorState, ClipBox<EditorState, TimelineInner>>,
+    inner:
+        WidgetPod<EditorState, SunkenContainer<EditorState, ClipBox<EditorState, TimelineInner>>>,
 }
 
 /// The main timeline widget.
@@ -241,14 +242,21 @@ impl Timeline {
             .constrain_horizontal(false)
             .constrain_vertical(true);
         Timeline {
-            inner: WidgetPod::new(clip),
+            inner: WidgetPod::new(SunkenContainer::new(clip)),
         }
     }
 
+    fn clip_box(&self) -> &ClipBox<EditorState, TimelineInner> {
+        self.inner.widget().child()
+    }
+
+    fn clip_box_mut(&mut self) -> &mut ClipBox<EditorState, TimelineInner> {
+        self.inner.widget_mut().child_mut()
+    }
+
     fn update_visible_times(&mut self, size: Size) {
-        let offset = self.inner.widget().viewport_origin().x;
-        self.inner
-            .widget_mut()
+        let offset = self.clip_box().viewport_origin().x;
+        self.clip_box_mut()
             .child_mut()
             .set_visible(x_pix(offset), x_pix(offset + size.width));
     }
@@ -258,7 +266,7 @@ impl Widget<EditorState> for Timeline {
     fn event(&mut self, ctx: &mut EventCtx, ev: &Event, data: &mut EditorState, env: &Env) {
         if let Event::Wheel(wheel_ev) = ev {
             let delta = Vec2::new(wheel_ev.wheel_delta.x, 0.0);
-            self.inner.widget_mut().pan_by(delta);
+            self.clip_box_mut().pan_by(delta);
             ctx.request_paint();
             ctx.set_handled();
         }
@@ -277,7 +285,7 @@ impl Widget<EditorState> for Timeline {
             // Scroll the cursor to the new time.
             let time = data.time();
             let size = ctx.size();
-            let child = self.inner.widget();
+            let child = self.clip_box();
             let min_vis_time = x_pix(child.viewport_origin().x);
             let max_vis_time = x_pix(child.viewport_origin().x + size.width);
 
@@ -295,7 +303,7 @@ impl Widget<EditorState> for Timeline {
             if delta_x != 0.0 {
                 ctx.request_paint();
             }
-            self.inner.widget_mut().pan_by(Vec2 { x: delta_x, y: 0.0 });
+            self.clip_box_mut().pan_by(Vec2 { x: delta_x, y: 0.0 });
         }
         self.inner.update(ctx, data, env);
         self.update_visible_times(ctx.size());
@@ -851,7 +859,8 @@ impl Widget<EditorState> for TimelineInner {
         // paint region will prevent us from trying to fill an infinite rect.
         let size = ctx.size();
         let rect = Rect::from_origin_size(Point::ZERO, size).intersect(ctx.region().bounding_box());
-        ctx.fill(rect, &TIMELINE_BG_COLOR);
+        let bg = env.get(druid::theme::BACKGROUND_DARK);
+        ctx.fill(rect, &bg);
 
         for child in self.children.values_mut() {
             if ctx.region().intersects(child.widget().bbox) {

@@ -94,7 +94,8 @@ pub fn make_status_bar() -> impl Widget<EditorState> {
     let row = Flex::row()
         .with_child(time_label)
         .with_flex_spacer(1.0)
-        .with_child(status_label.lens(EditorState::status));
+        .with_child(status_label.lens(EditorState::status))
+        .background(druid::theme::BACKGROUND_LIGHT);
     Align::centered(row)
 }
 
