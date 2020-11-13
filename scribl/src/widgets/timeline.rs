@@ -800,7 +800,14 @@ impl Widget<EditorState> for TimelineInner {
             ctx.request_layout();
             self.recreate_children(&data.snippets, &data.audio_snippets);
             ctx.children_changed();
+        } else {
+            // Don't call update on the children if we just changed them -- we need to let
+            // WidgetAdded be the first thing they see.
+            for child in self.children.values_mut() {
+                child.update(ctx, data, env);
+            }
         }
+
         if old_data.mark != data.mark {
             ctx.request_paint();
         }
@@ -808,9 +815,6 @@ impl Widget<EditorState> for TimelineInner {
             let invalid =
                 TimelineInner::invalid_rect(old_data.time(), data.time(), ctx.size().height);
             ctx.request_paint_rect(invalid);
-        }
-        for child in self.children.values_mut() {
-            child.update(ctx, data, env);
         }
     }
 

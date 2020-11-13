@@ -6,7 +6,6 @@ pub mod icons;
 mod palette;
 mod status;
 mod timeline;
-pub mod tooltip;
 
 pub use audio_indicator::AudioIndicator;
 pub use drawing_pane::DrawingPane;

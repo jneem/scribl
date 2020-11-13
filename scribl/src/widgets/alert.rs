@@ -2,8 +2,9 @@ use druid::widget::prelude::*;
 use druid::widget::{Button, Controller, Flex, Label, Spinner};
 use druid::{SingleUse, Widget, WidgetExt};
 
+use scribl_widget::ModalHost;
+
 use crate::editor_state::CurrentAction;
-use crate::widgets::tooltip::ModalHost;
 use crate::EditorState;
 
 pub fn make_unsaved_changes_alert() -> impl Widget<EditorState> {

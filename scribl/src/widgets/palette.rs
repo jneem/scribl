@@ -3,8 +3,9 @@ use druid::widget::prelude::*;
 use druid::{theme, Color, Data, Lens, Rect, RenderContext, WidgetPod};
 use std::sync::Arc;
 
+use scribl_widget::TooltipExt;
+
 use crate::cmd;
-use crate::widgets::tooltip::TooltipExt;
 
 // The padding between and around the color swatches.
 const PALETTE_ELT_PADDING: f64 = 4.0;

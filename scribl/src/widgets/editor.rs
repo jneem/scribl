@@ -8,7 +8,9 @@ use druid::{
 use std::path::PathBuf;
 use std::time::Duration;
 
-use scribl_widget::{RadioGroup, Separator, SunkenContainer, ToggleButton, ToggleButtonState};
+use scribl_widget::{
+    ModalHost, RadioGroup, Separator, SunkenContainer, ToggleButton, ToggleButtonState, TooltipExt,
+};
 
 use crate::audio::AudioHandle;
 use crate::autosave::AutosaveData;
@@ -17,7 +19,6 @@ use crate::editor_state::{
     CurrentAction, DenoiseSetting, EditorState, PenSize, RecordingSpeed, SnippetId,
 };
 use crate::save_state::SaveFileData;
-use crate::widgets::tooltip::{ModalHost, TooltipExt};
 use crate::widgets::{
     alert, icons, make_status_bar, AudioIndicator, DrawingPane, Palette, Timeline,
 };
