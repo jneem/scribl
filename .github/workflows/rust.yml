@@ -49,8 +49,6 @@ jobs:
         run: |
             choco install pkgconfiglite
             choco install gstreamer gstreamer-devel
-            echo "PKG_CONFIG=C:/ProgramData/chocolatey/bin/pkg-config.exe" >> $GITHUB_ENV
-            echo "PKG_CONFIG_PATH=C:/gstreamer/1.0/x86_64/lib/pkgconfig" >> $GITHUB_ENV
         if: contains(matrix.os, 'windows')
 
       - name: Restore dependency crates
@@ -63,9 +61,10 @@ jobs:
           key: cargo-deps-${{ hashFiles('Cargo.lock') }}
 
       - name: Build
-        run: |
-            echo $PKG_CONFIG_PATH
-            cargo build --locked --verbose
+        env:
+            PKG_CONFIG: C:/ProgramData/chocolatey/bin/pkg-config.exe
+            PKG_CONFIG_PATH: C:/gstreamer/1.0/x86_64/lib/pkgconfig
+        run: cargo build --locked --verbose
 
       - name: Run tests
         run: cargo test --locked --verbose
