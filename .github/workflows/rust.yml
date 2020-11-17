@@ -49,8 +49,8 @@ jobs:
         run: |
             choco install pkgconfiglite
             choco install gstreamer gstreamer-devel
-            echo "::set-env name=PKG_CONFIG::C:/ProgramData/chocolatey/bin/pkg-config.exe"
-            echo "::set-env name=PKG_CONFIG_PATH::C:/gstreamer/1.0/x86_64/lib/pkgconfig"
+            echo "PKG_CONFIG=C:/ProgramData/chocolatey/bin/pkg-config.exe" >> $GITHUB_ENV
+            echo "PKG_CONFIG_PATH=C:/gstreamer/1.0/x86_64/lib/pkgconfig" >> $GITHUB_ENV
         if: contains(matrix.os, 'windows')
 
       - name: Restore dependency crates
