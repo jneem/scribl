@@ -51,6 +51,9 @@ impl<T: Data> RadioGroup<T> {
         }
     }
 
+    /// Creates a group of buttons in a row.
+    ///
+    /// `height` is the height of the icon contained in the buttons.
     pub fn row<'a, I: IntoIterator<Item = (&'a Icon, T, LabelText<T>)>>(
         height: f64,
         children: I,
@@ -58,6 +61,7 @@ impl<T: Data> RadioGroup<T> {
         Self::new(Axis::Horizontal, height, children)
     }
 
+    /// Creates a group of buttons in a column.
     pub fn column<'a, I: IntoIterator<Item = (&'a Icon, T, LabelText<T>)>>(
         width: f64,
         children: I,

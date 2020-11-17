@@ -50,6 +50,7 @@ pub struct ToggleButton<T> {
 }
 
 impl<T: Data> ToggleButton<T> {
+    /// TODO: instead of taking an icon, allow a painter or something like that.
     pub fn new(
         icon: &Icon,
         toggle_state: impl Fn(&T) -> ToggleButtonState + 'static,
@@ -69,6 +70,8 @@ impl<T: Data> ToggleButton<T> {
         }
     }
 
+    /// Sets the width of the icon contained in this button. (The actual icon will be bigger by
+    /// some padding in each direction, determined by the env variable `BUTTON_ICON_PADDING`.)
     pub fn width(mut self, width: f64) -> Self {
         self.icon_scale = width / self.icon_size.width;
         self

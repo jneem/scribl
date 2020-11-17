@@ -119,7 +119,10 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
 }
 
 fn make_pen_group() -> impl Widget<EditorState> {
-    let palette = Palette::new(MAIN_ICON_WIDTH)
+    // 8.0 is twice (the default value of ) BUTTON_ICON_PADDING, so this serves to make the palette
+    //   width the same as the pen_size_group width. TODO: make the padding values more convenient
+    //   to customize, so this isn't some magic number
+    let palette = Palette::new(MAIN_ICON_WIDTH + 8.0)
         .lens(EditorState::palette)
         .padding(10.0)
         .background(theme::BACKGROUND_LIGHT)

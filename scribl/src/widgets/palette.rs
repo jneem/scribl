@@ -129,11 +129,12 @@ impl Widget<Color> for PaletteElement {
 }
 
 impl Palette {
-    /// Creates a new palette in which the color swatches have height `color_height`.
-    pub fn new(color_height: f64) -> Palette {
+    /// Creates a new palette in which the color swatches have dimensions `color_size`.
+    /// `color_size` is also the width of this widget (the height depends on the number of colors).
+    pub fn new(color_size: f64) -> Palette {
         Palette {
             children: Vec::new(),
-            height: color_height,
+            height: color_size,
         }
     }
 
