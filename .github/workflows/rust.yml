@@ -65,6 +65,12 @@ jobs:
             PKG_CONFIG: C:/ProgramData/chocolatey/bin/pkg-config.exe
             PKG_CONFIG_PATH: C:/gstreamer/1.0/x86_64/lib/pkgconfig
         run: cargo build --locked --verbose
+        if: contains(matrix.os, 'windows')
+
+      - name: Build
+        run: cargo build --locked --verbose
+        if: contains(matrix.os, 'ubuntu')
+
 
       - name: Run tests
         run: cargo test --locked --verbose
