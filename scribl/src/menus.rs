@@ -2,8 +2,6 @@ use druid::commands;
 use druid::platform_menus;
 use druid::{FileDialogOptions, FileSpec, KbKey, LocalizedString, MenuDesc, MenuItem, SysMods};
 
-use scribl_widget::ToggleButtonState;
-
 use crate::app_state::AppState;
 use crate::cmd;
 use crate::editor_state::{CurrentAction, EditorState};
@@ -99,30 +97,30 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
         LocalizedString::new("scribl-menu-edit-draw").with_placeholder("Draw"),
         cmd::DRAW,
     );
-    let draw = if data.action.rec_toggle() == ToggleButtonState::ToggledOff {
-        draw.hotkey(SysMods::None, " ")
-    } else {
+    let draw = if data.action.is_recording() {
         draw.disabled()
+    } else {
+        draw.hotkey(SysMods::None, " ")
     };
 
     let talk = MenuItem::new(
         LocalizedString::new("scribl-menu-edit-talk").with_placeholder("Talk"),
         cmd::TALK,
     );
-    let talk = if data.action.rec_audio_toggle() == ToggleButtonState::ToggledOff {
-        talk.hotkey(SysMods::Shift, " ")
-    } else {
+    let talk = if data.action.is_recording_audio() {
         talk.disabled()
+    } else {
+        talk.hotkey(SysMods::Shift, " ")
     };
 
     let play = MenuItem::new(
         LocalizedString::new("scribl-menu-edit-play").with_placeholder("Play"),
         cmd::PLAY,
     );
-    let play = if data.action.play_toggle() == ToggleButtonState::ToggledOff {
-        play.hotkey(SysMods::None, KbKey::Enter)
-    } else {
+    let play = if data.action.is_playing() {
         play.disabled()
+    } else {
+        play.hotkey(SysMods::None, KbKey::Enter)
     };
 
     let stop = MenuItem::new(

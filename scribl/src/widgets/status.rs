@@ -70,7 +70,7 @@ pub fn make_status_bar() -> impl Widget<EditorState> {
             },
         );
 
-    let progress = ProgressBar::new().lens(lens::Id.map(
+    let progress = ProgressBar::new().lens(lens::Identity.map(
         |s| {
             if let StatusType::Progress(_, x) = status_type(s) {
                 x

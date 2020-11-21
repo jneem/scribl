@@ -1,7 +1,7 @@
 use druid::widget::Flex;
 use druid::{AppLauncher, Color, Data, Lens, Widget, WidgetExt, WindowDesc};
 
-use scribl_widget::{Icon, RadioGroup, Separator, ToggleButton, ToggleButtonState};
+use scribl_widget::{Icon, RadioGroup, Separator, ToggleButton};
 
 #[derive(Data, Clone, PartialEq)]
 enum Animal {
@@ -33,15 +33,9 @@ pub fn main() {
 }
 
 fn build_root() -> impl Widget<State> {
-    let button = ToggleButton::<State>::new(
+    let button = ToggleButton::<State>::from_icon(
         &TURTLE,
-        |x| {
-            if x.chosen == Animal::Turtle {
-                ToggleButtonState::ToggledOn
-            } else {
-                ToggleButtonState::ToggledOff
-            }
-        },
+        |x| x.chosen == Animal::Turtle,
         |_, state, _| {
             state.chosen = Animal::Turtle;
             println!("toggle");
@@ -51,7 +45,7 @@ fn build_root() -> impl Widget<State> {
             println!("untoggle");
         },
     )
-    .width(32.0)
+    .icon_width(32.0)
     .padding(10.0)
     .background(Color::WHITE)
     .border(Color::BLACK, 3.0);

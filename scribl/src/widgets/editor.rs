@@ -8,9 +8,7 @@ use druid::{
 use std::path::PathBuf;
 use std::time::Duration;
 
-use scribl_widget::{
-    ModalHost, RadioGroup, Separator, SunkenContainer, ToggleButton, ToggleButtonState, TooltipExt,
-};
+use scribl_widget::{ModalHost, RadioGroup, Separator, SunkenContainer, ToggleButton, TooltipExt};
 
 use crate::audio::AudioHandle;
 use crate::autosave::AutosaveData;
@@ -46,15 +44,15 @@ pub struct Editor {
 }
 
 fn make_draw_button_group() -> impl Widget<EditorState> {
-    let rec_button = ToggleButton::new(
+    let rec_button = ToggleButton::from_icon(
         &icons::VIDEO,
-        |state: &EditorState| state.action.rec_toggle(),
+        |state: &EditorState| state.action.is_recording(),
         |ctx, _, _| ctx.submit_command(cmd::DRAW),
         |ctx, _, _| ctx.submit_command(cmd::STOP),
     )
-    .width(MAIN_ICON_WIDTH)
+    .icon_width(MAIN_ICON_WIDTH)
     .tooltip(|state: &EditorState, _env: &Env| {
-        if state.action.rec_toggle() == ToggleButtonState::ToggledOn {
+        if state.action.is_recording() {
             "Stop recording (Space)"
         } else {
             "Record a drawing (Space)"
@@ -88,13 +86,13 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
         ],
     );
 
-    let rec_fade_button = ToggleButton::new(
+    let rec_fade_button = ToggleButton::from_icon(
         &icons::FADE_OUT,
-        |&b: &bool| b.into(),
+        |&b: &bool| b,
         |_, data, _| *data = true,
         |_, data, _| *data = false,
     )
-    .width(SECONDARY_ICON_WIDTH)
+    .icon_width(SECONDARY_ICON_WIDTH)
     .tooltip(|state: &bool, _env: &Env| {
         if *state {
             "Disable fade effect"
@@ -151,15 +149,15 @@ fn make_pen_group() -> impl Widget<EditorState> {
 }
 
 fn make_audio_button_group() -> impl Widget<EditorState> {
-    let rec_audio_button = ToggleButton::new(
+    let rec_audio_button = ToggleButton::from_icon(
         &icons::MICROPHONE,
-        |state: &EditorState| state.action.rec_audio_toggle(),
+        |state: &EditorState| state.action.is_recording_audio(),
         |ctx, _, _| ctx.submit_command(cmd::TALK),
         |ctx, _, _| ctx.submit_command(cmd::STOP),
     )
-    .width(MAIN_ICON_WIDTH)
+    .icon_width(MAIN_ICON_WIDTH)
     .tooltip(|state: &EditorState, _env: &Env| {
-        if state.action.rec_audio_toggle() == ToggleButtonState::ToggledOn {
+        if state.action.is_recording_audio() {
             "Stop recording (Shift+Space)"
         } else {
             "Start recording audio (Shift+Space)"
@@ -204,15 +202,15 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
 impl Editor {
     pub fn new() -> Editor {
         let drawing = DrawingPane::default();
-        let play_button = ToggleButton::new(
+        let play_button = ToggleButton::from_icon(
             &icons::PLAY,
-            |state: &EditorState| state.action.play_toggle(),
+            |state: &EditorState| state.action.is_playing(),
             |ctx, _, _| ctx.submit_command(cmd::PLAY),
             |ctx, _, _| ctx.submit_command(cmd::STOP),
         )
-        .width(MAIN_ICON_WIDTH)
+        .icon_width(MAIN_ICON_WIDTH)
         .tooltip(|state: &EditorState, _env: &Env| {
-            if state.action.play_toggle() == ToggleButtonState::ToggledOn {
+            if state.action.is_playing() {
                 "Pause playback (Enter)"
             } else {
                 "Play back the animation (Enter)"
@@ -358,6 +356,21 @@ impl Editor {
         }
     }
 
+    fn stop_current_action(&mut self, ctx: &mut EventCtx, data: &mut EditorState) {
+        match data.action {
+            CurrentAction::Playing => data.stop_playing(),
+            CurrentAction::Recording(_) => {
+                if let Some(new_snippet) = data.stop_recording() {
+                    ctx.submit_command(cmd::ADD_SNIPPET.with(new_snippet));
+                }
+            }
+            CurrentAction::RecordingAudio(_) => {
+                data.stop_recording_audio();
+            }
+            _ => {}
+        }
+    }
+
     fn handle_command(
         &mut self,
         ctx: &mut EventCtx,
@@ -488,48 +501,28 @@ impl Editor {
             ctx.request_paint();
             true
         } else if cmd.is(cmd::PLAY) {
-            if data.action.is_idle() {
-                data.start_playing();
-                ctx.request_anim_frame();
-            } else {
-                log::error!("can't play, current action is {:?}", data.action);
-            }
+            self.stop_current_action(ctx, data);
+            data.start_playing();
+            ctx.request_anim_frame();
             ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::DRAW) {
-            if data.action.is_idle() {
-                let prev_state = data.undo_state();
-                // We don't request_anim_frame here because recording starts paused. Instead, we do
-                // it in `DrawingPane` when the time actually starts.
-                data.start_recording(data.recording_speed.factor());
-                data.push_transient_undo_state(prev_state, "start drawing");
-            } else {
-                log::error!("can't draw, current action is {:?}", data.action);
-            }
+            self.stop_current_action(ctx, data);
+            let prev_state = data.undo_state();
+            // We don't request_anim_frame here because recording starts paused. Instead, we do
+            // it in `DrawingPane` when the time actually starts.
+            data.start_recording(data.recording_speed.factor());
+            data.push_transient_undo_state(prev_state, "start drawing");
             ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::TALK) {
-            if data.action.is_idle() {
-                data.start_recording_audio();
-                ctx.request_anim_frame();
-            } else {
-                log::error!("can't talk, current action is {:?}", data.action);
-            }
+            self.stop_current_action(ctx, data);
+            data.start_recording_audio();
+            ctx.request_anim_frame();
             ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::STOP) {
-            match data.action {
-                CurrentAction::Playing => data.stop_playing(),
-                CurrentAction::Recording(_) => {
-                    if let Some(new_snippet) = data.stop_recording() {
-                        ctx.submit_command(cmd::ADD_SNIPPET.with(new_snippet));
-                    }
-                }
-                CurrentAction::RecordingAudio(_) => {
-                    data.stop_recording_audio();
-                }
-                _ => {}
-            }
+            self.stop_current_action(ctx, data);
             ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::WARP_TIME_TO) {

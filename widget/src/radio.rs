@@ -2,7 +2,7 @@ use druid::widget::prelude::*;
 use druid::widget::{Axis, LabelText};
 use druid::{Data, Rect, WidgetPod};
 
-use crate::{Icon, ToggleButton, ToggleButtonState, TooltipExt, TooltipHost};
+use crate::{Icon, ToggleButton, TooltipExt, TooltipHost};
 
 pub struct RadioGroup<T: Data> {
     children: Vec<WidgetPod<T, TooltipHost<T, ToggleButton<T>>>>,
@@ -13,33 +13,26 @@ pub struct RadioGroup<T: Data> {
 impl<T: Data> RadioGroup<T> {
     fn new<'a, I: IntoIterator<Item = (&'a Icon, T, LabelText<T>)>>(
         axis: Axis,
-        cross_axis_size: f64,
+        size: f64,
         children: I,
     ) -> Self {
         let mut children_pods = Vec::new();
         for (icon, variant, text) in children {
             let variant_clone = variant.clone();
-            let child = ToggleButton::<T>::new(
+            let child = ToggleButton::<T>::from_icon(
                 icon,
-                move |data| {
-                    if data.same(&variant) {
-                        ToggleButtonState::ToggledOn
-                    } else {
-                        ToggleButtonState::ToggledOff
-                    }
-                },
+                move |data| data.same(&variant),
                 move |_, state, _| {
                     *state = variant_clone.clone();
                 },
                 |_, _, _| {},
             );
-
-            let child = if axis == Axis::Vertical {
-                child.width(cross_axis_size)
+            let child = if axis == Axis::Horizontal {
+                child.icon_height(size)
             } else {
-                child.height(cross_axis_size)
-            }
-            .tooltip(text);
+                child.icon_width(size)
+            };
+            let child = child.tooltip(text);
 
             children_pods.push(WidgetPod::new(child));
         }

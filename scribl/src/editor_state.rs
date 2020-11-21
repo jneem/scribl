@@ -8,7 +8,6 @@ use scribl_curves::{
     DrawSnippet, DrawSnippetId, DrawSnippets, Effect, Effects, FadeEffect, StrokeInProgress,
     StrokeSeq, StrokeStyle, Time, TimeDiff,
 };
-use scribl_widget::ToggleButtonState;
 
 use crate::audio::{TalkSnippetId, TalkSnippets};
 use crate::config::Config;
@@ -606,34 +605,12 @@ impl Default for CurrentAction {
 }
 
 impl CurrentAction {
-    pub fn rec_toggle(&self) -> ToggleButtonState {
-        use CurrentAction::*;
-        use ToggleButtonState::*;
-        match *self {
-            Recording(_) => ToggledOn,
-            Idle => ToggledOff,
-            _ => Disabled,
-        }
+    pub fn is_playing(&self) -> bool {
+        matches!(*self, CurrentAction::Playing)
     }
 
-    pub fn play_toggle(&self) -> ToggleButtonState {
-        use CurrentAction::*;
-        use ToggleButtonState::*;
-        match *self {
-            Playing => ToggledOn,
-            Idle => ToggledOff,
-            _ => Disabled,
-        }
-    }
-
-    pub fn rec_audio_toggle(&self) -> ToggleButtonState {
-        use CurrentAction::*;
-        use ToggleButtonState::*;
-        match *self {
-            RecordingAudio(_) => ToggledOn,
-            Idle => ToggledOff,
-            _ => Disabled,
-        }
+    pub fn is_recording_audio(&self) -> bool {
+        matches!(self, &CurrentAction::RecordingAudio(_))
     }
 
     pub fn is_idle(&self) -> bool {
