@@ -14,7 +14,6 @@ use crate::cmd;
 use crate::editor_state::{EditorState, SnippetId};
 use crate::snippet_layout::{self, SnippetShape};
 
-const SNIPPET_HEIGHT: f64 = 20.0;
 const PIXELS_PER_USEC: f64 = 40.0 / 1000000.0;
 const CURSOR_COLOR: Color = Color::rgb8(0x10, 0x10, 0xaa);
 const CURSOR_THICKNESS: f64 = 3.0;
@@ -625,8 +624,7 @@ impl Widget<EditorState> for TimelineSnippet {
         _env: &Env,
     ) -> Size {
         let width = self.width(data);
-        let height = SNIPPET_HEIGHT;
-        bc.constrain((width, height))
+        bc.constrain((width, f64::INFINITY))
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &EditorState, _env: &Env) {
@@ -851,9 +849,10 @@ impl Widget<EditorState> for TimelineInner {
         // The children have funny shapes, so rather than use druid's layout mechanisms to position
         // them, we just do it all manually. Nevertheless, we need to call "layout" on the children
         // so that druid will know that we already laid them out.
+        let child_bc = BoxConstraints::new(Size::ZERO, size);
         for c in self.children.values_mut() {
-            c.layout(ctx, bc, data, env);
-            c.set_layout_rect(ctx, data, env, size.to_rect());
+            c.layout(ctx, &child_bc, data, env);
+            c.set_origin(ctx, data, env, Point::ZERO);
         }
         size
     }
