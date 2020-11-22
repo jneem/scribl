@@ -45,6 +45,7 @@ mod icon;
 mod modal;
 mod radio;
 mod separator;
+mod shadow;
 mod sunken_container;
 pub(crate) mod toggle_button;
 
@@ -52,5 +53,6 @@ pub use icon::{Icon, IconWidget};
 pub use modal::{ModalHost, TooltipExt, TooltipHost};
 pub use radio::RadioGroup;
 pub use separator::Separator;
+pub use shadow::Shadow;
 pub use sunken_container::SunkenContainer;
-pub use toggle_button::ToggleButton;
+pub use toggle_button::{ShadowlessToggleButton, ToggleButton};
