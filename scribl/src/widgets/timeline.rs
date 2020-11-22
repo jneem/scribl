@@ -825,7 +825,6 @@ impl Widget<EditorState> for TimelineInner {
     ) {
         match event {
             LifeCycle::WidgetAdded => {
-                ctx.request_layout();
                 self.recreate_children(&data.snippets, &data.audio_snippets);
                 ctx.children_changed();
             }
