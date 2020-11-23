@@ -201,13 +201,9 @@ impl<T: Data> Widget<T> for ShadowlessToggleButton<T> {
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints, data: &T, env: &Env) -> Size {
-        let padding = env.get(crate::BUTTON_ICON_PADDING);
-        let child_bc = bc.shrink((2.0 * padding, 2.0 * padding));
-        let child_size = self.inner.layout(ctx, &child_bc, data, env);
-        self.inner
-            .set_origin(ctx, data, env, (padding, padding).into());
+        let size = self.inner.layout(ctx, &bc, data, env);
+        self.inner.set_origin(ctx, data, env, Point::ZERO);
         ctx.set_paint_insets(self.insets);
-        let size = child_size + Size::new(2.0 * padding, 2.0 * padding);
 
         bc.constrain(size)
     }

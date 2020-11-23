@@ -1,7 +1,7 @@
 use druid::kurbo::{Affine, BezPath};
 use druid::widget::prelude::*;
 use druid::widget::BackgroundBrush;
-use druid::{Data, Size, Widget};
+use druid::{Data, KeyOrValue, Size, Widget};
 
 /// An icon made up of a single path (which should be filled with whatever color we want).
 pub struct Icon {
@@ -24,6 +24,7 @@ pub struct IconWidget<T> {
     // The size of the icon. Think of it as the bounding box of the path, but it isn't necessarily
     // exactly that.
     size: Size,
+    padding: KeyOrValue<f64>,
     brush: BackgroundBrush<T>,
 }
 
@@ -33,8 +34,14 @@ impl<T> IconWidget<T> {
         IconWidget {
             path: BezPath::from_svg(icon.path).unwrap(),
             size: Size::new(icon.width as f64, icon.height as f64),
+            padding: crate::BUTTON_ICON_PADDING.into(),
             brush: brush.into(),
         }
+    }
+
+    pub fn padding(mut self, padding: impl Into<KeyOrValue<f64>>) -> Self {
+        self.padding = padding.into();
+        self
     }
 
     /// Scales this icon to have a given width (while preserving the aspect ratio).
@@ -70,12 +77,15 @@ impl<T: Data> Widget<T> for IconWidget<T> {
         ctx.request_paint();
     }
 
-    fn layout(&mut self, _: &mut LayoutCtx, bc: &BoxConstraints, _: &T, _: &Env) -> Size {
-        bc.constrain(self.size)
+    fn layout(&mut self, _: &mut LayoutCtx, bc: &BoxConstraints, _: &T, env: &Env) -> Size {
+        let padding = self.padding.resolve(env);
+        bc.constrain(self.size + Size::new(2.0 * padding, 2.0 * padding))
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &T, env: &Env) {
+        let padding = self.padding.resolve(env);
         ctx.with_save(|ctx| {
+            ctx.transform(Affine::translate((padding, padding)));
             ctx.clip(&self.path);
             self.brush.paint(ctx, data, env);
         });
