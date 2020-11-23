@@ -1,7 +1,7 @@
 use druid::kurbo::{Affine, BezPath};
 use druid::widget::prelude::*;
 use druid::widget::BackgroundBrush;
-use druid::{Data, KeyOrValue, Size, Widget};
+use druid::{Data, Size, Widget};
 
 /// An icon made up of a single path (which should be filled with whatever color we want).
 pub struct Icon {
@@ -24,7 +24,6 @@ pub struct IconWidget<T> {
     // The size of the icon. Think of it as the bounding box of the path, but it isn't necessarily
     // exactly that.
     size: Size,
-    padding: KeyOrValue<f64>,
     brush: BackgroundBrush<T>,
 }
 
@@ -34,39 +33,8 @@ impl<T> IconWidget<T> {
         IconWidget {
             path: BezPath::from_svg(icon.path).unwrap(),
             size: Size::new(icon.width as f64, icon.height as f64),
-            padding: crate::BUTTON_ICON_PADDING.into(),
             brush: brush.into(),
         }
-    }
-
-    pub fn padding(mut self, padding: impl Into<KeyOrValue<f64>>) -> Self {
-        self.padding = padding.into();
-        self
-    }
-
-    /// Scales this icon to have a given width (while preserving the aspect ratio).
-    pub fn width(mut self, width: f64) -> Self {
-        self.set_width(width);
-        self
-    }
-
-    /// Scales this icon to have a given height (while preserving the aspect ratio).
-    pub fn height(mut self, height: f64) -> Self {
-        self.set_height(height);
-        self
-    }
-
-    pub fn set_width(&mut self, width: f64) {
-        self.scale_by(width / self.size.width);
-    }
-
-    pub fn set_height(&mut self, height: f64) {
-        self.scale_by(height / self.size.height);
-    }
-
-    fn scale_by(&mut self, factor: f64) {
-        self.size *= factor;
-        self.path.apply_affine(Affine::scale(factor));
     }
 }
 
@@ -77,15 +45,18 @@ impl<T: Data> Widget<T> for IconWidget<T> {
         ctx.request_paint();
     }
 
-    fn layout(&mut self, _: &mut LayoutCtx, bc: &BoxConstraints, _: &T, env: &Env) -> Size {
-        let padding = self.padding.resolve(env);
-        bc.constrain(self.size + Size::new(2.0 * padding, 2.0 * padding))
+    fn layout(&mut self, _: &mut LayoutCtx, bc: &BoxConstraints, _: &T, _: &Env) -> Size {
+        let max = bc.max();
+        let width_frac = max.width / self.size.width;
+        let height_frac = max.height / self.size.height;
+        let scale = width_frac.min(height_frac);
+        self.size * scale
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &T, env: &Env) {
-        let padding = self.padding.resolve(env);
+        let scale = ctx.size().width / self.size.width;
         ctx.with_save(|ctx| {
-            ctx.transform(Affine::translate((padding, padding)));
+            ctx.transform(Affine::scale(scale));
             ctx.clip(&self.path);
             self.brush.paint(ctx, data, env);
         });

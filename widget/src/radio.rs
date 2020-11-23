@@ -18,7 +18,7 @@ pub struct RadioGroup<T: Data> {
 impl<T: Data> RadioGroup<T> {
     fn new<'a, I: IntoIterator<Item = (&'a Icon, T, LabelText<T>)>>(
         axis: Axis,
-        size: f64,
+        padding: f64,
         children: I,
     ) -> Self {
         let mut buttons = Vec::new();
@@ -26,17 +26,13 @@ impl<T: Data> RadioGroup<T> {
             let variant_clone = variant.clone();
             let child = ShadowlessToggleButton::<T>::from_icon(
                 icon,
+                padding,
                 move |data| data.same(&variant),
                 move |_, state, _| {
                     *state = variant_clone.clone();
                 },
                 |_, _, _| {},
             );
-            let child = if axis == Axis::Horizontal {
-                child.icon_height(size)
-            } else {
-                child.icon_width(size)
-            };
             let child = child.tooltip(text);
 
             buttons.push(RadioButton {
@@ -56,18 +52,18 @@ impl<T: Data> RadioGroup<T> {
     ///
     /// `height` is the height of the icon contained in the buttons.
     pub fn row<'a, I: IntoIterator<Item = (&'a Icon, T, LabelText<T>)>>(
-        height: f64,
         children: I,
+        padding: f64,
     ) -> Self {
-        Self::new(Axis::Horizontal, height, children)
+        Self::new(Axis::Horizontal, padding, children)
     }
 
     /// Creates a group of buttons in a column.
     pub fn column<'a, I: IntoIterator<Item = (&'a Icon, T, LabelText<T>)>>(
-        width: f64,
         children: I,
+        padding: f64,
     ) -> Self {
-        Self::new(Axis::Vertical, width, children)
+        Self::new(Axis::Vertical, padding, children)
     }
 }
 

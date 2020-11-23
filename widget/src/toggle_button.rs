@@ -1,7 +1,7 @@
 use druid::kurbo::Vec2;
 use druid::widget::prelude::*;
 use druid::widget::Painter;
-use druid::{theme, Data, Insets, Point, RenderContext, Size, WidgetPod};
+use druid::{theme, Data, Insets, Point, RenderContext, Size, WidgetExt, WidgetPod};
 use std::rc::Rc;
 
 use crate::{Icon, IconWidget, Shadow};
@@ -10,7 +10,7 @@ use crate::{Icon, IconWidget, Shadow};
 /// toggle buttons in a way that the shadows need to be handled simultaneously. For example, this
 /// is used in [`RadioGroup`](crate::RadioGroup).
 pub struct ShadowlessToggleButton<T> {
-    inner: WidgetPod<T, IconWidget<T>>,
+    inner: WidgetPod<T, Box<dyn Widget<T>>>,
     down: bool,
     // We often combine this widget with a drop shadow, in which case its paint insets need to
     // include the shadow insets.
@@ -28,6 +28,7 @@ pub struct ToggleButton<T> {
 impl<T: Data> ShadowlessToggleButton<T> {
     pub fn from_icon(
         icon: &Icon,
+        padding: f64,
         toggle_state: impl Fn(&T) -> bool + 'static,
         toggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
         untoggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
@@ -42,11 +43,17 @@ impl<T: Data> ShadowlessToggleButton<T> {
                 env.get(crate::BUTTON_ICON_COLOR)
             };
             let rect = ctx.size().to_rect();
+            let rect = ctx
+                .current_transform()
+                .inverse()
+                .transform_rect_bbox(rect)
+                .with_origin(Point::ZERO);
             ctx.fill(rect, &color);
         };
+        let inner = icon.to_widget(Painter::new(icon_painter)).padding(padding);
 
         ShadowlessToggleButton {
-            inner: WidgetPod::new(icon.to_widget(Painter::new(icon_painter))),
+            inner: WidgetPod::new(Box::new(inner)),
             down: false,
             insets: Insets::ZERO,
             toggle_state,
@@ -62,31 +69,13 @@ impl<T: Data> ShadowlessToggleButton<T> {
         untoggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
     ) -> ShadowlessToggleButton<T> {
         ShadowlessToggleButton {
-            inner: WidgetPod::new(icon_widget),
+            inner: WidgetPod::new(Box::new(icon_widget)),
             down: false,
             insets: Insets::ZERO,
             toggle_state: Rc::new(toggle_state),
             toggle_action: Box::new(toggle_action),
             untoggle_action: Box::new(untoggle_action),
         }
-    }
-
-    pub fn icon_width(mut self, width: f64) -> Self {
-        self.inner.widget_mut().set_width(width);
-        self
-    }
-
-    pub fn set_icon_width(&mut self, width: f64) {
-        self.inner.widget_mut().set_width(width);
-    }
-
-    pub fn icon_height(mut self, height: f64) -> Self {
-        self.inner.widget_mut().set_height(height);
-        self
-    }
-
-    pub fn set_icon_height(&mut self, height: f64) {
-        self.inner.widget_mut().set_height(height);
     }
 
     pub fn is_down(&self) -> bool {
@@ -101,12 +90,18 @@ impl<T: Data> ShadowlessToggleButton<T> {
 impl<T: Data> ToggleButton<T> {
     pub fn from_icon(
         icon: &Icon,
+        padding: f64,
         toggle_state: impl Fn(&T) -> bool + 'static,
         toggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
         untoggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
     ) -> ToggleButton<T> {
-        let button =
-            ShadowlessToggleButton::from_icon(icon, toggle_state, toggle_action, untoggle_action);
+        let button = ShadowlessToggleButton::from_icon(
+            icon,
+            padding,
+            toggle_state,
+            toggle_action,
+            untoggle_action,
+        );
         ToggleButton {
             button: WidgetPod::new(button),
             shadow: WidgetPod::new(Shadow),
@@ -129,24 +124,6 @@ impl<T: Data> ToggleButton<T> {
             button: WidgetPod::new(button),
             shadow: WidgetPod::new(Shadow),
         }
-    }
-
-    pub fn icon_width(mut self, width: f64) -> Self {
-        self.button.widget_mut().set_icon_width(width);
-        self
-    }
-
-    pub fn set_icon_width(&mut self, width: f64) {
-        self.button.widget_mut().set_icon_width(width);
-    }
-
-    pub fn icon_height(mut self, height: f64) -> Self {
-        self.button.widget_mut().set_icon_height(height);
-        self
-    }
-
-    pub fn set_icon_height(&mut self, height: f64) {
-        self.button.widget_mut().set_icon_height(height);
     }
 }
 

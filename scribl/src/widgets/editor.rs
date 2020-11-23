@@ -23,8 +23,10 @@ use crate::widgets::{
 
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(60);
 const ICON_HEIGHT: f64 = 32.0;
+const ICON_PADDING: f64 = 6.0;
+const TOOLBAR_WIDTH: f64 = 52.0;
+const SECONDARY_BUTTON_PADDING: f64 = 4.0;
 const MAIN_ICON_WIDTH: f64 = 32.0;
-const SECONDARY_ICON_WIDTH: f64 = 24.0;
 
 pub struct Editor {
     // Every AUTOSAVE_DURATION, we will attempt to save the current file.
@@ -46,11 +48,11 @@ pub struct Editor {
 fn make_draw_button_group() -> impl Widget<EditorState> {
     let rec_button = ToggleButton::from_icon(
         &icons::VIDEO,
+        ICON_PADDING,
         |state: &EditorState| state.action.is_recording(),
         |ctx, _, _| ctx.submit_command(cmd::DRAW),
         |ctx, _, _| ctx.submit_command(cmd::STOP),
     )
-    .icon_width(MAIN_ICON_WIDTH)
     .tooltip(|state: &EditorState, _env: &Env| {
         if state.action.is_recording() {
             "Stop recording (Space)"
@@ -61,7 +63,6 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
     });
 
     let rec_speed_group = RadioGroup::column(
-        SECONDARY_ICON_WIDTH,
         vec![
             (
                 &icons::PAUSE,
@@ -84,15 +85,17 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
                 "Draw in real time".into(),
             ),
         ],
-    );
+        ICON_PADDING,
+    )
+    .padding(SECONDARY_BUTTON_PADDING);
 
     let rec_fade_button = ToggleButton::from_icon(
         &icons::FADE_OUT,
+        ICON_PADDING,
         |&b: &bool| b,
         |_, data, _| *data = true,
         |_, data, _| *data = false,
     )
-    .icon_width(SECONDARY_ICON_WIDTH)
     .tooltip(|state: &bool, _env: &Env| {
         if *state {
             "Disable fade effect"
@@ -101,15 +104,16 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
         }
         .to_owned()
     })
+    .padding(SECONDARY_BUTTON_PADDING)
     .lens(EditorState::fade_enabled);
 
     let draw_button_group = Flex::column()
         .with_child(rec_button)
-        .with_spacer(10.0)
+        .with_spacer(5.0)
         .with_child(rec_speed_group.lens(EditorState::recording_speed))
-        .with_spacer(10.0)
+        .with_spacer(5.0)
         .with_child(rec_fade_button)
-        .padding(10.0)
+        .padding(5.0)
         .background(theme::BACKGROUND_LIGHT)
         .rounded(theme::BUTTON_BORDER_RADIUS);
 
@@ -127,7 +131,6 @@ fn make_pen_group() -> impl Widget<EditorState> {
         .rounded(theme::BUTTON_BORDER_RADIUS);
 
     let pen_size_group = RadioGroup::column(
-        MAIN_ICON_WIDTH,
         vec![
             (&icons::BIG_CIRCLE, PenSize::Big, "BIG PEN! (Q)".into()),
             (
@@ -137,6 +140,7 @@ fn make_pen_group() -> impl Widget<EditorState> {
             ),
             (&icons::SMALL_CIRCLE, PenSize::Small, "Small pen (E)".into()),
         ],
+        ICON_PADDING,
     )
     .padding(10.0)
     .background(theme::BACKGROUND_LIGHT)
@@ -151,11 +155,11 @@ fn make_pen_group() -> impl Widget<EditorState> {
 fn make_audio_button_group() -> impl Widget<EditorState> {
     let rec_audio_button = ToggleButton::from_icon(
         &icons::MICROPHONE,
+        ICON_PADDING,
         |state: &EditorState| state.action.is_recording_audio(),
         |ctx, _, _| ctx.submit_command(cmd::TALK),
         |ctx, _, _| ctx.submit_command(cmd::STOP),
     )
-    .icon_width(MAIN_ICON_WIDTH)
     .tooltip(|state: &EditorState, _env: &Env| {
         if state.action.is_recording_audio() {
             "Stop recording (Shift+Space)"
@@ -168,7 +172,6 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
     let audio_indicator = AudioIndicator::new(ICON_HEIGHT);
 
     let noise_group = RadioGroup::column(
-        SECONDARY_ICON_WIDTH,
         vec![
             (
                 &icons::NOISE,
@@ -186,15 +189,17 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
                 "Enable denoising and speech detection".into(),
             ),
         ],
-    );
+        ICON_PADDING,
+    )
+    .padding(SECONDARY_BUTTON_PADDING);
 
     Flex::column()
         .with_child(rec_audio_button)
-        .with_spacer(10.0)
+        .with_spacer(5.0)
         .with_child(audio_indicator)
-        .with_spacer(10.0)
+        .with_spacer(5.0)
         .with_child(noise_group.lens(EditorState::denoise_setting))
-        .padding(10.0)
+        .padding(5.0)
         .background(theme::BACKGROUND_LIGHT)
         .rounded(theme::BUTTON_BORDER_RADIUS)
 }
@@ -204,11 +209,11 @@ impl Editor {
         let drawing = DrawingPane::default();
         let play_button = ToggleButton::from_icon(
             &icons::PLAY,
+            ICON_PADDING,
             |state: &EditorState| state.action.is_playing(),
             |ctx, _, _| ctx.submit_command(cmd::PLAY),
             |ctx, _, _| ctx.submit_command(cmd::STOP),
         )
-        .icon_width(MAIN_ICON_WIDTH)
         .tooltip(|state: &EditorState, _env: &Env| {
             if state.action.is_playing() {
                 "Pause playback (Enter)"
@@ -223,7 +228,7 @@ impl Editor {
 
         let watch_button_group = Flex::column()
             .with_child(play_button)
-            .padding(10.0)
+            .padding(5.0)
             .background(theme::BACKGROUND_LIGHT)
             .rounded(theme::BUTTON_BORDER_RADIUS);
 
@@ -233,8 +238,10 @@ impl Editor {
             .with_child(audio_button_group)
             .with_default_spacer()
             .with_child(watch_button_group);
-        let button_col = Scroll::new(button_col).vertical();
-        let pen_col = Scroll::new(make_pen_group()).vertical();
+        let button_col = Scroll::new(button_col).vertical().fix_width(TOOLBAR_WIDTH);
+        let pen_col = Scroll::new(make_pen_group())
+            .vertical()
+            .fix_width(TOOLBAR_WIDTH);
         let timeline_id = WidgetId::next();
         let timeline = Timeline::new().with_id(timeline_id);
         /*

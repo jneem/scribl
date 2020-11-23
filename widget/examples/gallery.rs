@@ -35,6 +35,7 @@ pub fn main() {
 fn build_root() -> impl Widget<State> {
     let button = ToggleButton::<State>::from_icon(
         &TURTLE,
+        4.0,
         |x| x.chosen == Animal::Turtle,
         |_, state, _| {
             state.chosen = Animal::Turtle;
@@ -45,19 +46,20 @@ fn build_root() -> impl Widget<State> {
             println!("untoggle");
         },
     )
-    .icon_width(32.0)
+    .fix_width(32.0)
     .padding(10.0)
     .background(Color::WHITE)
     .border(Color::BLACK, 3.0);
 
     let group = RadioGroup::row(
-        32.0,
         vec![
             (&SNAIL, Animal::Snail, "Snail".into()),
             (&TURTLE, Animal::Turtle, "Turtle".into()),
             (&RABBIT, Animal::Rabbit, "Rabbit".into()),
         ],
+        4.0,
     )
+    .fix_height(32.0)
     .lens(State::chosen)
     .padding(10.0)
     .background(Color::WHITE)
@@ -66,13 +68,14 @@ fn build_root() -> impl Widget<State> {
     let sep = Separator::new().height(50.0).color(Color::rgb8(80, 70, 60));
 
     let vgroup = RadioGroup::column(
-        32.0,
         vec![
             (&SNAIL, Animal::Snail, "Snail".into()),
             (&TURTLE, Animal::Turtle, "Turtle".into()),
             (&RABBIT, Animal::Rabbit, "Rabbit".into()),
         ],
+        4.0,
     )
+    .fix_width(32.0)
     .lens(State::chosen)
     .padding(10.0)
     .background(Color::WHITE)
