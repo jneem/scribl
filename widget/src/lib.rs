@@ -1,4 +1,4 @@
-use druid::{Color, Env, Key, Point};
+use druid::{Color, Env, Key};
 
 pub const BUTTON_ICON_PADDING: Key<f64> = Key::new("ink.scribl.widget.button-icon-padding");
 pub const BUTTON_ICON_DISABLED_COLOR: Key<Color> =
@@ -14,7 +14,6 @@ pub const BUTTON_ICON_HOT_STROKE_COLOR: Key<Color> =
     Key::new("ink.scribl.widget.button-icon-hot-stroke-color");
 
 pub const DROP_SHADOW_RADIUS: Key<f64> = Key::new("ink.scribl.widget.drop-shadow-radius");
-pub const DROP_SHADOW_OFFSET: Key<Point> = Key::new("ink.scribl.widget.drop-shadow-offset");
 pub const DROP_SHADOW_COLOR: Key<Color> = Key::new("ink.scribl.widget.drop-shadow-color");
 
 // These colors are lightened versions of the utexas secondary color palette. We use them
@@ -36,12 +35,12 @@ pub fn configure_env(e: &mut Env) {
     e.set(BUTTON_ICON_HOT_STROKE_THICKNESS, 2.0);
     e.set(BUTTON_ICON_HOT_STROKE_COLOR, UI_DARK_GREEN);
 
-    e.set(DROP_SHADOW_RADIUS, 6.0);
-    e.set(DROP_SHADOW_OFFSET, Point::new(2.0, 2.0));
-    e.set(DROP_SHADOW_COLOR, Color::rgb8(0x10, 0x10, 0x10));
+    e.set(DROP_SHADOW_RADIUS, 8.0);
+    e.set(DROP_SHADOW_COLOR, Color::rgb8(0x00, 0x00, 0x00));
 }
 
 mod icon;
+mod lens;
 mod modal;
 mod radio;
 mod separator;
@@ -50,6 +49,7 @@ mod sunken_container;
 pub(crate) mod toggle_button;
 
 pub use icon::{Icon, IconWidget};
+pub use lens::{read_map, ReadMap};
 pub use modal::{ModalHost, TooltipExt, TooltipHost};
 pub use radio::RadioGroup;
 pub use separator::Separator;

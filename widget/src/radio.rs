@@ -2,10 +2,10 @@ use druid::widget::prelude::*;
 use druid::widget::{Axis, LabelText};
 use druid::{Data, Insets, Rect, WidgetPod};
 
-use crate::{Icon, Shadow, ShadowlessToggleButton, TooltipExt, TooltipHost};
+use crate::{Icon, Shadow, ShadowlessToggleButton};
 
 struct RadioButton<T> {
-    button: WidgetPod<T, TooltipHost<T, ShadowlessToggleButton<T>>>,
+    button: WidgetPod<T, ShadowlessToggleButton<T>>,
     shadow: WidgetPod<T, Shadow>,
 }
 
@@ -16,25 +16,9 @@ pub struct RadioGroup<T: Data> {
 }
 
 impl<T: Data> RadioGroup<T> {
-    fn new<'a, I: IntoIterator<Item = (&'a Icon, T, LabelText<T>)>>(
-        axis: Axis,
-        padding: f64,
-        children: I,
-    ) -> Self {
+    fn new<I: IntoIterator<Item = ShadowlessToggleButton<T>>>(axis: Axis, children: I) -> Self {
         let mut buttons = Vec::new();
-        for (icon, variant, text) in children {
-            let variant_clone = variant.clone();
-            let child = ShadowlessToggleButton::<T>::from_icon(
-                icon,
-                padding,
-                move |data| data.same(&variant),
-                move |_, state, _| {
-                    *state = variant_clone.clone();
-                },
-                |_, _, _| {},
-            );
-            let child = child.tooltip(text);
-
+        for child in children {
             buttons.push(RadioButton {
                 button: WidgetPod::new(child),
                 shadow: WidgetPod::new(Shadow),
@@ -48,22 +32,61 @@ impl<T: Data> RadioGroup<T> {
         }
     }
 
-    /// Creates a group of buttons in a row.
-    ///
-    /// `height` is the height of the icon contained in the buttons.
-    pub fn row<'a, I: IntoIterator<Item = (&'a Icon, T, LabelText<T>)>>(
-        children: I,
+    fn new_from_icons<'a, I: IntoIterator<Item = (&'a Icon, T, LabelText<T>)>>(
+        axis: Axis,
         padding: f64,
+        children: I,
     ) -> Self {
-        Self::new(Axis::Horizontal, padding, children)
+        Self::new(
+            axis,
+            children.into_iter().map(|(icon, variant, text)| {
+                let variant_clone = variant.clone();
+                ShadowlessToggleButton::<T>::from_icon(
+                    icon,
+                    padding,
+                    text,
+                    move |data| data.same(&variant),
+                    move |_, state, _| {
+                        *state = variant_clone.clone();
+                    },
+                    |_, _, _| {},
+                )
+            }),
+        )
     }
 
-    /// Creates a group of buttons in a column.
-    pub fn column<'a, I: IntoIterator<Item = (&'a Icon, T, LabelText<T>)>>(
+    /// Creates a group of icon buttons in a row, with tooltips.
+    pub fn icon_row<'a, I: IntoIterator<Item = (&'a Icon, T, LabelText<T>)>>(
         children: I,
         padding: f64,
     ) -> Self {
-        Self::new(Axis::Vertical, padding, children)
+        Self::new_from_icons(Axis::Horizontal, padding, children)
+    }
+
+    /// Creates a group of icon buttons in a column, with tooltips.
+    pub fn icon_column<'a, I: IntoIterator<Item = (&'a Icon, T, LabelText<T>)>>(
+        children: I,
+        padding: f64,
+    ) -> Self {
+        Self::new_from_icons(Axis::Vertical, padding, children)
+    }
+
+    /// Creates a group of buttons in a column, with custom widgets on the buttons.
+    pub fn column<I: IntoIterator<Item = (Box<dyn Widget<T>>, T)>>(children: I) -> Self {
+        Self::new(
+            Axis::Vertical,
+            children.into_iter().map(|(child, variant)| {
+                let variant_clone = variant.clone();
+                ShadowlessToggleButton::from_widget(
+                    child,
+                    move |data| data.same(&variant),
+                    move |_, state, _| {
+                        *state = variant_clone.clone();
+                    },
+                    |_, _, _| {},
+                )
+            }),
+        )
     }
 }
 
@@ -83,10 +106,10 @@ impl<T: Data> Widget<T> for RadioGroup<T> {
 
     fn update(&mut self, ctx: &mut UpdateCtx, _old_data: &T, data: &T, env: &Env) {
         for c in &mut self.children {
-            let old_down = c.button.widget().child().is_down();
+            let old_down = c.button.widget().is_down();
             c.button.update(ctx, data, env);
             c.shadow.update(ctx, data, env);
-            if old_down != c.button.widget().child().is_down() {
+            if old_down != c.button.widget().is_down() {
                 ctx.request_paint();
             }
         }
@@ -100,7 +123,7 @@ impl<T: Data> Widget<T> for RadioGroup<T> {
         for c in &mut self.children {
             let size = Size::from(self.axis.pack(major_size, 0.0));
             let child_bc = bc.shrink(size);
-            c.button.widget_mut().child_mut().set_insets(shadow_insets);
+            c.button.widget_mut().set_insets(shadow_insets);
             let child_size = c.button.layout(ctx, &child_bc, data, env);
             let child_origin = size.to_vec2().to_point();
             c.button.set_origin(ctx, data, env, child_origin);
@@ -120,17 +143,17 @@ impl<T: Data> Widget<T> for RadioGroup<T> {
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &T, env: &Env) {
         for c in &mut self.children {
-            if c.button.widget().child().is_down() {
+            if c.button.widget().is_down() {
                 c.button.paint(ctx, data, env);
             }
         }
         for c in &mut self.children {
-            if !c.button.widget().child().is_down() {
+            if !c.button.widget().is_down() {
                 c.shadow.paint(ctx, data, env);
             }
         }
         for c in &mut self.children {
-            if !c.button.widget().child().is_down() {
+            if !c.button.widget().is_down() {
                 c.button.paint(ctx, data, env);
             }
         }

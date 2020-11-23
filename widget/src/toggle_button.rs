@@ -1,10 +1,9 @@
 use druid::kurbo::Vec2;
 use druid::widget::prelude::*;
-use druid::widget::Painter;
+use druid::widget::LabelText;
 use druid::{theme, Data, Insets, Point, RenderContext, Size, WidgetExt, WidgetPod};
-use std::rc::Rc;
 
-use crate::{Icon, IconWidget, Shadow};
+use crate::{Icon, Shadow, TooltipExt};
 
 /// A [`ToggleButton`] that doesn't draw its drop shadow. This is potentially useful for combining
 /// toggle buttons in a way that the shadows need to be handled simultaneously. For example, this
@@ -15,7 +14,7 @@ pub struct ShadowlessToggleButton<T> {
     // We often combine this widget with a drop shadow, in which case its paint insets need to
     // include the shadow insets.
     insets: Insets,
-    toggle_state: Rc<dyn Fn(&T) -> bool + 'static>,
+    toggle_state: Box<dyn Fn(&T) -> bool + 'static>,
     toggle_action: Box<dyn Fn(&mut EventCtx, &mut T, &Env) + 'static>,
     untoggle_action: Box<dyn Fn(&mut EventCtx, &mut T, &Env) + 'static>,
 }
@@ -29,50 +28,39 @@ impl<T: Data> ShadowlessToggleButton<T> {
     pub fn from_icon(
         icon: &Icon,
         padding: f64,
-        toggle_state: impl Fn(&T) -> bool + 'static,
+        tooltip: impl Into<LabelText<T>>,
+        toggle_state: impl Fn(&T) -> bool + Clone + 'static,
         toggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
         untoggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
     ) -> ShadowlessToggleButton<T> {
-        let toggle_state = Rc::new(toggle_state);
-        let toggle_state_clone = Rc::clone(&toggle_state);
-
-        let icon_painter = move |ctx: &mut PaintCtx, data: &T, env: &Env| {
-            let color = if toggle_state_clone(data) {
-                env.get(crate::BUTTON_ICON_SELECTED_COLOR)
-            } else {
-                env.get(crate::BUTTON_ICON_COLOR)
-            };
-            let rect = ctx.size().to_rect();
-            let rect = ctx
-                .current_transform()
-                .inverse()
-                .transform_rect_bbox(rect)
-                .with_origin(Point::ZERO);
-            ctx.fill(rect, &color);
-        };
-        let inner = icon.to_widget(Painter::new(icon_painter)).padding(padding);
+        let lens = crate::lens::read_map(toggle_state.clone());
+        let inner = icon
+            .to_widget()
+            .lens(lens)
+            .padding(padding)
+            .tooltip(tooltip);
 
         ShadowlessToggleButton {
             inner: WidgetPod::new(Box::new(inner)),
             down: false,
             insets: Insets::ZERO,
-            toggle_state,
+            toggle_state: Box::new(toggle_state),
             toggle_action: Box::new(toggle_action),
             untoggle_action: Box::new(untoggle_action),
         }
     }
 
-    pub fn from_icon_widget(
-        icon_widget: IconWidget<T>,
+    pub fn from_widget(
+        widget: impl Widget<T> + 'static,
         toggle_state: impl Fn(&T) -> bool + 'static,
         toggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
         untoggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
     ) -> ShadowlessToggleButton<T> {
         ShadowlessToggleButton {
-            inner: WidgetPod::new(Box::new(icon_widget)),
+            inner: WidgetPod::new(Box::new(widget)),
             down: false,
             insets: Insets::ZERO,
-            toggle_state: Rc::new(toggle_state),
+            toggle_state: Box::new(toggle_state),
             toggle_action: Box::new(toggle_action),
             untoggle_action: Box::new(untoggle_action),
         }
@@ -91,13 +79,15 @@ impl<T: Data> ToggleButton<T> {
     pub fn from_icon(
         icon: &Icon,
         padding: f64,
-        toggle_state: impl Fn(&T) -> bool + 'static,
+        tooltip: impl Into<LabelText<T>>,
+        toggle_state: impl Fn(&T) -> bool + Clone + 'static,
         toggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
         untoggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
     ) -> ToggleButton<T> {
         let button = ShadowlessToggleButton::from_icon(
             icon,
             padding,
+            tooltip,
             toggle_state,
             toggle_action,
             untoggle_action,
@@ -108,13 +98,13 @@ impl<T: Data> ToggleButton<T> {
         }
     }
 
-    pub fn from_icon_widget(
-        icon_widget: IconWidget<T>,
+    pub fn from_widget(
+        icon_widget: impl Widget<T> + 'static,
         toggle_state: impl Fn(&T) -> bool + 'static,
         toggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
         untoggle_action: impl Fn(&mut EventCtx, &mut T, &Env) + 'static,
     ) -> ToggleButton<T> {
-        let button = ShadowlessToggleButton::from_icon_widget(
+        let button = ShadowlessToggleButton::from_widget(
             icon_widget,
             toggle_state,
             toggle_action,

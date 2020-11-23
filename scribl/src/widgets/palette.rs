@@ -1,14 +1,8 @@
-use druid::kurbo::Circle;
 use druid::widget::prelude::*;
-use druid::{theme, Color, Data, Lens, Rect, RenderContext, WidgetPod};
+use druid::{theme, Color, Data, Lens, RenderContext};
 use std::sync::Arc;
 
-use scribl_widget::TooltipExt;
-
-use crate::cmd;
-
-// The padding between and around the color swatches.
-const PALETTE_ELT_PADDING: f64 = 4.0;
+use scribl_widget::{RadioGroup, TooltipExt};
 
 #[derive(Clone, Data, Lens)]
 pub struct PaletteData {
@@ -59,10 +53,7 @@ impl PaletteData {
 }
 
 pub struct Palette {
-    // The idiomatic thing to do would be to wrap the children in lenses, but the combinators
-    // are hard to use for this since Vec doesn't implement Data.
-    children: Vec<WidgetPod<Color, Box<dyn Widget<Color>>>>,
-    height: f64,
+    inner: RadioGroup<Color>,
 }
 
 pub struct PaletteElement {
@@ -70,111 +61,68 @@ pub struct PaletteElement {
 }
 
 impl Widget<Color> for PaletteElement {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, _data: &mut Color, _env: &Env) {
-        match event {
-            Event::MouseDown(_) => {
-                ctx.set_active(true);
-            }
-            Event::MouseUp(_) => {
-                if ctx.is_active() {
-                    ctx.set_active(false);
-                    ctx.submit_command(cmd::CHOOSE_COLOR.with(self.color.clone()));
-                }
-            }
-            _ => {}
-        }
+    fn event(&mut self, _ctx: &mut EventCtx, _event: &Event, _data: &mut Color, _env: &Env) {}
+    fn update(&mut self, _ctx: &mut UpdateCtx, _old_data: &Color, _data: &Color, _env: &Env) {}
+    fn lifecycle(&mut self, _: &mut LifeCycleCtx, _: &LifeCycle, _: &Color, _: &Env) {}
+
+    fn layout(&mut self, _: &mut LayoutCtx, bc: &BoxConstraints, _: &Color, _: &Env) -> Size {
+        let max = bc.max();
+        let size = max.width.min(max.height);
+        Size::new(size, size)
     }
 
-    fn update(&mut self, ctx: &mut UpdateCtx, _old_data: &Color, _data: &Color, _env: &Env) {
-        ctx.request_paint();
-    }
-
-    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, _data: &Color, _env: &Env) {
-        match event {
-            LifeCycle::HotChanged(_) => {
-                ctx.request_paint();
-            }
-            _ => {}
-        }
-    }
-
-    fn layout(
-        &mut self,
-        _ctx: &mut LayoutCtx,
-        bc: &BoxConstraints,
-        _data: &Color,
-        _env: &Env,
-    ) -> Size {
-        bc.max()
-    }
-
-    fn paint(&mut self, ctx: &mut PaintCtx, selected_color: &Color, env: &Env) {
-        let is_selected = selected_color.as_rgba_u32() == self.color.as_rgba_u32();
+    fn paint(&mut self, ctx: &mut PaintCtx, _: &Color, env: &Env) {
         let rect = ctx
             .size()
             .to_rounded_rect(env.get(theme::BUTTON_BORDER_RADIUS));
 
         ctx.fill(&rect, &self.color);
-
-        // Draw a dot in the middle of a selected element, with the inverted color.
-        let inv_color = !self.color.as_rgba_u32() | 0xFF;
-        let inv_color = Color::from_rgba32_u32(inv_color);
-        let dot = Circle::new(rect.center(), rect.width() / 6.0);
-        if is_selected {
-            ctx.fill(dot, &inv_color);
-        } else if ctx.is_hot() {
-            ctx.stroke(dot, &inv_color, 1.0);
-        }
     }
 }
 
 impl Palette {
     /// Creates a new palette in which the color swatches have dimensions `color_size`.
     /// `color_size` is also the width of this widget (the height depends on the number of colors).
-    pub fn new(color_size: f64) -> Palette {
+    pub fn new() -> Palette {
         Palette {
-            children: Vec::new(),
-            height: color_size,
+            inner: RadioGroup::column(None),
         }
     }
 
     fn resize(&mut self, colors: &[(Color, String)]) {
-        self.children.clear();
-        for (i, (c, name)) in colors.iter().enumerate() {
-            let elt: Box<dyn Widget<_>> = if i <= 9 {
-                // TODO: the tooltips are defined here, but the actual key bindings are
-                // defined in Editor. It would be nice to have them defined in the same place.
-                Box::new(PaletteElement { color: c.clone() }.tooltip(format!(
-                    "{} ({})",
-                    name,
-                    (i + 1) % 10
-                )))
+        self.inner = RadioGroup::column(colors.iter().enumerate().map(|(i, (c, name))| {
+            let elt = PaletteElement { color: c.clone() };
+            let widget = if i <= 9 {
+                Box::new(elt.tooltip(format!("{} ({})", name, (i + 1) % 10)))
+                    as Box<dyn Widget<Color>>
             } else {
-                Box::new(PaletteElement { color: c.clone() })
+                Box::new(elt) as Box<dyn Widget<Color>>
             };
-            self.children.push(WidgetPod::new(elt));
-        }
+            (widget, c.clone())
+        }));
     }
 }
 
 impl Widget<PaletteData> for Palette {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut PaletteData, env: &Env) {
-        for (i, c) in self.children.iter_mut().enumerate() {
-            let mut color = (&data.colors)[i].0.clone();
-            c.event(ctx, event, &mut color, env);
-        }
+        self.inner.event(ctx, event, &mut data.selected, env);
     }
 
     fn update(
         &mut self,
         ctx: &mut UpdateCtx,
-        _old_data: &PaletteData,
+        old_data: &PaletteData,
         data: &PaletteData,
-        _env: &Env,
+        env: &Env,
     ) {
-        self.resize(&data.colors);
-        ctx.children_changed();
-        ctx.request_paint();
+        if data.colors != old_data.colors {
+            self.resize(&data.colors);
+            ctx.children_changed();
+            ctx.request_paint();
+        } else {
+            self.inner
+                .update(ctx, &old_data.selected, &data.selected, env);
+        }
     }
 
     fn lifecycle(
@@ -186,11 +134,10 @@ impl Widget<PaletteData> for Palette {
     ) {
         if let LifeCycle::WidgetAdded = event {
             self.resize(&data.colors);
+            ctx.children_changed();
             ctx.request_layout();
         }
-        for (i, c) in self.children.iter_mut().enumerate() {
-            c.lifecycle(ctx, event, &(&data.colors)[i].0, env);
-        }
+        self.inner.lifecycle(ctx, event, &data.selected, env);
     }
 
     fn layout(
@@ -200,30 +147,10 @@ impl Widget<PaletteData> for Palette {
         data: &PaletteData,
         env: &Env,
     ) -> Size {
-        let width = self.height;
-        let height =
-            (self.height + PALETTE_ELT_PADDING) * self.children.len() as f64 + PALETTE_ELT_PADDING;
-        let size = bc.constrain(Size::new(width, height));
-        let child_constraints = BoxConstraints::tight(Size::new(self.height, self.height));
-        for (i, c) in self.children.iter_mut().enumerate() {
-            // We don't really need to layout the children, but if we don't call layout
-            // on them then druid will constantly think that they need to be re-layouted.
-            let _ = c.layout(ctx, &child_constraints, &data.colors[i].0, env);
-            let y = (self.height + PALETTE_ELT_PADDING) * i as f64 + PALETTE_ELT_PADDING;
-            c.set_layout_rect(
-                ctx,
-                &data.colors[i as usize].0,
-                env,
-                Rect::from_origin_size((0.0, y), (self.height, self.height)),
-            );
-        }
-
-        size
+        self.inner.layout(ctx, bc, &data.selected, env)
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &PaletteData, env: &Env) {
-        for c in &mut self.children {
-            c.paint(ctx, &data.selected_color(), env);
-        }
+        self.inner.paint(ctx, &data.selected, env);
     }
 }

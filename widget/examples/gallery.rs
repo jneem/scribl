@@ -36,6 +36,7 @@ fn build_root() -> impl Widget<State> {
     let button = ToggleButton::<State>::from_icon(
         &TURTLE,
         4.0,
+        "Turtle",
         |x| x.chosen == Animal::Turtle,
         |_, state, _| {
             state.chosen = Animal::Turtle;
@@ -51,7 +52,7 @@ fn build_root() -> impl Widget<State> {
     .background(Color::WHITE)
     .border(Color::BLACK, 3.0);
 
-    let group = RadioGroup::row(
+    let group = RadioGroup::icon_row(
         vec![
             (&SNAIL, Animal::Snail, "Snail".into()),
             (&TURTLE, Animal::Turtle, "Turtle".into()),
@@ -67,7 +68,7 @@ fn build_root() -> impl Widget<State> {
 
     let sep = Separator::new().height(50.0).color(Color::rgb8(80, 70, 60));
 
-    let vgroup = RadioGroup::column(
+    let vgroup = RadioGroup::icon_column(
         vec![
             (&SNAIL, Animal::Snail, "Snail".into()),
             (&TURTLE, Animal::Turtle, "Turtle".into()),

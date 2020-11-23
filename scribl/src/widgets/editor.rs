@@ -8,7 +8,7 @@ use druid::{
 use std::path::PathBuf;
 use std::time::Duration;
 
-use scribl_widget::{ModalHost, RadioGroup, Separator, SunkenContainer, ToggleButton, TooltipExt};
+use scribl_widget::{ModalHost, RadioGroup, Separator, SunkenContainer, ToggleButton};
 
 use crate::audio::AudioHandle;
 use crate::autosave::AutosaveData;
@@ -26,7 +26,6 @@ const ICON_HEIGHT: f64 = 32.0;
 const ICON_PADDING: f64 = 6.0;
 const TOOLBAR_WIDTH: f64 = 52.0;
 const SECONDARY_BUTTON_PADDING: f64 = 4.0;
-const MAIN_ICON_WIDTH: f64 = 32.0;
 
 pub struct Editor {
     // Every AUTOSAVE_DURATION, we will attempt to save the current file.
@@ -49,20 +48,20 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
     let rec_button = ToggleButton::from_icon(
         &icons::VIDEO,
         ICON_PADDING,
+        |state: &EditorState, _env: &Env| {
+            if state.action.is_recording() {
+                "Stop recording (Space)"
+            } else {
+                "Record a drawing (Space)"
+            }
+            .to_owned()
+        },
         |state: &EditorState| state.action.is_recording(),
         |ctx, _, _| ctx.submit_command(cmd::DRAW),
         |ctx, _, _| ctx.submit_command(cmd::STOP),
-    )
-    .tooltip(|state: &EditorState, _env: &Env| {
-        if state.action.is_recording() {
-            "Stop recording (Space)"
-        } else {
-            "Record a drawing (Space)"
-        }
-        .to_owned()
-    });
+    );
 
-    let rec_speed_group = RadioGroup::column(
+    let rec_speed_group = RadioGroup::icon_column(
         vec![
             (
                 &icons::PAUSE,
@@ -92,18 +91,18 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
     let rec_fade_button = ToggleButton::from_icon(
         &icons::FADE_OUT,
         ICON_PADDING,
+        |state: &bool, _env: &Env| {
+            if *state {
+                "Disable fade effect"
+            } else {
+                "Enable fade effect"
+            }
+            .to_owned()
+        },
         |&b: &bool| b,
         |_, data, _| *data = true,
         |_, data, _| *data = false,
     )
-    .tooltip(|state: &bool, _env: &Env| {
-        if *state {
-            "Disable fade effect"
-        } else {
-            "Enable fade effect"
-        }
-        .to_owned()
-    })
     .padding(SECONDARY_BUTTON_PADDING)
     .lens(EditorState::fade_enabled);
 
@@ -124,13 +123,13 @@ fn make_pen_group() -> impl Widget<EditorState> {
     // 8.0 is twice (the default value of ) BUTTON_ICON_PADDING, so this serves to make the palette
     //   width the same as the pen_size_group width. TODO: make the padding values more convenient
     //   to customize, so this isn't some magic number
-    let palette = Palette::new(MAIN_ICON_WIDTH + 8.0)
+    let palette = Palette::new()
         .lens(EditorState::palette)
         .padding(10.0)
         .background(theme::BACKGROUND_LIGHT)
         .rounded(theme::BUTTON_BORDER_RADIUS);
 
-    let pen_size_group = RadioGroup::column(
+    let pen_size_group = RadioGroup::icon_column(
         vec![
             (&icons::BIG_CIRCLE, PenSize::Big, "BIG PEN! (Q)".into()),
             (
@@ -156,22 +155,22 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
     let rec_audio_button = ToggleButton::from_icon(
         &icons::MICROPHONE,
         ICON_PADDING,
+        |state: &EditorState, _env: &Env| {
+            if state.action.is_recording_audio() {
+                "Stop recording (Shift+Space)"
+            } else {
+                "Start recording audio (Shift+Space)"
+            }
+            .to_owned()
+        },
         |state: &EditorState| state.action.is_recording_audio(),
         |ctx, _, _| ctx.submit_command(cmd::TALK),
         |ctx, _, _| ctx.submit_command(cmd::STOP),
-    )
-    .tooltip(|state: &EditorState, _env: &Env| {
-        if state.action.is_recording_audio() {
-            "Stop recording (Shift+Space)"
-        } else {
-            "Start recording audio (Shift+Space)"
-        }
-        .to_owned()
-    });
+    );
 
     let audio_indicator = AudioIndicator::new(ICON_HEIGHT);
 
-    let noise_group = RadioGroup::column(
+    let noise_group = RadioGroup::icon_column(
         vec![
             (
                 &icons::NOISE,
@@ -210,18 +209,18 @@ impl Editor {
         let play_button = ToggleButton::from_icon(
             &icons::PLAY,
             ICON_PADDING,
+            |state: &EditorState, _env: &Env| {
+                if state.action.is_playing() {
+                    "Pause playback (Enter)"
+                } else {
+                    "Play back the animation (Enter)"
+                }
+                .to_owned()
+            },
             |state: &EditorState| state.action.is_playing(),
             |ctx, _, _| ctx.submit_command(cmd::PLAY),
             |ctx, _, _| ctx.submit_command(cmd::STOP),
-        )
-        .tooltip(|state: &EditorState, _env: &Env| {
-            if state.action.is_playing() {
-                "Pause playback (Enter)"
-            } else {
-                "Play back the animation (Enter)"
-            }
-            .to_owned()
-        });
+        );
 
         let draw_button_group = make_draw_button_group();
         let audio_button_group = make_audio_button_group();

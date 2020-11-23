@@ -241,15 +241,10 @@ impl Widget<EditorState> for DrawingPane {
         let size = ctx.size();
         ctx.with_save(|ctx| {
             let shadow_radius = env.get(scribl_widget::DROP_SHADOW_RADIUS);
-            let shadow_offset = env.get(scribl_widget::DROP_SHADOW_OFFSET).to_vec2();
             let shadow_color = env.get(scribl_widget::DROP_SHADOW_COLOR);
 
             ctx.clip(size.to_rect());
-            ctx.blurred_rect(
-                self.paper_rect + shadow_offset,
-                shadow_radius,
-                &shadow_color,
-            );
+            ctx.blurred_rect(self.paper_rect, shadow_radius, &shadow_color);
             ctx.fill(&self.paper_rect, &PAPER_COLOR);
 
             ctx.transform(self.from_image_coords().into());

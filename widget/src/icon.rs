@@ -1,7 +1,7 @@
 use druid::kurbo::{Affine, BezPath};
 use druid::widget::prelude::*;
-use druid::widget::BackgroundBrush;
-use druid::{Data, Size, Widget};
+use druid::widget::{BackgroundBrush, Painter};
+use druid::{Data, Point, Size, Widget};
 
 /// An icon made up of a single path (which should be filled with whatever color we want).
 pub struct Icon {
@@ -14,8 +14,26 @@ pub struct Icon {
 }
 
 impl Icon {
-    pub fn to_widget<T>(&self, brush: impl Into<BackgroundBrush<T>>) -> IconWidget<T> {
+    pub fn to_custom_widget<T>(&self, brush: impl Into<BackgroundBrush<T>>) -> IconWidget<T> {
         IconWidget::from_icon(self, brush)
+    }
+
+    pub fn to_widget(&self) -> IconWidget<bool> {
+        let icon_painter = move |ctx: &mut PaintCtx, on: &bool, env: &Env| {
+            let color = if *on {
+                env.get(crate::BUTTON_ICON_SELECTED_COLOR)
+            } else {
+                env.get(crate::BUTTON_ICON_COLOR)
+            };
+            let rect = ctx.size().to_rect();
+            let rect = ctx
+                .current_transform()
+                .inverse()
+                .transform_rect_bbox(rect)
+                .with_origin(Point::ZERO);
+            ctx.fill(rect, &color);
+        };
+        self.to_custom_widget(Painter::new(icon_painter))
     }
 }
 
