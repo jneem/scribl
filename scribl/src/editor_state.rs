@@ -132,6 +132,10 @@ pub struct EditorState {
     /// The current denoise setting, as selected in the UI.
     pub denoise_setting: DenoiseSetting,
 
+    /// The volume of the current audio input, if we're recordig audio. This is on a logarithmic
+    /// scale (and 0.0 is very loud).
+    pub input_loudness: f64,
+
     pub palette: crate::widgets::PaletteData,
 
     // There are several actions that we do asynchronously. Here, we have the most recent status of
@@ -176,6 +180,7 @@ impl Default for EditorState {
             fade_enabled: false,
             pen_size: PenSize::Medium,
             denoise_setting,
+            input_loudness: -f64::INFINITY,
             palette: crate::widgets::PaletteData::default(),
 
             status: AsyncOpsStatus::default(),
@@ -302,6 +307,7 @@ impl EditorState {
     /// audio.
     pub fn stop_recording_audio(&mut self) {
         self.action = CurrentAction::Idle;
+        self.input_loudness = -f64::INFINITY;
         self.take_time_snapshot();
     }
 

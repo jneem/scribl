@@ -8,7 +8,7 @@ use druid::{
 use std::path::PathBuf;
 use std::time::Duration;
 
-use scribl_widget::{ModalHost, RadioGroup, Separator, SunkenContainer, ToggleButton};
+use scribl_widget::{ModalHost, RadioGroup, Separator, SunkenContainer, ToggleButton, TooltipExt};
 
 use crate::audio::AudioHandle;
 use crate::autosave::AutosaveData;
@@ -22,7 +22,6 @@ use crate::widgets::{
 };
 
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(60);
-const ICON_HEIGHT: f64 = 32.0;
 const ICON_PADDING: f64 = 6.0;
 const TOOLBAR_WIDTH: f64 = 52.0;
 const SECONDARY_BUTTON_PADDING: f64 = 4.0;
@@ -152,23 +151,23 @@ fn make_pen_group() -> impl Widget<EditorState> {
 }
 
 fn make_audio_button_group() -> impl Widget<EditorState> {
-    let rec_audio_button = ToggleButton::from_icon(
-        &icons::MICROPHONE,
-        ICON_PADDING,
-        |state: &EditorState, _env: &Env| {
-            if state.action.is_recording_audio() {
-                "Stop recording (Shift+Space)"
-            } else {
-                "Start recording audio (Shift+Space)"
-            }
-            .to_owned()
-        },
+    let audio_indicator =
+        AudioIndicator::new()
+            .padding(ICON_PADDING)
+            .tooltip(|state: &EditorState, _env: &Env| {
+                if state.action.is_recording_audio() {
+                    "Stop recording (Shift+Space)"
+                } else {
+                    "Start recording audio (Shift+Space)"
+                }
+                .to_owned()
+            });
+    let rec_audio_button = ToggleButton::from_widget(
+        audio_indicator,
         |state: &EditorState| state.action.is_recording_audio(),
         |ctx, _, _| ctx.submit_command(cmd::TALK),
         |ctx, _, _| ctx.submit_command(cmd::STOP),
     );
-
-    let audio_indicator = AudioIndicator::new(ICON_HEIGHT);
 
     let noise_group = RadioGroup::icon_column(
         vec![
@@ -194,8 +193,6 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
 
     Flex::column()
         .with_child(rec_audio_button)
-        .with_spacer(5.0)
-        .with_child(audio_indicator)
         .with_spacer(5.0)
         .with_child(noise_group.lens(EditorState::denoise_setting))
         .padding(5.0)
@@ -640,6 +637,15 @@ impl Editor {
             true
         } else if cmd.is(cmd::ZOOM_RESET) {
             data.zoom = 1.0;
+            true
+        } else if let Some(status) = cmd.get(cmd::RECORDING_AUDIO_STATUS) {
+            let vad = data.denoise_setting != DenoiseSetting::Vad
+                || status.vad >= data.config.audio_input.vad_threshold;
+            data.input_loudness = if vad {
+                status.loudness as f64
+            } else {
+                -f64::INFINITY
+            };
             true
         } else {
             false

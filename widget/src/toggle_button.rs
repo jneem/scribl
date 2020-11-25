@@ -160,11 +160,12 @@ impl<T: Data> Widget<T> for ShadowlessToggleButton<T> {
         self.inner.lifecycle(ctx, event, data, env);
     }
 
-    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &T, data: &T, _env: &Env) {
+    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &T, data: &T, env: &Env) {
         self.down = (self.toggle_state)(data) || (ctx.is_active() && ctx.is_hot());
         if (self.toggle_state)(old_data) != (self.toggle_state)(data) {
             ctx.request_paint();
         }
+        self.inner.update(ctx, data, env);
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints, data: &T, env: &Env) -> Size {
