@@ -616,15 +616,8 @@ impl Widget<EditorState> for TimelineSnippet {
     ) {
     }
 
-    fn layout(
-        &mut self,
-        _ctx: &mut LayoutCtx,
-        bc: &BoxConstraints,
-        data: &EditorState,
-        _env: &Env,
-    ) -> Size {
-        let width = self.width(data);
-        bc.constrain((width, f64::INFINITY))
+    fn layout(&mut self, _: &mut LayoutCtx, bc: &BoxConstraints, _: &EditorState, _: &Env) -> Size {
+        bc.max()
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &EditorState, _env: &Env) {
