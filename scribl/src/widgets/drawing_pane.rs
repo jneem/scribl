@@ -244,7 +244,31 @@ impl Widget<EditorState> for DrawingPane {
             let shadow_color = env.get(scribl_widget::DROP_SHADOW_COLOR);
 
             ctx.clip(size.to_rect());
-            ctx.blurred_rect(self.paper_rect, shadow_radius, &shadow_color);
+            // It's silly, but the drop shadow is actually kind of expensive (as in, it shows up on
+            // the profile).
+            {
+                // 2.5 is a magic constant defined in piet
+                let shadow_size = shadow_radius * 2.5;
+                let top = Rect::from_origin_size(
+                    self.paper_rect.origin() - Vec2::new(shadow_size, shadow_size),
+                    (self.paper_rect.width() + 2.0 * shadow_size, shadow_size),
+                );
+                let bottom = top + Vec2::new(0.0, self.paper_rect.height() + shadow_size);
+                let left = Rect::from_origin_size(
+                    self.paper_rect.origin() - Vec2::new(shadow_size, shadow_size),
+                    (shadow_size, self.paper_rect.height() + 2.0 * shadow_size),
+                );
+                let right = left + Vec2::new(self.paper_rect.width() + shadow_size, 0.0);
+
+                let region = ctx.region();
+                if region.intersects(top)
+                    || region.intersects(bottom)
+                    || region.intersects(left)
+                    || region.intersects(right)
+                {
+                    ctx.blurred_rect(self.paper_rect, shadow_radius, &shadow_color);
+                }
+            }
             ctx.fill(&self.paper_rect, &PAPER_COLOR);
 
             ctx.transform(self.from_image_coords().into());

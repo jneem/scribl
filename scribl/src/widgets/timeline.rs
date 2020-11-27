@@ -178,15 +178,6 @@ impl Snip {
         }
     }
 
-    /// At what time does this snippet end? Returns `None` if the snippet never
-    /// ends.
-    fn end_time(&self) -> Option<Time> {
-        match self {
-            Snip::Audio(s) => Some(s.end_time()),
-            Snip::Drawing(d) => d.end_time(),
-        }
-    }
-
     /// Returns the list of times at which this snippet was lerped.
     fn inner_lerp_times(&self) -> Vec<TimeDiff> {
         match self {
@@ -422,15 +413,6 @@ impl TimelineSnippet {
         match self.id {
             SnippetId::Draw(id) => Snip::Drawing(data.snippets.snippet(id).clone()),
             SnippetId::Talk(id) => Snip::Audio(data.audio_snippets.snippet(id).clone()),
-        }
-    }
-
-    fn width(&self, data: &EditorState) -> f64 {
-        let snip = self.snip(data);
-        if let Some(end_time) = snip.end_time() {
-            pix_width(end_time - snip.start_time())
-        } else {
-            std::f64::INFINITY
         }
     }
 

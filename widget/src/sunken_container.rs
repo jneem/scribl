@@ -55,8 +55,16 @@ impl<T: Data, W: Widget<T>> Widget<T> for SunkenContainer<T, W> {
             let top_rect =
                 Rect::from_origin_size((0.0, -2.0 * radius), Size::new(size.width, 2.0 * radius));
             let bottom_rect = top_rect + Vec2::new(0.0, 2.0 * radius + size.height);
-            ctx.blurred_rect(top_rect, radius, &color);
-            ctx.blurred_rect(bottom_rect, radius, &color);
+            // The 2.5 factor is a magic number from piet; it's the size of the region that
+            // actually gets drawn.
+            let shadow_size = radius * 2.5;
+
+            if ctx.region().intersects(top_rect.inset(shadow_size)) {
+                ctx.blurred_rect(top_rect, radius, &color);
+            }
+            if ctx.region().intersects(bottom_rect.inset(shadow_size)) {
+                ctx.blurred_rect(bottom_rect, radius, &color);
+            }
         });
     }
 }
