@@ -72,6 +72,8 @@ fn create_pipeline(
     let mux = gst::ElementFactory::make("mp4mux", Some("encode-mux"))?;
     let sink = gst::ElementFactory::make("filesink", Some("encode-sink"))?;
 
+    v_encode.set_property("bitrate", &4096u32)?;
+
     pipeline.add_many(&[&v_src, &v_convert, &v_encode, &v_queue1, &v_queue2])?;
     pipeline.add_many(&[&a_src, &a_convert, &a_encode, &a_queue1, &a_queue2])?;
     pipeline.add_many(&[&mux, &sink])?;
@@ -181,7 +183,10 @@ fn render_loop(
     let mut cursor = snippets.create_cursor(Time::ZERO);
     let transform = TranslateScale::scale(width as f64);
 
-    bitmap.render_context().clear(Color::WHITE);
+    let mut ctx = bitmap.render_context();
+    ctx.clear(Color::WHITE);
+    ctx.finish()
+        .map_err(|e| anyhow!("failed to finish context: {}", e))?;
 
     for frame_counter in 0..frame_count {
         while let Ok(msg) = cmd.try_recv() {

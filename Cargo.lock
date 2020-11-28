@@ -1733,6 +1733,7 @@ dependencies = [
 name = "scribl_widget"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "druid",
  "log",
 ]

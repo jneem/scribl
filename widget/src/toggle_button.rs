@@ -241,7 +241,8 @@ impl<T: Data> Widget<T> for ToggleButton<T> {
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints, data: &T, env: &Env) -> Size {
-        let shadow_insets = Insets::uniform(env.get(crate::DROP_SHADOW_RADIUS));
+        // piet draws a drop shadow 2.5 times the size of the radius.
+        let shadow_insets = Insets::uniform(env.get(crate::DROP_SHADOW_RADIUS) * 2.5);
         self.button.widget_mut().set_insets(shadow_insets);
 
         let button_size = self.button.layout(ctx, bc, data, env);
