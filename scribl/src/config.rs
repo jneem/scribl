@@ -10,6 +10,10 @@ fn default_video_fps() -> f64 {
     30.0
 }
 
+fn default_video_bitrate() -> u32 {
+    4096
+}
+
 fn default_remove_noise() -> bool {
     true
 }
@@ -33,6 +37,10 @@ pub struct Export {
     /// Frames per second in the exported video.
     #[serde(default = "default_video_fps")]
     pub fps: f64,
+
+    /// Bitrate of the exported video.
+    #[serde(default = "default_video_bitrate")]
+    pub bitrate: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -61,6 +69,7 @@ impl Default for Export {
         Export {
             height: default_video_height(),
             fps: default_video_fps(),
+            bitrate: default_video_bitrate(),
         }
     }
 }

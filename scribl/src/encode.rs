@@ -72,7 +72,7 @@ fn create_pipeline(
     let mux = gst::ElementFactory::make("mp4mux", Some("encode-mux"))?;
     let sink = gst::ElementFactory::make("filesink", Some("encode-sink"))?;
 
-    v_encode.set_property("bitrate", &4096u32)?;
+    v_encode.set_property("bitrate", &config.bitrate)?;
 
     pipeline.add_many(&[&v_src, &v_convert, &v_encode, &v_queue1, &v_queue2])?;
     pipeline.add_many(&[&a_src, &a_convert, &a_encode, &a_queue1, &a_queue2])?;

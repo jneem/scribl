@@ -26,3 +26,6 @@ height = 1080
 
 # The exported video will have this many frames per second.
 fps = 30
+
+# The exported video will have (approximately) this bitrate.
+bitrate = 4096

@@ -134,8 +134,8 @@ fn encode(data: EditorState, path: &str) {
                 let _ = term.clear_line();
                 let _ = write!(term, "Encoding frame {} of {}", frame, out_of);
             }
-            EncodingStatus::Error(s) => eprintln!("Encoding error: {}", s),
-            EncodingStatus::Finished(_) => eprintln!("Finished!"),
+            EncodingStatus::Error(s) => eprintln!("\nEncoding error: {}", s),
+            EncodingStatus::Finished(_) => eprintln!("\nFinished!"),
         }
     }
 }
