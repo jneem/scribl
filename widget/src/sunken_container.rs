@@ -59,15 +59,17 @@ impl<T: Data, W: Widget<T>> SunkenContainer<T, W> {
             let mut top_bitmap = dev
                 .bitmap_target(self.shadow_width, self.shadow_height, 1.0)
                 .map_err(|e| anyhow!("error creating bitmap: {}", e))?;
-            let mut bmp_ctx = top_bitmap.render_context();
-            bmp_ctx.blurred_rect(
-                shadow_rect - Vec2::new(0.0, shadow_rect.height()),
-                radius,
-                color,
-            );
-            bmp_ctx
-                .finish()
-                .map_err(|e| anyhow!("error finishing, {}", e))?;
+            {
+                let mut bmp_ctx = top_bitmap.render_context();
+                bmp_ctx.blurred_rect(
+                    shadow_rect - Vec2::new(0.0, shadow_rect.height()),
+                    radius,
+                    color,
+                );
+                bmp_ctx
+                    .finish()
+                    .map_err(|e| anyhow!("error finishing, {}", e))?;
+            }
             let top_shadow = top_bitmap
                 .to_image_buf(ImageFormat::RgbaPremul)
                 .map_err(|e| anyhow!("error getting image: {}", e))?
@@ -79,15 +81,17 @@ impl<T: Data, W: Widget<T>> SunkenContainer<T, W> {
             let mut bottom_bitmap = dev
                 .bitmap_target(self.shadow_width, self.shadow_height, 1.0)
                 .map_err(|e| anyhow!("error creating bitmap: {}", e))?;
-            let mut bmp_ctx = bottom_bitmap.render_context();
-            bmp_ctx.blurred_rect(
-                shadow_rect + Vec2::new(0.0, shadow_rect.height()),
-                radius,
-                color,
-            );
-            bmp_ctx
-                .finish()
-                .map_err(|e| anyhow!("error finishing: {}", e))?;
+            {
+                let mut bmp_ctx = bottom_bitmap.render_context();
+                bmp_ctx.blurred_rect(
+                    shadow_rect + Vec2::new(0.0, shadow_rect.height()),
+                    radius,
+                    color,
+                );
+                bmp_ctx
+                    .finish()
+                    .map_err(|e| anyhow!("error finishing: {}", e))?;
+            }
             let bottom_shadow = bottom_bitmap
                 .to_image_buf(ImageFormat::RgbaPremul)
                 .map_err(|e| anyhow!("error getting image: {}", e))?
