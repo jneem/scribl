@@ -183,10 +183,12 @@ fn render_loop(
     let mut cursor = snippets.create_cursor(Time::ZERO);
     let transform = TranslateScale::scale(width as f64);
 
-    let mut ctx = bitmap.render_context();
-    ctx.clear(Color::WHITE);
-    ctx.finish()
-        .map_err(|e| anyhow!("failed to finish context: {}", e))?;
+    {
+        let mut ctx = bitmap.render_context();
+        ctx.clear(Color::WHITE);
+        ctx.finish()
+            .map_err(|e| anyhow!("failed to finish context: {}", e))?;
+    }
 
     for frame_counter in 0..frame_count {
         while let Ok(msg) = cmd.try_recv() {
