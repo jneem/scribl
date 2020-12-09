@@ -535,6 +535,18 @@ impl Editor {
                 log::warn!("not warping: state is {:?}", data.action)
             }
             true
+        } else if let Some(&mult) = cmd.get(cmd::MULTIPLY_VOLUME) {
+            if let Some(SnippetId::Talk(id)) = data.selected_snippet {
+                let prev_state = data.undo_state();
+                let desc = if mult > 1.0 {
+                    "increase volume"
+                } else {
+                    "decrease volume"
+                };
+                data.audio_snippets = data.audio_snippets.with_multiplied_snippet(id, mult);
+                data.push_undo_state(prev_state, desc);
+            }
+            true
         } else if cmd.is(druid::commands::SAVE_FILE) {
             let path = if let Some(info) = cmd.get_unchecked(druid::commands::SAVE_FILE) {
                 info.path().to_owned()

@@ -284,21 +284,6 @@ impl EditorState {
         assert!(matches!(self.action, CurrentAction::Idle));
         self.action = CurrentAction::RecordingAudio(self.time);
         self.take_time_snapshot();
-        let mut config = self.config.audio_input.clone();
-
-        // We allow the UI to override what's in the config file.
-        match self.denoise_setting {
-            DenoiseSetting::DenoiseOn => {
-                config.remove_noise = true;
-                config.vad_threshold = 0.0;
-            }
-            DenoiseSetting::DenoiseOff => {
-                config.remove_noise = false;
-            }
-            DenoiseSetting::Vad => {
-                config.remove_noise = true;
-            }
-        }
     }
 
     /// Stops recording audio.
@@ -567,13 +552,29 @@ impl EditorState {
             velocity,
         };
 
+        let mut config = self.config.audio_input.clone();
+
+        // We allow the UI to override what's in the config file.
+        match self.denoise_setting {
+            DenoiseSetting::DenoiseOn => {
+                config.remove_noise = true;
+                config.vad_threshold = 0.0;
+            }
+            DenoiseSetting::DenoiseOff => {
+                config.remove_noise = false;
+            }
+            DenoiseSetting::Vad => {
+                config.remove_noise = true;
+            }
+        }
+
         match &self.action {
             Playing => play(1.0),
             Scanning(x) => play(*x),
             Recording(state) if !state.paused => play(state.time_factor),
             RecordingAudio(t) => AudioState::Recording {
                 start_time: *t,
-                config: self.config.audio_input.clone(),
+                config,
             },
             _ => AudioState::Idle,
         }

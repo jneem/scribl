@@ -164,11 +164,11 @@ impl AudioState {
         // Which frames are worth keeping, according to voice detection?
         let vad_threshold = self.input_config.vad_threshold;
         let mut keep: Vec<_> = data.vad.iter().map(|&v| v > vad_threshold).collect();
-        convolve_bools(&mut keep[..], VOICELESS_FRAME_LAG);
+        let mut weights = vec![0.0f32; keep.len()];
+        convolve_bools(&keep[..], &mut weights[..], VOICELESS_FRAME_LAG);
 
         // Windows for fading in and out when voice is detected or not.
-        let present = vec![1.0; DenoiseState::FRAME_SIZE];
-        let absent = vec![0.0; DenoiseState::FRAME_SIZE];
+        let constant = vec![1.0; DenoiseState::FRAME_SIZE];
         let fade_out: Vec<_> = (0..DenoiseState::FRAME_SIZE)
             .rev()
             .map(|x| x as f32 / DenoiseState::FRAME_SIZE as f32)
@@ -178,19 +178,23 @@ impl AudioState {
             .collect();
 
         keep.push(false);
-        for (frame, k) in data
+        for (frame, w) in data
             .buf
             .chunks_exact_mut(DenoiseState::FRAME_SIZE)
-            .zip(keep.windows(2))
+            .zip(weights.windows(2))
         {
-            let window = match (k[0], k[1]) {
-                (true, true) => &present,
-                (false, false) => &absent,
-                (true, false) => &fade_out,
-                (false, true) => &fade_in,
+            let window = if w[0] < w[1] {
+                &fade_in
+            } else if w[0] > w[1] {
+                &fade_out
+            } else {
+                &constant
             };
-            for (x, &w) in frame.iter_mut().zip(window) {
-                *x = (*x as f32 * w).round() as i16;
+            let lo = w[0].min(w[1]);
+            let hi = w[0].max(w[1]);
+            for (x, &y) in frame.iter_mut().zip(window) {
+                let weight = lo + (lo - hi) * y;
+                *x = (*x as f32 * weight).round() as i16;
             }
         }
 
@@ -264,22 +268,33 @@ impl InputData {
 
 /// Given a slice of bools, modifies it so that everything within `width` of a `true` is set to
 /// `true`.
-fn convolve_bools(xs: &mut [bool], width: usize) {
+fn convolve_bools(xs: &[bool], out: &mut [f32], width: usize) {
     let mut count = width;
     let next_count = |x, count| if x { 0 } else { count + 1 };
+    let step = 1.0 / width as f32;
 
-    for x in &mut xs[..] {
-        count = next_count(*x, count);
+    let mut weight = 0.0f32;
+    for (&x, y) in xs.iter().zip(&mut out[..]) {
+        count = next_count(x, count);
         if count <= width {
-            *x = true;
+            *y = 1.0;
+            weight = 1.0;
+        } else {
+            weight = (weight - step).max(0.0);
+            *y = weight;
         }
     }
 
     count = width;
-    for x in xs.iter_mut().rev() {
-        count = next_count(*x, count);
+    weight = 0.0;
+    for (&x, y) in xs.iter().zip(&mut out[..]).rev() {
+        count = next_count(x, count);
         if count <= width {
-            *x = true;
+            *y = 1.0;
+            weight = 1.0;
+        } else {
+            weight = (weight - step).max(0.0);
+            *y = y.max(weight);
         }
     }
 }
@@ -317,7 +332,7 @@ pub fn audio_loop(cmd: Receiver<Cmd>, sink: ExtEventSink, target: Target) {
                             // Truncate the multiplier so that we don't clip. (Also make sure the
                             // peak isn't really small, because often the sample is all-zero or
                             // close to it.)
-                            .min(1.0 / rec.peak.max(1.0 / 50.0));
+                            .min(1.0 / rec.peak.max(1.0 / 500.0));
 
                         let snip = TalkSnippet::new(rec.buf, time, multiplier as f32);
                         let _ = sink.submit_command(cmd::ADD_AUDIO_SNIPPET, snip, target);

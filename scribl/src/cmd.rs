@@ -55,6 +55,9 @@ pub const SET_MARK: Selector<Option<Time>> = Selector::new("scribl.set-mark");
 /// Changes the current animation time, assuming that the UI is in the idle state.
 pub const WARP_TIME_TO: Selector<Time> = Selector::new("scribl.warp-time-to");
 
+/// Changes the volume of the selected snippet (if it's a talk snippet).
+pub const MULTIPLY_VOLUME: Selector<f64> = Selector::new("scribl.multiply-volume");
+
 /// Changes the pen color.
 pub const CHOOSE_COLOR: Selector<Color> = Selector::new("scribl.choose-color");
 

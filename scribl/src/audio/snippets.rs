@@ -71,6 +71,14 @@ impl TalkSnippet {
     pub fn multiplier(&self) -> f32 {
         self.multiplier
     }
+
+    pub fn multiplied(&self, factor: f32) -> TalkSnippet {
+        TalkSnippet {
+            buf: Arc::clone(&self.buf),
+            multiplier: self.multiplier * factor,
+            start_time: self.start_time,
+        }
+    }
 }
 
 impl TalkSnippets {
@@ -85,6 +93,13 @@ impl TalkSnippets {
     pub fn with_shifted_snippet(&self, id: TalkSnippetId, shift: TimeDiff) -> TalkSnippets {
         let mut ret = self.clone();
         let snip = ret.snippet(id).shifted(shift);
+        ret.snippets.insert(id, snip);
+        ret
+    }
+
+    pub fn with_multiplied_snippet(&self, id: TalkSnippetId, factor: f64) -> TalkSnippets {
+        let mut ret = self.clone();
+        let snip = ret.snippet(id).multiplied(factor as f32);
         ret.snippets.insert(id, snip);
         ret
     }

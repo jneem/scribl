@@ -4,7 +4,7 @@ use druid::{FileDialogOptions, FileSpec, KbKey, LocalizedString, MenuDesc, MenuI
 
 use crate::app_state::AppState;
 use crate::cmd;
-use crate::editor_state::{CurrentAction, EditorState};
+use crate::editor_state::{CurrentAction, EditorState, SnippetId};
 
 const SCRIBL_FILE_TYPE: FileSpec = FileSpec::new("Scribl animation (.scb)", &["scb"]);
 const EXPORT_FILE_TYPE: FileSpec = FileSpec::new("mp4 video (.mp4)", &["mp4"]);
@@ -162,6 +162,22 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
     .hotkey(SysMods::None, KbKey::Delete)
     .disabled_if(|| data.selected_snippet.is_none());
 
+    let increase_volume = MenuItem::new(
+        LocalizedString::new("scribl-menu-edit-increase-volume")
+            .with_placeholder("Increase volume"),
+        cmd::MULTIPLY_VOLUME.with(1.1),
+    )
+    .hotkey(SysMods::None, "+")
+    .disabled_if(|| !matches!(data.selected_snippet, Some(SnippetId::Talk(_))));
+
+    let decrease_volume = MenuItem::new(
+        LocalizedString::new("scribl-menu-edit-decrease-volume")
+            .with_placeholder("Decrease volume"),
+        cmd::MULTIPLY_VOLUME.with(1.0 / 1.1),
+    )
+    .hotkey(SysMods::None, "-")
+    .disabled_if(|| !matches!(data.selected_snippet, Some(SnippetId::Talk(_))));
+
     MenuDesc::new(LocalizedString::new("common-menu-edit-menu"))
         .append(undo)
         .append(redo)
@@ -175,6 +191,9 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
         .append(warp)
         .append(trunc)
         .append(delete)
+        .append_separator()
+        .append(increase_volume)
+        .append(decrease_volume)
 }
 
 fn view_menu(data: &EditorState) -> MenuDesc<AppState> {
