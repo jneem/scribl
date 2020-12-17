@@ -26,13 +26,18 @@ fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
     .hotkey(SysMods::Cmd, "o");
 
     let save_as_command = commands::SHOW_SAVE_PANEL.with(save_dialog_options());
-    let save_command = if has_path {
-        commands::SAVE_FILE.with(None)
+    let save = if has_path {
+        MenuItem::new(
+            LocalizedString::new("common-menu-file-save"),
+            commands::SAVE_FILE,
+        )
     } else {
-        save_as_command.clone()
-    };
-    let save = MenuItem::new(LocalizedString::new("common-menu-file-save"), save_command)
-        .hotkey(SysMods::Cmd, "s");
+        MenuItem::new(
+            LocalizedString::new("common-menu-file-save"),
+            save_as_command.clone(),
+        )
+    }
+    .hotkey(SysMods::Cmd, "s");
 
     let save_as = MenuItem::new(
         LocalizedString::new("common-menu-file-save-as"),
@@ -44,8 +49,12 @@ fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
     // be another way to get the system file dialog.
     let export = MenuItem::new(
         LocalizedString::new("scribl-menu-file-export").with_placeholder("Export"),
-        commands::SHOW_SAVE_PANEL
-            .with(FileDialogOptions::new().allowed_types(vec![EXPORT_FILE_TYPE])),
+        commands::SHOW_SAVE_PANEL.with(
+            FileDialogOptions::new()
+                .allowed_types(vec![EXPORT_FILE_TYPE])
+                .title("Export to video")
+                .button_text("Export"),
+        ),
     )
     .hotkey(SysMods::Cmd, "e");
 
@@ -178,6 +187,20 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
     .hotkey(SysMods::None, "-")
     .disabled_if(|| !matches!(data.selected_snippet, Some(SnippetId::Talk(_))));
 
+    let silence = MenuItem::new(
+        LocalizedString::new("scribl-menu-edit-silence").with_placeholder("Silence selected audio"),
+        cmd::SILENCE_AUDIO,
+    )
+    .hotkey(SysMods::None, KbKey::Backspace)
+    .disabled_if(|| !matches!(data.selected_snippet, Some(SnippetId::Talk(_))));
+
+    let snip = MenuItem::new(
+        LocalizedString::new("scribl-menu-edit-snip").with_placeholder("Snip selected audio"),
+        cmd::SNIP_AUDIO,
+    )
+    .hotkey(SysMods::Shift, KbKey::Backspace)
+    .disabled_if(|| !matches!(data.selected_snippet, Some(SnippetId::Talk(_))));
+
     MenuDesc::new(LocalizedString::new("common-menu-edit-menu"))
         .append(undo)
         .append(redo)
@@ -194,6 +217,8 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
         .append_separator()
         .append(increase_volume)
         .append(decrease_volume)
+        .append(silence)
+        .append(snip)
 }
 
 fn view_menu(data: &EditorState) -> MenuDesc<AppState> {

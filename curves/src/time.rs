@@ -60,6 +60,8 @@ impl Time {
 }
 
 impl TimeDiff {
+    pub const ZERO: TimeDiff = TimeDiff(0);
+
     /// Interpreting `self` as the offset from the beginning of an audio buffer, return the
     /// corresponding index into that buffer. Note that the return value is signed, because a
     /// negative offset from the beginning of an audio buffer corresponds to a negative index.

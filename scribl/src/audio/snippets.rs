@@ -4,7 +4,7 @@ use serde::de::Deserializer;
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 
-use std::ops::DerefMut;
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use scribl_curves::{Cursor, Span, Time, TimeDiff};
@@ -79,6 +79,51 @@ impl TalkSnippet {
             start_time: self.start_time,
         }
     }
+
+    fn idx(&self, time: Time) -> usize {
+        (time - self.start_time())
+            .as_audio_idx(SAMPLE_RATE)
+            .max(0)
+            .min(self.buf.len() as isize) as usize
+    }
+
+    /// Returns a new snippet, with all audio between `from` and `to` silenced.
+    pub fn silenced(&self, from: Time, to: Time) -> TalkSnippet {
+        let from_idx = self.idx(from);
+        let to_idx = self.idx(to);
+        let (from_idx, to_idx) = (from_idx.min(to_idx), from_idx.max(to_idx));
+
+        if from_idx < to_idx {
+            let mut buf = self.buf.deref().clone();
+            for i in from_idx..to_idx {
+                buf[i] = 0;
+            }
+            TalkSnippet {
+                buf: Arc::new(buf),
+                ..self.clone()
+            }
+        } else {
+            self.clone()
+        }
+    }
+
+    /// Returns a new (shorter) snippet, with all audio between `from` and `to` deleted.
+    pub fn snipped(&self, from: Time, to: Time) -> TalkSnippet {
+        let from_idx = self.idx(from);
+        let to_idx = self.idx(to);
+        let (from_idx, to_idx) = (from_idx.min(to_idx), from_idx.max(to_idx));
+
+        if from_idx < to_idx {
+            let mut buf = self.buf.deref().clone();
+            buf.drain(from_idx..to_idx);
+            TalkSnippet {
+                buf: Arc::new(buf),
+                ..self.clone()
+            }
+        } else {
+            self.clone()
+        }
+    }
 }
 
 impl TalkSnippets {
@@ -90,18 +135,40 @@ impl TalkSnippets {
         ret
     }
 
-    pub fn with_shifted_snippet(&self, id: TalkSnippetId, shift: TimeDiff) -> TalkSnippets {
+    pub fn has_snippet(&self, snip: TalkSnippetId) -> bool {
+        self.snippets.contains_key(&snip)
+    }
+
+    fn with_modified_snippet(
+        &self,
+        id: TalkSnippetId,
+        f: impl FnOnce(&TalkSnippet) -> TalkSnippet,
+    ) -> TalkSnippets {
         let mut ret = self.clone();
-        let snip = ret.snippet(id).shifted(shift);
+        let snip = f(ret.snippet(id));
         ret.snippets.insert(id, snip);
         ret
     }
 
+    pub fn with_shifted_snippet(&self, id: TalkSnippetId, shift: TimeDiff) -> TalkSnippets {
+        self.with_modified_snippet(id, |s| s.shifted(shift))
+    }
+
     pub fn with_multiplied_snippet(&self, id: TalkSnippetId, factor: f64) -> TalkSnippets {
-        let mut ret = self.clone();
-        let snip = ret.snippet(id).multiplied(factor as f32);
-        ret.snippets.insert(id, snip);
-        ret
+        self.with_modified_snippet(id, |s| s.multiplied(factor as f32))
+    }
+
+    pub fn with_silenced_snippet(&self, id: TalkSnippetId, start: Time, end: Time) -> TalkSnippets {
+        self.with_modified_snippet(id, |s| s.silenced(start, end))
+    }
+
+    pub fn with_snipped_snippet(&self, id: TalkSnippetId, start: Time, end: Time) -> TalkSnippets {
+        let ret = self.with_modified_snippet(id, |s| s.snipped(start, end));
+        if ret.snippet(id).buf.is_empty() {
+            self.without_snippet(id)
+        } else {
+            ret
+        }
     }
 
     pub fn without_snippet(&self, id: TalkSnippetId) -> TalkSnippets {

@@ -493,6 +493,32 @@ impl Editor {
                 }
             }
             true
+        } else if cmd.is(cmd::SILENCE_AUDIO) {
+            if let Some(SnippetId::Talk(id)) = data.selected_snippet {
+                if let Some(mark_time) = data.mark {
+                    let prev_state = data.undo_state();
+                    data.audio_snippets =
+                        data.audio_snippets
+                            .with_silenced_snippet(id, mark_time, data.time());
+                    data.push_undo_state(prev_state, "silence speech");
+                }
+            }
+            true
+        } else if cmd.is(cmd::SNIP_AUDIO) {
+            if let Some(SnippetId::Talk(id)) = data.selected_snippet {
+                if let Some(mark_time) = data.mark {
+                    let prev_state = data.undo_state();
+                    data.audio_snippets =
+                        data.audio_snippets
+                            .with_snipped_snippet(id, mark_time, data.time());
+                    if !data.audio_snippets.has_snippet(id) {
+                        data.selected_snippet = None;
+                    }
+                    data.push_undo_state(prev_state, "snip speech");
+                    ctx.set_menu(crate::menus::make_menu(data));
+                }
+            }
+            true
         } else if cmd.is(druid::commands::UNDO) {
             data.undo();
             ctx.set_menu(crate::menus::make_menu(data));
@@ -547,8 +573,8 @@ impl Editor {
                 data.push_undo_state(prev_state, desc);
             }
             true
-        } else if cmd.is(druid::commands::SAVE_FILE) {
-            let path = if let Some(info) = cmd.get_unchecked(druid::commands::SAVE_FILE) {
+        } else if cmd.is(druid::commands::SAVE_FILE_AS) || cmd.is(druid::commands::SAVE_FILE) {
+            let path = if let Some(info) = cmd.get(druid::commands::SAVE_FILE_AS) {
                 info.path().to_owned()
             } else if let Some(path) = data.save_path.as_ref() {
                 path.to_owned()

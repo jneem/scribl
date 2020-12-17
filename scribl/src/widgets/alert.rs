@@ -28,7 +28,7 @@ pub fn make_unsaved_changes_alert() -> impl Widget<EditorState> {
     .on_click(|ctx, data, _env| {
         ctx.submit_command(ModalHost::DISMISS_MODAL);
         if data.save_path.is_some() {
-            ctx.submit_command(druid::commands::SAVE_FILE.with(None));
+            ctx.submit_command(druid::commands::SAVE_FILE);
         } else {
             ctx.submit_command(
                 druid::commands::SHOW_SAVE_PANEL.with(crate::menus::save_dialog_options()),

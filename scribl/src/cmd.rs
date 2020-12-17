@@ -48,6 +48,12 @@ pub const SHIFT_SNIPPET: Selector<(SnippetId, TimeDiff)> = Selector::new("scribl
 /// Adds a lerp to the selected snippet, lerping the current time to the marked time.
 pub const LERP_SNIPPET: Selector = Selector::new("scribl.lerp-snippet");
 
+/// Silences the selected region of the current audio snippet.
+pub const SILENCE_AUDIO: Selector = Selector::new("scribl.silence-audio");
+
+/// Deletes the selected region of the current audio snippet, "sliding" the later parts backwards.
+pub const SNIP_AUDIO: Selector = Selector::new("scribl.delete-audio");
+
 /// Changes the current mark time. If the argument is `None`, the current time will be used
 /// instead.
 pub const SET_MARK: Selector<Option<Time>> = Selector::new("scribl.set-mark");
