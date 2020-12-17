@@ -15,8 +15,7 @@ use crate::editor_state::{EditorState, SnippetId};
 use crate::snippet_layout::{self, SnippetShape};
 
 const PIXELS_PER_USEC: f64 = 40.0 / 1000000.0;
-const CURSOR_COLOR: Color = Color::rgb8(0x10, 0x10, 0xaa);
-const CURSOR_THICKNESS: f64 = 3.0;
+const CURSOR_THICKNESS: f64 = 2.0;
 
 const AUDIO_SNIPPET_COLOR: Color = crate::UI_LIGHT_YELLOW;
 const AUDIO_SNIPPET_SELECTED_COLOR: Color = crate::UI_LIGHT_YELLOW;
@@ -845,10 +844,12 @@ impl Widget<EditorState> for TimelineInner {
             }
         }
 
-        // Draw the cursor.
-        let cursor_x = pix_x(data.time());
+        // Round the cursor position to half-pixels, for a nice crisp line.
+        let cursor_x = (pix_x(data.time()) + 0.5).round() - 0.5;
         let line = Line::new((cursor_x, 0.0), (cursor_x, size.height));
-        ctx.stroke(line, &CURSOR_COLOR, CURSOR_THICKNESS);
+        // Draw a black "background" on the cursor for extra contrast.
+        ctx.stroke(line, &Color::BLACK, CURSOR_THICKNESS);
+        ctx.stroke(line, &Color::WHITE, 1.0);
 
         // Draw the mark.
         if let Some(mark_time) = data.mark {
