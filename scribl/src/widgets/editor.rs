@@ -442,11 +442,17 @@ impl Editor {
             }
 
             true
-        } else if cmd.is(cmd::SET_MARK) {
+        } else if let Some(mark) = cmd.get(cmd::SET_MARK) {
             let prev_state = data.undo_state();
-            let time = cmd.get_unchecked(cmd::SET_MARK).unwrap_or(data.time());
+            let time = mark.unwrap_or(data.time());
             data.mark = Some(time);
             data.push_undo_state(prev_state, "set mark");
+            ctx.set_menu(crate::menus::make_menu(data));
+            true
+        } else if cmd.is(cmd::CLEAR_MARK) {
+            let prev_state = data.undo_state();
+            data.mark = None;
+            data.push_undo_state(prev_state, "clear mark");
             ctx.set_menu(crate::menus::make_menu(data));
             true
         } else if cmd.is(cmd::TRUNCATE_SNIPPET) {

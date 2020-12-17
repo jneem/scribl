@@ -149,7 +149,14 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
         LocalizedString::new("scribl-menu-edit-mark").with_placeholder("Set mark"),
         cmd::SET_MARK.with(None),
     )
-    .hotkey(SysMods::Cmd, "m");
+    .hotkey(SysMods::None, "m");
+
+    let clear_mark = MenuItem::new(
+        LocalizedString::new("scribl-menu-edit-clear-mark").with_placeholder("Clear mark"),
+        cmd::CLEAR_MARK,
+    )
+    .hotkey(SysMods::None, KbKey::Escape)
+    .disabled_if(|| data.mark.is_none());
 
     let warp = MenuItem::new(
         LocalizedString::new("scribl-menu-edit-warp").with_placeholder("Warp snippet"),
@@ -212,6 +219,7 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
         .append(stop)
         .append_separator()
         .append(mark)
+        .append(clear_mark)
         .append(warp)
         .append(trunc)
         .append(delete)

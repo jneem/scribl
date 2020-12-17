@@ -58,6 +58,9 @@ pub const SNIP_AUDIO: Selector = Selector::new("scribl.delete-audio");
 /// instead.
 pub const SET_MARK: Selector<Option<Time>> = Selector::new("scribl.set-mark");
 
+/// Removes the current timeline mark.
+pub const CLEAR_MARK: Selector<()> = Selector::new("scribl.clear-mark");
+
 /// Changes the current animation time, assuming that the UI is in the idle state.
 pub const WARP_TIME_TO: Selector<Time> = Selector::new("scribl.warp-time-to");
 

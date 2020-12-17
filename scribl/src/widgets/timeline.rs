@@ -1,4 +1,5 @@
 use druid::kurbo::{BezPath, Line, Shape, Vec2};
+use druid::piet::StrokeStyle;
 use druid::widget::ClipBox;
 use druid::{
     Affine, BoxConstraints, Color, Data, Env, Event, EventCtx, KbKey, LayoutCtx, LifeCycle,
@@ -16,6 +17,7 @@ use crate::snippet_layout::{self, SnippetShape};
 
 const PIXELS_PER_USEC: f64 = 40.0 / 1000000.0;
 const CURSOR_THICKNESS: f64 = 2.0;
+const SELECTION_FILL_COLOR: Color = Color::rgba8(0xff, 0xff, 0xff, 0x20);
 
 const AUDIO_SNIPPET_COLOR: Color = crate::UI_LIGHT_YELLOW;
 const AUDIO_SNIPPET_SELECTED_COLOR: Color = crate::UI_LIGHT_YELLOW;
@@ -45,8 +47,6 @@ const LAYOUT_PARAMS: crate::snippet_layout::Parameters = crate::snippet_layout::
     end_x: 3_600_000_000.0 * PIXELS_PER_USEC,
     pixels_per_usec: PIXELS_PER_USEC,
 };
-
-const MARK_COLOR: Color = Color::rgb8(0x33, 0x33, 0x99);
 
 /// Converts from a time interval to a width in pixels.
 fn pix_width(d: TimeDiff) -> f64 {
@@ -846,20 +846,25 @@ impl Widget<EditorState> for TimelineInner {
 
         // Round the cursor position to half-pixels, for a nice crisp line.
         let cursor_x = (pix_x(data.time()) + 0.5).round() - 0.5;
-        let line = Line::new((cursor_x, 0.0), (cursor_x, size.height));
-        // Draw a black "background" on the cursor for extra contrast.
-        ctx.stroke(line, &Color::BLACK, CURSOR_THICKNESS);
-        ctx.stroke(line, &Color::WHITE, 1.0);
 
         // Draw the mark.
         if let Some(mark_time) = data.mark {
-            let mark_x = pix_x(mark_time);
-            let mut path = BezPath::new();
-            path.move_to((mark_x - 8.0, 0.0));
-            path.line_to((mark_x + 8.0, 0.0));
-            path.line_to((mark_x, 8.0));
-            path.close_path();
-            ctx.fill(path, &MARK_COLOR);
+            let mark_x = (pix_x(mark_time) + 0.5).round() - 0.5;
+            let rect = Rect::new(cursor_x, 0.0, mark_x, size.height);
+            ctx.fill(rect, &SELECTION_FILL_COLOR);
+            let mark_line = Line::new((mark_x, 0.0), (mark_x, size.height));
+            ctx.stroke(mark_line, &Color::BLACK, CURSOR_THICKNESS);
+            ctx.stroke_styled(
+                mark_line,
+                &Color::WHITE,
+                1.0,
+                &StrokeStyle::new().dash(vec![2.0, 2.0], 0.0),
+            );
         }
+
+        let cursor_line = Line::new((cursor_x, 0.0), (cursor_x, size.height));
+        // Draw a black "background" on the cursor for extra contrast.
+        ctx.stroke(cursor_line, &Color::BLACK, CURSOR_THICKNESS);
+        ctx.stroke(cursor_line, &Color::WHITE, 1.0);
     }
 }
