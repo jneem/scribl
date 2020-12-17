@@ -524,6 +524,7 @@ impl Widget<EditorState> for TimelineSnippet {
                     self.drag_start = Some(x_pix(ev.pos.x));
                     ctx.request_focus();
                 }
+                ctx.request_paint();
                 ctx.set_handled();
             }
             Event::MouseUp(ev) if ev.button.is_left() => {
@@ -546,7 +547,9 @@ impl Widget<EditorState> for TimelineSnippet {
                 let new_hot = self.contains(ev.pos);
                 if self.hot != new_hot {
                     self.hot = new_hot;
-                    ctx.request_paint_rect(self.bbox);
+                    ctx.request_paint_rect(
+                        self.bbox.inset(SNIPPET_SELECTED_STROKE_THICKNESS / 2.0),
+                    );
                 }
                 if let Some(drag_start) = self.drag_start {
                     let old_drag_shift = self.drag_shift.unwrap_or(TimeDiff::from_micros(0));
@@ -620,7 +623,7 @@ impl Widget<EditorState> for TimelineSnippet {
                 self.render_interior(ctx, &snippet, height);
             });
 
-            if is_selected {
+            if is_selected || (self.hot && ctx.is_active()) {
                 ctx.stroke(
                     &path,
                     &SNIPPET_SELECTED_STROKE_COLOR,
