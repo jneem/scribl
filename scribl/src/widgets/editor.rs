@@ -421,9 +421,7 @@ impl Editor {
             let color = cmd.get_unchecked(cmd::CHOOSE_COLOR);
             data.palette.select(color);
             true
-        } else if cmd.is(cmd::EXPORT) {
-            let export = cmd.get_unchecked(cmd::EXPORT);
-
+        } else if let Some(export) = cmd.get(cmd::EXPORT) {
             if data.status.in_progress.encoding.is_some() {
                 log::warn!("already encoding, not doing another one");
             } else {
@@ -573,8 +571,21 @@ impl Editor {
                 data.push_undo_state(prev_state, desc);
             }
             true
+        } else if let Some(info) = cmd.get(cmd::EXPORT_CURRENT) {
+            let mut path = info.path().to_owned();
+            if path.extension().is_none() {
+                path.set_extension("mp4");
+            }
+            let export = cmd::ExportCmd {
+                snippets: data.snippets.clone(),
+                audio_snippets: data.audio_snippets.clone(),
+                filename: path,
+                config: data.config.export.clone(),
+            };
+            ctx.submit_command(cmd::EXPORT.with(export));
+            true
         } else if cmd.is(druid::commands::SAVE_FILE_AS) || cmd.is(druid::commands::SAVE_FILE) {
-            let path = if let Some(info) = cmd.get(druid::commands::SAVE_FILE_AS) {
+            let mut path = if let Some(info) = cmd.get(druid::commands::SAVE_FILE_AS) {
                 info.path().to_owned()
             } else if let Some(path) = data.save_path.as_ref() {
                 path.to_owned()
@@ -582,40 +593,17 @@ impl Editor {
                 log::error!("no save path, not saving");
                 return false;
             };
-
-            // Note that we use the SAVE_FILE command for both saving and
-            // exporting, and we decide which to do based on the file
-            // extension.
-            match path.extension().and_then(|e| e.to_str()) {
-                Some("mp4") => {
-                    let export = cmd::ExportCmd {
-                        snippets: data.snippets.clone(),
-                        audio_snippets: data.audio_snippets.clone(),
-                        filename: path.to_owned(),
-                        config: data.config.export.clone(),
-                    };
-                    ctx.submit_command(cmd::EXPORT.with(export));
-                }
-                Some("scb") => {
-                    data.status.in_progress.saving = Some(path.clone());
-                    spawn_async_save(
-                        ctx.get_external_handle(),
-                        SaveFileData::from_editor_state(data),
-                        path,
-                        ctx.window_id(),
-                    );
-                }
-                _ => {
-                    log::error!("unknown extension! Trying to save anyway");
-                    data.status.in_progress.saving = Some(path.clone());
-                    spawn_async_save(
-                        ctx.get_external_handle(),
-                        SaveFileData::from_editor_state(data),
-                        path,
-                        ctx.window_id(),
-                    );
-                }
+            if path.extension().is_none() {
+                path.set_extension("scb");
             }
+
+            data.status.in_progress.saving = Some(path.clone());
+            spawn_async_save(
+                ctx.get_external_handle(),
+                SaveFileData::from_editor_state(data),
+                path,
+                ctx.window_id(),
+            );
             true
         } else if cmd.is(druid::commands::OPEN_FILE) {
             if data.status.in_progress.loading.is_some() {

@@ -53,7 +53,8 @@ fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
             FileDialogOptions::new()
                 .allowed_types(vec![EXPORT_FILE_TYPE])
                 .title("Export to video")
-                .button_text("Export"),
+                .button_text("Export")
+                .accept_command(cmd::EXPORT_CURRENT),
         ),
     )
     .hotkey(SysMods::Cmd, "e");

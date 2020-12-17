@@ -1,4 +1,4 @@
-use druid::{Color, Selector};
+use druid::{Color, FileInfo, Selector};
 use std::path::PathBuf;
 
 use scribl_curves::{DrawSnippet, DrawSnippets, Time, TimeDiff};
@@ -68,6 +68,9 @@ pub const MULTIPLY_VOLUME: Selector<f64> = Selector::new("scribl.multiply-volume
 pub const CHOOSE_COLOR: Selector<Color> = Selector::new("scribl.choose-color");
 
 /// Exports the current animation as a video.
+pub const EXPORT_CURRENT: Selector<FileInfo> = Selector::new("scribl.export-current");
+
+/// Exports the specified animation data as a video.
 pub const EXPORT: Selector<ExportCmd> = Selector::new("scribl.export");
 
 /// While the video is encoding asynchronously, it periodically sends these commands.
