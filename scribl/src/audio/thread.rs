@@ -128,7 +128,12 @@ impl AudioState {
             Ok(())
         }();
         if let Err(e) = result {
-            log::error!("failed to seek: {}", e);
+            log::error!(
+                "failed to seek (time {}, velocity {}): {}",
+                e,
+                time.as_micros(),
+                velocity
+            );
         }
     }
 

@@ -162,14 +162,16 @@ fn edit_menu(data: &EditorState) -> MenuDesc<AppState> {
         LocalizedString::new("scribl-menu-edit-warp").with_placeholder("Warp snippet"),
         cmd::LERP_SNIPPET,
     )
-    .hotkey(SysMods::Cmd, "w")
-    .disabled_if(|| data.mark.is_none());
+    .hotkey(SysMods::None, "w")
+    .disabled_if(|| {
+        data.mark.is_none() || !matches!(data.selected_snippet, Some(SnippetId::Draw(_)))
+    });
 
     let trunc = MenuItem::new(
         LocalizedString::new("scribl-menu-edit-truncate").with_placeholder("Truncate snippet"),
         cmd::TRUNCATE_SNIPPET,
     )
-    .hotkey(SysMods::Cmd, "t")
+    .hotkey(SysMods::None, "t")
     .disabled_if(|| data.selected_snippet.is_none());
 
     let delete = MenuItem::new(
