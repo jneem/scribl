@@ -127,12 +127,12 @@ impl TalkSnippet {
 }
 
 impl TalkSnippets {
-    pub fn with_new_snippet(&self, snip: TalkSnippet) -> TalkSnippets {
+    pub fn with_new_snippet(&self, snip: TalkSnippet) -> (TalkSnippets, TalkSnippetId) {
         let mut ret = self.clone();
         ret.last_id += 1;
         let id = TalkSnippetId(ret.last_id);
         ret.snippets.insert(id, snip);
-        ret
+        (ret, id)
     }
 
     pub fn has_snippet(&self, snip: TalkSnippetId) -> bool {

@@ -413,7 +413,9 @@ impl Editor {
         } else if cmd.is(cmd::ADD_AUDIO_SNIPPET) {
             let prev_state = data.undo_state();
             let snip = cmd.get_unchecked(cmd::ADD_AUDIO_SNIPPET);
-            data.audio_snippets = data.audio_snippets.with_new_snippet(snip.clone());
+            let (new_snippets, new_id) = data.audio_snippets.with_new_snippet(snip.clone());
+            data.audio_snippets = new_snippets;
+            data.selected_snippet = Some(new_id.into());
             data.push_undo_state(prev_state.with_time(snip.start_time()), "add audio");
             ctx.set_menu(crate::menus::make_menu(data));
             true
