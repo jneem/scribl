@@ -45,17 +45,21 @@ fn file_menu(data: &EditorState) -> MenuDesc<AppState> {
     )
     .hotkey(SysMods::CmdShift, "S");
 
-    // Note that we're reusing the SHOW_SAVE_PANEL command for exporting. There doesn't appear to
-    // be another way to get the system file dialog.
+    let mut export_options = FileDialogOptions::new()
+        .allowed_types(vec![EXPORT_FILE_TYPE])
+        .title("Export to video")
+        .button_text("Export")
+        .accept_command(cmd::EXPORT_CURRENT);
+    if let Some(save_path) = &data.save_path {
+        if let Some(save_name) = save_path.file_stem() {
+            if let Some(save_name) = save_name.to_str() {
+                export_options = export_options.default_name(save_name);
+            }
+        }
+    }
     let export = MenuItem::new(
         LocalizedString::new("scribl-menu-file-export").with_placeholder("Export"),
-        commands::SHOW_SAVE_PANEL.with(
-            FileDialogOptions::new()
-                .allowed_types(vec![EXPORT_FILE_TYPE])
-                .title("Export to video")
-                .button_text("Export")
-                .accept_command(cmd::EXPORT_CURRENT),
-        ),
+        commands::SHOW_SAVE_PANEL.with(export_options),
     )
     .hotkey(SysMods::Cmd, "e");
 
