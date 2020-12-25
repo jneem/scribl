@@ -20,9 +20,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.35"
+version = "1.0.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c0df63cb2955042487fad3aefd2c6e3ae7389ac5dc1beb28921de0b69f779d4"
+checksum = "68803225a7b13e47191bab76f2687382b60d259e8cf37f6e1893658b84bb9479"
 
 [[package]]
 name = "array-init"
@@ -363,7 +363,7 @@ checksum = "212d0f5754cb6769937f4501cc0e67f4f4483c8d2c3e1e922ee9edbe4ab4c7c0"
 [[package]]
 name = "druid"
 version = "0.6.0"
-source = "git+https://github.com/linebender/druid.git#f0910af7f677732199e81087baa443c9779dd98e"
+source = "git+https://github.com/linebender/druid.git#7e35a76206858c198dbc297deb743fe22f7943da"
 dependencies = [
  "console_log",
  "druid-derive",
@@ -378,13 +378,13 @@ dependencies = [
  "simple_logger",
  "unic-langid",
  "unicode-segmentation",
- "xi-unicode",
+ "xi-unicode 0.2.1",
 ]
 
 [[package]]
 name = "druid-derive"
 version = "0.3.1"
-source = "git+https://github.com/linebender/druid.git#f0910af7f677732199e81087baa443c9779dd98e"
+source = "git+https://github.com/linebender/druid.git#7e35a76206858c198dbc297deb743fe22f7943da"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -394,7 +394,7 @@ dependencies = [
 [[package]]
 name = "druid-shell"
 version = "0.6.0"
-source = "git+https://github.com/linebender/druid.git#f0910af7f677732199e81087baa443c9779dd98e"
+source = "git+https://github.com/linebender/druid.git#7e35a76206858c198dbc297deb743fe22f7943da"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -930,9 +930,9 @@ dependencies = [
 
 [[package]]
 name = "gstreamer-video"
-version = "0.16.5"
+version = "0.16.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5849033d83664754094e0112a615b4950d29ba31fffaef12afcb2c3a0296fd88"
+checksum = "75fb6c5bcc0d406ca4a47938b8592121ff98e7a8f4303c24def1722df9f203d5"
 dependencies = [
  "bitflags",
  "futures-channel",
@@ -1017,9 +1017,9 @@ checksum = "d36fab90f82edc3c747f9d438e06cf0a491055896f2a279638bb5beed6c40177"
 
 [[package]]
 name = "heck"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20564e78d53d2bb135c343b3f47714a56af2061f1c928fdb541dc7b9fdd94205"
+checksum = "87cbf45460356b7deeb5e3415b5563308c0a9b057c85e12b06ad551f98d0a6ac"
 dependencies = [
  "unicode-segmentation",
 ]
@@ -1286,30 +1286,31 @@ checksum = "c5d65c4d95931acda4498f675e332fcbdc9a06705cd07086c510e9b6009cd1c1"
 
 [[package]]
 name = "piet"
-version = "0.2.0-pre6"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6516cf192cccc3037c3ba5405018f83e026e3b340110ef7f6ce58cbddd25cf2"
+checksum = "35ef43d89a47d71e370e01f50384bf4efafacf84a22776d4dc1fae5f1ccd51e9"
 dependencies = [
  "kurbo",
+ "unic-bidi",
 ]
 
 [[package]]
 name = "piet-cairo"
-version = "0.2.0-pre6"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4dc74d4de04c0bafc4d2aa358c06356bc4a361d46d8f718150557902801a1d9"
+checksum = "91834682e7b19ae26cebc0f3ad83a36d4ae2e4f95b85f2c93a34873f38319d29"
 dependencies = [
  "cairo-rs",
  "piet",
  "unicode-segmentation",
- "xi-unicode",
+ "xi-unicode 0.2.1",
 ]
 
 [[package]]
 name = "piet-common"
-version = "0.2.0-pre6"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3e165053bbd04cac97cf7c3de85e64326b6d7a99ee5782d2022a8fd5d502953"
+checksum = "d63a6e19d7609b4588474e7a2fed3f1f65a4cb2dc2c1e4faf612a1f6b6a02d5c"
 dependencies = [
  "cairo-rs",
  "cairo-sys-rs",
@@ -1326,9 +1327,9 @@ dependencies = [
 
 [[package]]
 name = "piet-coregraphics"
-version = "0.2.0-pre6"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9c8d68ea9ff581e5e3f468b562982ee78a1f3568353e6860e26c5a6a1080f15"
+checksum = "5af1ce12cf0a1dc7f894f6f90ba62467d685a39b7f1d235516c8688f98e92d18"
 dependencies = [
  "core-foundation",
  "core-foundation-sys",
@@ -1336,14 +1337,13 @@ dependencies = [
  "core-text",
  "foreign-types",
  "piet",
- "unic-bidi",
 ]
 
 [[package]]
 name = "piet-direct2d"
-version = "0.2.0-pre6"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b74ea11318f93d52bf1c8acbb6a7ad8e09728e9321fff66847b0ae7bd097f15"
+checksum = "019643fceb3667f79d1ed38101218cbabbfeb55c95f1a918b678e32042928418"
 dependencies = [
  "associative-cache",
  "dwrote",
@@ -1355,16 +1355,16 @@ dependencies = [
 
 [[package]]
 name = "piet-web"
-version = "0.2.0-pre6"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47db6c4d7c71d4e8d1f50caf838ef99d9fad4a0d831d3026ba7716425c2e62ac"
+checksum = "2e3817e728530c6e65419d5db55379536581169e8716efa05a73fa19101997c5"
 dependencies = [
  "js-sys",
  "piet",
  "unicode-segmentation",
  "wasm-bindgen",
  "web-sys",
- "xi-unicode",
+ "xi-unicode 0.3.0",
 ]
 
 [[package]]
@@ -1512,9 +1512,9 @@ checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
 name = "quote"
-version = "1.0.7"
+version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa563d17ecb180e500da1cfd2b028310ac758de548efdd203e18f283af693f37"
+checksum = "991431c3519a3f36861882da93630ce66b52918dcf1b8e2fd66b397fc96f28df"
 dependencies = [
  "proc-macro2",
 ]
@@ -1929,9 +1929,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.54"
+version = "1.0.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a2af957a63d6bd42255c359c93d9bfdb97076bd3b820897ce55ffbfbf107f44"
+checksum = "a571a711dddd09019ccc628e1b17fe87c59b09d513c06c026877aa708334f37a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2079,9 +2079,9 @@ checksum = "29738eedb4388d9ea620eeab9384884fc3f06f586a2eddb56bedc5885126c7c1"
 
 [[package]]
 name = "toml"
-version = "0.5.7"
+version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75cf45bb0bef80604d001caaec0d09da99611b3c0fd39d3080468875cdb65645"
+checksum = "a31142970826733df8241ef35dc040ef98c679ab14d7c3e54d827099b3acecaa"
 dependencies = [
  "serde",
 ]
@@ -2342,3 +2342,9 @@ name = "xi-unicode"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e71b85d8b1b8bfaf4b5c834187554d201a8cd621c2bbfa33efd41a3ecabd48b2"
+
+[[package]]
+name = "xi-unicode"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a67300977d3dc3f8034dae89778f502b6ba20b269527b3223ba59c0cf393bb8a"

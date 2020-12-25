@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use druid::piet::{Image, ImageFormat, InterpolationMode};
+use druid::piet::{ImageFormat, InterpolationMode, PietImage};
 use druid::widget::prelude::*;
 use druid::{Color, Data, Point, Rect, Vec2, WidgetPod};
 
@@ -7,8 +7,8 @@ use druid::{Color, Data, Point, Rect, Vec2, WidgetPod};
 /// don't use them).
 pub struct SunkenContainer<T, W> {
     inner: WidgetPod<T, W>,
-    top_shadow: Option<Image>,
-    bottom_shadow: Option<Image>,
+    top_shadow: Option<PietImage>,
+    bottom_shadow: Option<PietImage>,
     shadow_width: usize,
     shadow_height: usize,
     // Whenever the width changes, we redraw the shadows.
