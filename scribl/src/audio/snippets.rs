@@ -262,7 +262,7 @@ mod tests {
                 $(
                     let buf: &[i16] = $buf;
                     let time = Time::from_audio_idx($time, SAMPLE_RATE);
-                    ret = ret.with_new_snippet(TalkSnippet::new(buf.to_owned(), time, 1.0));
+                    ret = ret.with_new_snippet(TalkSnippet::new(buf.to_owned(), time, 1.0)).0;
                 )*
 
                 ret
