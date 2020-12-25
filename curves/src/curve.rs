@@ -408,7 +408,7 @@ impl<'a> StrokeRef<'a> {
         };
 
         let bbox = active_elts.bounding_box();
-        if bbox.area() != 0.0 {
+        if !active_elts.is_empty() {
             bbox.inset(self.style.thickness / 2.0)
         } else {
             Rect::ZERO
