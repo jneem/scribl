@@ -8,6 +8,6 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.34"
-druid = { git = "https://github.com/linebender/druid.git" }
+druid = "0.7"
 log = "0.4.11"
 
