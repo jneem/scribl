@@ -13,11 +13,11 @@ repository = "https://github.com/jneem/scribl"
 [dependencies]
 anyhow = "1.0.27"
 clap = "2.33.0"
-console = { version = "0.12.0", default-features = false }
-directories-next = "1.0.1"
+console = { version = "0.14.0", default-features = false }
+directories-next = "2.0"
 druid = { version = "0.7", features = ["im"] }
 ebur128 = "0.1.1"
-env_logger = "0.7.1"
+env_logger = "0.8.2"
 gstreamer = "0.16"
 gstreamer-app = "0.16"
 gstreamer-audio = "0.16"
@@ -31,5 +31,5 @@ serde = { version = "1.0", features = ["derive", "rc"] }
 serde_cbor = "0.11.1"
 thiserror = "1.0.14"
 toml = "0.5.6"
-crossbeam-channel = "0.4.3"
+crossbeam-channel = "0.5"
 

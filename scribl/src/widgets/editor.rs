@@ -370,6 +370,9 @@ impl Editor {
             CurrentAction::RecordingAudio(_) => {
                 data.stop_recording_audio();
             }
+            CurrentAction::Scanning(_) => {
+                data.stop_scanning();
+            }
             _ => {}
         }
     }
