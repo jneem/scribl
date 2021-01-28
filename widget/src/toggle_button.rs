@@ -144,6 +144,7 @@ impl<T: Data> Widget<T> for ShadowlessToggleButton<T> {
             }
             _ => {}
         }
+        self.inner.event(ctx, event, data, env);
     }
 
     fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle, data: &T, env: &Env) {

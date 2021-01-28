@@ -1,7 +1,7 @@
 use druid::widget::Flex;
 use druid::{AppLauncher, Color, Data, Lens, Widget, WidgetExt, WindowDesc};
 
-use scribl_widget::{Icon, RadioGroup, Separator, ToggleButton};
+use scribl_widget::{Icon, ModalHost, RadioGroup, Separator, ToggleButton, TooltipExt};
 
 #[derive(Data, Clone, PartialEq)]
 enum Animal {
@@ -47,6 +47,7 @@ fn build_root() -> impl Widget<State> {
             println!("untoggle");
         },
     )
+    .tooltip("Turtle")
     .fix_width(32.0)
     .padding(10.0)
     .background(Color::WHITE)
@@ -82,12 +83,14 @@ fn build_root() -> impl Widget<State> {
     .background(Color::WHITE)
     .border(Color::BLACK, 3.0);
 
-    Flex::column()
-        .with_child(button)
-        .with_child(group)
-        .with_child(sep)
-        .with_child(vgroup)
-        .with_flex_spacer(1.0)
+    ModalHost::new(
+        Flex::column()
+            .with_child(button)
+            .with_child(group)
+            .with_child(sep)
+            .with_child(vgroup)
+            .with_flex_spacer(1.0),
+    )
 }
 
 pub const SNAIL: Icon = Icon {
