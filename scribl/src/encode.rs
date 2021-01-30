@@ -42,6 +42,20 @@ impl<'a> From<gst::message::Error<'a>> for PipelineError {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("failed to create gstreamer element \"{ty}\"; probably you are missing a gstreamer plugin")]
+struct ElementCreationError {
+    ty: String,
+    msg: String,
+}
+
+fn make_elt(ty: &str, name: &str) -> Result<gst::Element, ElementCreationError> {
+    gst::ElementFactory::make(ty, Some(name)).map_err(|e| ElementCreationError {
+        ty: ty.to_owned(),
+        msg: e.message.to_string(),
+    })
+}
+
 fn create_pipeline(
     anim: DrawSnippets,
     audio: TalkSnippets,
@@ -51,11 +65,11 @@ fn create_pipeline(
     progress: Sender<EncodingStatus>,
 ) -> Result<gst::Pipeline, anyhow::Error> {
     let pipeline = gst::Pipeline::new(None);
-    let v_src = gst::ElementFactory::make("appsrc", Some("encode-vsource"))?;
-    let v_convert = gst::ElementFactory::make("videoconvert", Some("encode-vconvert"))?;
-    let v_encode = gst::ElementFactory::make("x264enc", Some("encode-vencode"))?;
-    let v_queue1 = gst::ElementFactory::make("queue", Some("encode-vqueue1"))?;
-    let v_queue2 = gst::ElementFactory::make("queue", Some("encode-vqueue2"))?;
+    let v_src = make_elt("appsrc", "encode-vsource")?;
+    let v_convert = make_elt("videoconvert", "encode-vconvert")?;
+    let v_encode = make_elt("x264enc", "encode-vencode")?;
+    let v_queue1 = make_elt("queue", "encode-vqueue1")?;
+    let v_queue2 = make_elt("queue", "encode-vqueue2")?;
     let audio_output_data = crate::audio::OutputData {
         start_time: Time::ZERO,
         snips: audio,
@@ -65,12 +79,12 @@ fn create_pipeline(
     // The unwrap is ok because we know that the receiver is still alive.
     output_tx.send(audio_output_data).unwrap();
     let a_src = crate::audio::create_appsrc(output_rx, "encode-asrc")?;
-    let a_convert = gst::ElementFactory::make("audioconvert", Some("encode-aconvert"))?;
-    let a_encode = gst::ElementFactory::make("lamemp3enc", Some("encode-aencode"))?;
-    let a_queue1 = gst::ElementFactory::make("queue", Some("encode-aqueue1"))?;
-    let a_queue2 = gst::ElementFactory::make("queue", Some("encode-aqueue2"))?;
-    let mux = gst::ElementFactory::make("mp4mux", Some("encode-mux"))?;
-    let sink = gst::ElementFactory::make("filesink", Some("encode-sink"))?;
+    let a_convert = make_elt("audioconvert", "encode-aconvert")?;
+    let a_encode = make_elt("lamemp3enc", "encode-aencode")?;
+    let a_queue1 = make_elt("queue", "encode-aqueue1")?;
+    let a_queue2 = make_elt("queue", "encode-aqueue2")?;
+    let mux = make_elt("mp4mux", "encode-mux")?;
+    let sink = make_elt("filesink", "encode-sink")?;
 
     v_encode.set_property("bitrate", &config.bitrate)?;
 
