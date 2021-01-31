@@ -63,6 +63,11 @@ fn main() {
                 .takes_value(true),
         )
         .arg(
+            Arg::with_name("no-custom-cursors")
+                .help("Disable custom pen cursors (because they don't work on flatpak)")
+                .long("no-custom-cursors"),
+        )
+        .arg(
             Arg::with_name("export-to")
                 .help("Export the animation as a video instead of opening it")
                 .long("export-to")
@@ -70,10 +75,13 @@ fn main() {
         )
         .get_matches();
 
+    let mut config = crate::config::load_config();
+    config.no_custom_cursors |= matches.is_present("no-custom-cursors");
+
     let initial_editor = if let Some(path) = matches.value_of("FILE") {
         match crate::save_state::SaveFileData::load_from_path(path) {
             Ok(save_file) => {
-                let mut e = EditorState::from_save_file(save_file);
+                let mut e = EditorState::from_save_file(save_file, config);
                 e.save_path = Some(path.into());
                 e
             }
@@ -83,7 +91,7 @@ fn main() {
             }
         }
     } else {
-        EditorState::default()
+        EditorState::new(config)
     };
 
     if let Some(output_path) = matches.value_of("export-to") {

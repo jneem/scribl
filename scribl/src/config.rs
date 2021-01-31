@@ -26,6 +26,7 @@ fn default_vad_threshold() -> f32 {
 pub struct Config {
     pub audio_input: AudioInput,
     pub export: Export,
+    pub no_custom_cursors: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]

@@ -154,9 +154,8 @@ pub struct EditorState {
     pub saved_data: Option<SaveFileData>,
 }
 
-impl Default for EditorState {
-    fn default() -> EditorState {
-        let config = crate::config::load_config();
+impl EditorState {
+    pub fn new(config: Config) -> EditorState {
         let denoise_setting = if !config.audio_input.remove_noise {
             DenoiseSetting::DenoiseOff
         } else if config.audio_input.vad_threshold <= 0.0 {
@@ -192,9 +191,7 @@ impl Default for EditorState {
         ret.saved_data = Some(SaveFileData::from_editor_state(&ret));
         ret
     }
-}
 
-impl EditorState {
     fn selected_effects(&self) -> Effects {
         let mut ret = Effects::default();
         if self.fade_enabled {
@@ -406,12 +403,12 @@ impl EditorState {
         }
     }
 
-    pub fn from_save_file(data: SaveFileData) -> EditorState {
+    pub fn from_save_file(data: SaveFileData, config: Config) -> EditorState {
         let mut ret = EditorState {
             snippets: data.snippets.clone(),
             audio_snippets: data.audio_snippets.clone(),
             undo: Arc::new(RefCell::new(UndoStack::new())),
-            ..Default::default()
+            ..EditorState::new(config)
         };
         ret.saved_data = Some(data);
         ret

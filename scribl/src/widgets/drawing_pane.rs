@@ -1,7 +1,7 @@
 use druid::kurbo::TranslateScale;
 use druid::{
     BoxConstraints, Color, Cursor, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
-    PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget,
+    PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx, Vec2, Widget, WindowHandle,
 };
 
 use scribl_curves::{DrawCursor, Time};
@@ -44,6 +44,16 @@ impl DrawingPane {
 
     fn from_image_scale(&self) -> f64 {
         self.paper_rect.width() / DRAWING_WIDTH
+    }
+
+    fn cursor(&mut self, data: &EditorState, window_id: &WindowHandle) -> &Cursor {
+        // There's a bug with custom cursors on flatpak: it just deletes the mouse cursor instead
+        // of showing a custom one. Therefore we offer an option to disable using custom cursors.
+        if data.config.no_custom_cursors {
+            &Cursor::Arrow
+        } else {
+            self.cursors.pen(window_id, data.palette.selected_color())
+        }
     }
 
     fn recompute_paper_rect(&mut self, size: Size, zoom: f64) {
@@ -121,9 +131,7 @@ impl Widget<EditorState> for DrawingPane {
                 }
 
                 if data.action.is_recording() {
-                    let cursor = self
-                        .cursors
-                        .pen(ctx.window(), data.palette.selected_color());
+                    let cursor = self.cursor(data, ctx.window());
                     ctx.set_cursor(cursor);
                 }
             }
@@ -173,9 +181,7 @@ impl Widget<EditorState> for DrawingPane {
         _env: &Env,
     ) {
         if data.action.is_recording() && ctx.is_hot() {
-            let cursor = self
-                .cursors
-                .pen(ctx.window(), data.palette.selected_color());
+            let cursor = self.cursor(data, ctx.window());
             ctx.set_cursor(cursor);
         } else if old_data.action.is_recording() {
             ctx.set_cursor(&Cursor::Arrow);

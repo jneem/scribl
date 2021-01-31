@@ -17,7 +17,7 @@ impl AppDelegate<AppState> for Delegate {
     ) -> Handled {
         log::info!("command {:?}", cmd);
         if cmd.is(druid::commands::NEW_FILE) {
-            let window_desc = data.add_editor(EditorState::default());
+            let window_desc = data.add_editor(EditorState::new(crate::config::load_config()));
             ctx.new_window(window_desc);
             Handled::Yes
         } else {

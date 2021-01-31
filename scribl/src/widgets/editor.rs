@@ -651,7 +651,7 @@ impl Editor {
             let result = cmd.get_unchecked(cmd::FINISHED_ASYNC_LOAD);
             data.update_load_status(result);
             if let Ok(save_data) = &result.save_data {
-                *data = EditorState::from_save_file(save_data.clone());
+                *data = EditorState::from_save_file(save_data.clone(), data.config.clone());
                 data.save_path = Some(result.path.clone());
             }
             true
