@@ -1,0 +1,101 @@
+{
+    "app-id": "ink.scribl.Scribl",
+    "runtime": "org.freedesktop.Platform",
+    "runtime-version": "20.08",
+    "sdk": "org.freedesktop.Sdk",
+    "sdk-extensions": [
+        "org.freedesktop.Sdk.Extension.rust-stable"
+    ],
+    "command": "scribl.sh",
+    "finish-args": [
+        "--share=ipc",
+        "--socket=fallback-x11",
+        "--socket=wayland",
+        "--socket=pulseaudio"
+    ],
+    "build-options": {
+        "append-path": "/usr/lib/sdk/rust-stable/bin",
+        "env": {
+            "CARGO_HOME": "/run/build/scribl/cargo"
+        }
+    },
+    "modules": [
+        {
+            "name": "yasm",
+            "buildsystem": "cmake-ninja",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "http://www.tortall.net/projects/yasm/releases/yasm-1.3.0.tar.gz",
+                    "sha256": "3dce6601b495f5b3d45b59f7d2492a340ee7e84b5beca17e48f862502bd5603f"
+                }
+            ],
+            "cleanup": [
+                "*"
+            ]
+        },
+        {
+            "name": "x264",
+            "config-opts": [
+                "--enable-shared",
+                "--enable-static",
+                "--enable-strip"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://download.videolan.org/pub/videolan/x264/snapshots/x264-snapshot-20170416-2245-stable.tar.bz2",
+                    "sha256": "1d37e3703d2e9ad3fa98e053be0087a50a50087008b92d2913767f2c94aef672"
+                }
+            ],
+            "cleanup": [
+                "/include",
+                "/lib/*.a",
+                "/lib/*.la",
+                "/lib/pkgconfig",
+                "/man",
+                "/share/aclocal",
+                "/share/doc",
+                "/share/gtk-doc",
+                "/share/man",
+                "/share/pkgconfig"
+            ]
+        },
+        {
+            "name": "gst-plugins-ugly",
+            "buildsystem": "meson",
+            "cleanup": [
+                "*.la",
+                "/share/gtk-doc"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://gstreamer.freedesktop.org/src/gst-plugins-ugly/gst-plugins-ugly-1.16.3.tar.xz",
+                    "sha256": "403c21688065f41e53008874402b5c07832567cc1309a60df597eab7ff5843f0"
+                }
+            ]
+        },
+        {
+            "name": "scribl",
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": "/home/jneeman/programming/scribl"
+                },
+                "generated-sources.json"
+            ],
+            "buildsystem": "simple",
+            "build-commands": [
+                "cargo --offline fetch --manifest-path Cargo.toml --verbose",
+                "cargo --offline build --release --verbose",
+                "install -D target/release/scribl /app/bin/scribl",
+                "install -D flatpak/ink.scribl.Scribl.appdata.xml /app/share/metainfo/ink.scribl.Scribl.metainfo.xml",
+                "install -D flatpak/ink.scribl.Scribl.128x128.png /app/share/icons/hicolor/128x128/apps/ink.scribl.Scribl.png",
+                "install -D flatpak/ink.scribl.Scribl.256x256.png /app/share/icons/hicolor/256x256/apps/ink.scribl.Scribl.png",
+                "install -D flatpak/ink.scribl.Scribl.desktop /app/share/applications/ink.scribl.Scribl.desktop",
+                "install -D flatpak/scribl.sh /app/bin/scribl.sh"
+            ]
+        }
+    ]
+}
