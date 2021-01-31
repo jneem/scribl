@@ -1691,7 +1691,7 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "scribl"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1718,7 +1718,7 @@ dependencies = [
 
 [[package]]
 name = "scribl_curves"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "druid",
  "gstreamer",
@@ -1732,7 +1732,7 @@ dependencies = [
 
 [[package]]
 name = "scribl_widget"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "druid",

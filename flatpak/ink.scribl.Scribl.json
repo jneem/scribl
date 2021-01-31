@@ -80,8 +80,9 @@
             "name": "scribl",
             "sources": [
                 {
-                    "type": "dir",
-                    "path": "/home/jneeman/programming/scribl"
+                    "type": "git",
+                    "url": "https://github.com/jneem/scribl",
+                    "tag": "v0.3.1",
                 },
                 "generated-sources.json"
             ],

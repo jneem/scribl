@@ -30,6 +30,11 @@
     <update_contact>joeneeman@gmail.com</update_contact>
 
     <releases>
+        <release version="0.3.1" date="2021-01-31">
+            - Visual overhaul.
+            - Fix video export.
+            - Support basic editing of audio snippets.
+        </release>
         <release version="0.2.5" date="2020-08-25">
             - Fix the display of the clock and tooltip text.
             - Add an audio loudness indicator.
