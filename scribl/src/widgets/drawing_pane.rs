@@ -47,13 +47,7 @@ impl DrawingPane {
     }
 
     fn cursor(&mut self, data: &EditorState, window_id: &WindowHandle) -> &Cursor {
-        // There's a bug with custom cursors on flatpak: it just deletes the mouse cursor instead
-        // of showing a custom one. Therefore we offer an option to disable using custom cursors.
-        if data.config.no_custom_cursors {
-            &Cursor::Arrow
-        } else {
-            self.cursors.pen(window_id, data.palette.selected_color())
-        }
+        self.cursors.pen(window_id, data.palette.selected_color())
     }
 
     fn recompute_paper_rect(&mut self, size: Size, zoom: f64) {
