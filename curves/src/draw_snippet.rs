@@ -110,7 +110,7 @@ impl DrawSnippet {
     /// Has this snippet drawn anything by `time`?
     pub fn visible_at(&self, time: Time) -> bool {
         if let Some(end) = self.end {
-            self.start_time() <= time && time <= end
+            self.start_time() <= time && time < end
         } else {
             self.start_time() <= time
         }
@@ -228,7 +228,7 @@ impl DrawCursor {
                 // be made (linear in useful strokes + logarithmic in total strokes).
                 snip.strokes().filter_map(move |stroke| {
                     if let Some(snip_end) = snip.end_time() {
-                        if self.current().0 <= snip_end && self.current().1 > snip_end {
+                        if self.current().0 < snip_end && self.current().1 >= snip_end {
                             return Some(
                                 stroke
                                     .elements

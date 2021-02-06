@@ -354,8 +354,8 @@ pub struct StrokeRef<'a> {
 }
 
 impl<'a> StrokeRef<'a> {
-    /// Returns a bounding box everything that is drawn between `start_time` and `end_time`,
-    /// inclusive.
+    /// Returns a bounding box of everything that is drawn in the interval
+    /// `[start_time, end_time)`.
     pub fn changes_bbox(&self, start_time: Time, end_time: Time) -> Rect {
         let start_idx = match self.times.binary_search(&start_time) {
             // binary_search gives an arbitrary match, but we want the first one.
@@ -377,13 +377,12 @@ impl<'a> StrokeRef<'a> {
             }
         };
         let end_idx = match self.times.binary_search(&end_time) {
-            // binary_search gives an arbitrary match, but we want the last one.
-            Ok(idx) => {
-                idx + self.times[idx..]
-                    .iter()
-                    .position(|&t| t > end_time)
-                    .unwrap_or(1)
-            }
+            // binary_search gives an arbitrary match, but we want the first one.
+            Ok(idx) => self.times[0..idx]
+                .iter()
+                .rposition(|&t| t < end_time)
+                .map(|i| i + 1)
+                .unwrap_or(0),
             Err(idx) => {
                 if idx == 0 {
                     idx
