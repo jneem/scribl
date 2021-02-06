@@ -30,7 +30,10 @@
     <update_contact>joeneeman@gmail.com</update_contact>
 
     <releases>
-        <release version="0.3.1" date="2021-01-31">
+        <release version="0.3.1-1" date="2021-02-04">
+            - Fix custom mouse cursors.
+        </release>
+         <release version="0.3.1" date="2021-01-31">
             - Visual overhaul.
             - Fix video export.
             - Support basic editing of audio snippets.
