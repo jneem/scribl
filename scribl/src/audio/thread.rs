@@ -203,10 +203,13 @@ impl AudioState {
             }
         }
 
-        // These loudness and peak values aren't 100% correct, because they don't account for the
-        // fact that we've just zeroed out some noise. It's probably good enough, though.
-        let loudness = data.loudness.loudness_global().unwrap();
-        let peak = data.loudness.sample_peak(0).unwrap();
+        // Now that we've changed the data, recalculate the loudness.
+        data.loudness.reset();
+        if let Err(e) = data.loudness.add_frames_i16(&data.buf[..]) {
+            log::error!("failed to calculate loudness: {}", e);
+        }
+        let loudness = data.loudness.loudness_global().unwrap_or(-f64::INFINITY);
+        let peak = data.loudness.sample_peak(0).unwrap_or(-f64::INFINITY);
         AudioRecording {
             buf: data.buf,
             loudness,
