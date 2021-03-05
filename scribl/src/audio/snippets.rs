@@ -14,7 +14,9 @@ use super::SAMPLE_RATE;
 /// Each audio snippet is uniquely identified by one of these ids.
 // This is serialized as part of saving files, so its serialization format needs to remain
 // stable.
-#[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd,
+)]
 #[serde(transparent)]
 pub struct TalkSnippetId(u64);
 
@@ -25,7 +27,7 @@ pub struct TalkSnippetId(u64);
 // stable.
 #[derive(Deserialize, Serialize, Clone, Data, PartialEq)]
 pub struct TalkSnippet {
-    buf: Arc<Vec<i16>>,
+    buf: Arc<[i16]>,
     multiplier: f32,
     start_time: Time,
 }
@@ -41,7 +43,7 @@ pub struct TalkSnippets {
 impl TalkSnippet {
     pub fn new(buf: Vec<i16>, start_time: Time, multiplier: f32) -> TalkSnippet {
         TalkSnippet {
-            buf: Arc::new(buf),
+            buf: buf.into(),
             multiplier,
             start_time,
         }
@@ -94,12 +96,12 @@ impl TalkSnippet {
         let (from_idx, to_idx) = (from_idx.min(to_idx), from_idx.max(to_idx));
 
         if from_idx < to_idx {
-            let mut buf = self.buf.deref().clone();
+            let mut buf = self.buf.deref().to_owned();
             for i in from_idx..to_idx {
                 buf[i] = 0;
             }
             TalkSnippet {
-                buf: Arc::new(buf),
+                buf: buf.into(),
                 ..self.clone()
             }
         } else {
@@ -114,14 +116,36 @@ impl TalkSnippet {
         let (from_idx, to_idx) = (from_idx.min(to_idx), from_idx.max(to_idx));
 
         if from_idx < to_idx {
-            let mut buf = self.buf.deref().clone();
+            let mut buf = self.buf.deref().to_owned();
             buf.drain(from_idx..to_idx);
             TalkSnippet {
-                buf: Arc::new(buf),
+                buf: buf.into(),
                 ..self.clone()
             }
         } else {
             self.clone()
+        }
+    }
+
+    /// Returns a new snippet, with silence at the beginning and end deleted.
+    ///
+    /// If this snippet has only silence, returns `None`.
+    pub fn trimmed(&self) -> Option<TalkSnippet> {
+        let buf = self.buf.deref();
+        let first_nonzero = buf.iter().position(|&x| x != 0);
+        let last_nonzero = buf.iter().rposition(|&x| x != 0);
+
+        if let (Some(first), Some(last)) = (first_nonzero, last_nonzero) {
+            let buf = &buf[first..=last];
+            let start_time =
+                self.start_time() + TimeDiff::from_audio_idx(first as i64, SAMPLE_RATE);
+            Some(TalkSnippet {
+                buf: buf.to_owned().into(),
+                start_time,
+                ..self.clone()
+            })
+        } else {
+            None
         }
     }
 }

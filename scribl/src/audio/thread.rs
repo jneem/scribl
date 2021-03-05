@@ -38,8 +38,9 @@ struct AudioState {
     output_data: OutputData,
 
     // The receiver of this lives in the app_sink callback. We send input configs to it when we
-    // want to change the input settings.
-    input_tx: Sender<InputConfig>,
+    // want to change the input settings. We send `None` when we want to stop storing the input
+    // audio.
+    input_tx: Sender<Option<InputConfig>>,
     // The sender of this lives in the app_sink callback. It regularly sends us messages about
     // things like input levels.
     input_status_rx: Receiver<AudioRecordingStatus>,
@@ -51,7 +52,6 @@ struct AudioState {
     // But the strategy could do with more testing (TODO). E.g., does gstreamer glitch if we block
     // in appsink? Or does it have enough buffers of its own?
     input_data: Arc<Mutex<InputData>>,
-    input_pipeline: Option<gst::Pipeline>,
 }
 
 struct InputData {
@@ -87,12 +87,21 @@ impl AudioState {
         let (status_tx, status_rx) = unbounded();
         let input_data = Arc::new(Mutex::new(InputData::new()));
         let input_pipeline = create_input_pipeline(Arc::clone(&input_data), input_rx, status_tx);
-        if let Err(e) = &input_pipeline {
-            log::error!(
-                "Error initializing audio input, there will be no sound: {}",
-                e
-            );
-        }
+        // We keep the input pipeline running, even if we aren't recording audio. This is because
+        // starting and starting the input pipeline tends to lead to "pops" in the recording.
+        match input_pipeline {
+            Err(e) => {
+                log::error!(
+                    "Error initializing audio input, there will be no audio recording: {}",
+                    e
+                )
+            }
+            Ok(pipe) => {
+                if let Err(e) = pipe.set_state(gst::State::Playing) {
+                    log::error!("failed to start recording audio: {}", e);
+                }
+            }
+        };
 
         AudioState {
             output_data: OutputData::new(),
@@ -102,7 +111,6 @@ impl AudioState {
             input_status_rx: status_rx,
             input_config: InputConfig::default(),
             input_data,
-            input_pipeline: input_pipeline.ok(),
         }
     }
 
@@ -144,14 +152,8 @@ impl AudioState {
             lock.buf.clear();
             lock.vad.clear();
         }
-        if self.input_tx.send(config).is_err() {
+        if self.input_tx.send(Some(config)).is_err() {
             log::error!("audio input thread died, no audio will be recorded");
-        }
-
-        if let Some(pipe) = self.input_pipeline.as_ref() {
-            if let Err(e) = pipe.set_state(gst::State::Playing) {
-                log::error!("failed to start recording audio: {}", e);
-            }
         }
     }
 
@@ -160,15 +162,14 @@ impl AudioState {
             self.input_data.lock().unwrap().deref_mut(),
             InputData::new(),
         );
-        if let Some(pipe) = self.input_pipeline.as_ref() {
-            if let Err(e) = pipe.set_state(gst::State::Paused) {
-                log::error!("failed to pause recording: {}", e);
-            }
+        if self.input_tx.send(None).is_err() {
+            log::error!("audio input thread died, no audio will be recorded");
         }
 
         // Which frames are worth keeping, according to voice detection?
         let vad_threshold = self.input_config.vad_threshold;
         let mut keep: Vec<_> = data.vad.iter().map(|&v| v > vad_threshold).collect();
+        keep.push(false);
         let mut weights = vec![0.0f32; keep.len()];
         convolve_bools(&keep[..], &mut weights[..], VOICELESS_FRAME_LAG);
 
@@ -182,7 +183,6 @@ impl AudioState {
             .map(|x| x as f32 / DenoiseState::FRAME_SIZE as f32)
             .collect();
 
-        keep.push(false);
         for (frame, w) in data
             .buf
             .chunks_exact_mut(DenoiseState::FRAME_SIZE)
@@ -203,6 +203,8 @@ impl AudioState {
             }
         }
 
+        // These loudness and peak values aren't 100% correct, because they don't account for the
+        // fact that we've just zeroed out some noise. It's probably good enough, though.
         let loudness = data.loudness.loudness_global().unwrap();
         let peak = data.loudness.sample_peak(0).unwrap();
         AudioRecording {
@@ -340,7 +342,9 @@ pub fn audio_loop(cmd: Receiver<Cmd>, sink: ExtEventSink, target: Target) {
                             .min(1.0 / rec.peak.max(1.0 / 500.0));
 
                         let snip = TalkSnippet::new(rec.buf, time, multiplier as f32);
-                        let _ = sink.submit_command(cmd::ADD_AUDIO_SNIPPET, snip, target);
+                        if let Some(snip) = snip.trimmed() {
+                            let _ = sink.submit_command(cmd::ADD_AUDIO_SNIPPET, snip, target);
+                        }
                     }
                     Err(_) => {
                         // Failure to receive here just means that the main program exited.
@@ -358,7 +362,7 @@ pub fn audio_loop(cmd: Receiver<Cmd>, sink: ExtEventSink, target: Target) {
 
 fn create_input_pipeline(
     data: Arc<Mutex<InputData>>,
-    config_rx: Receiver<InputConfig>,
+    config_rx: Receiver<Option<InputConfig>>,
     status_tx: Sender<AudioRecordingStatus>,
 ) -> Result<gst::Pipeline> {
     let pipeline = gst::Pipeline::new(None);
@@ -381,7 +385,7 @@ fn create_input_pipeline(
     let mut denoise_out_buf = vec![0.0; DenoiseState::FRAME_SIZE];
     let mut i16_buf = Vec::with_capacity(DenoiseState::FRAME_SIZE);
     let mut vad_buf = Vec::new();
-    let mut config = InputConfig::default();
+    let mut config = None;
 
     let new_sample = move |sink: &gst_app::AppSink| -> Result<gst::FlowSuccess, gst::FlowError> {
         let sample = match sink.pull_sample() {
@@ -389,6 +393,16 @@ fn create_input_pipeline(
             Err(e) => {
                 log::error!("Failed to pull sample: {}", e);
                 return Err(gst::FlowError::CustomError);
+            }
+        };
+
+        for c in config_rx.try_iter() {
+            config = c;
+        }
+        let config = match config.as_ref() {
+            Some(c) => c,
+            None => {
+                return Ok(gst::FlowSuccess::Ok);
             }
         };
 
@@ -410,9 +424,6 @@ fn create_input_pipeline(
 
         // The buffer is in bytes; each sample is two bytes.
         let mut buffer = buffer.as_slice();
-        for c in config_rx.try_iter() {
-            config = c;
-        }
 
         while !buffer.is_empty() {
             let cap_remaining = DenoiseState::FRAME_SIZE - denoise_in_buf.len();
