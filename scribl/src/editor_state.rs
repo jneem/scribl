@@ -132,7 +132,7 @@ pub struct EditorState {
     /// The current denoise setting, as selected in the UI.
     pub denoise_setting: DenoiseSetting,
 
-    /// The volume of the current audio input, if we're recordig audio. This is on a logarithmic
+    /// The volume of the current audio input, if we're recording audio. This is on a logarithmic
     /// scale (and 0.0 is very loud).
     pub input_loudness: f64,
 
