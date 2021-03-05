@@ -10,6 +10,12 @@ use crate::EditorState;
 static BAR_COLORS: &[Color] = &[
     Color::rgb8(166, 205, 87),
     Color::rgb8(166, 205, 87),
+    Color::rgb8(166, 205, 87),
+    Color::rgb8(166, 205, 87),
+    Color::rgb8(166, 205, 87),
+    Color::rgb8(255, 214, 0),
+    Color::rgb8(255, 214, 0),
+    Color::rgb8(255, 214, 0),
     Color::rgb8(255, 214, 0),
     Color::rgb8(255, 214, 0),
     Color::rgb8(248, 151, 31),
@@ -21,10 +27,10 @@ pub struct AudioIndicator {
 }
 
 fn calc_bands(loudness: f64) -> usize {
-    // 0.0 or above means all the bands. Then we do 1 band per 10 dB.
+    // 0.0 or above means all the bands. Then we do 1 band per 4 dB.
     BAR_COLORS
         .len()
-        .saturating_sub(((-loudness).max(0.0) / 10.0).floor() as usize)
+        .saturating_sub(((-loudness).max(0.0) / 4.0).floor() as usize)
 }
 
 pub fn audio_indicator() -> Painter<EditorState> {
