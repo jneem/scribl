@@ -192,6 +192,56 @@ impl EditorState {
         ret
     }
 
+    fn with_undo(&mut self, action_text: &str, f: impl FnOnce(&mut EditorState)) {
+        let prev_state = self.undo_state();
+        f(self);
+        self.push_undo_state(prev_state, action_text);
+    }
+
+    fn with_undo_at(&mut self, action_text: &str, time: Time, f: impl FnOnce(&mut EditorState)) {
+        let prev_state = self.undo_state();
+        f(self);
+        self.push_undo_state(prev_state.with_time(time), action_text);
+    }
+
+    pub fn add_draw_snippet(&mut self, snip: DrawSnippet) {
+        self.with_undo_at("add drawing", snip.start_time(), |state| {
+            let (new_snippets, new_id) = state.snippets.with_new_snippet(snip);
+            state.snippets = new_snippets;
+            state.selected_snippet = Some(new_id.into());
+        });
+    }
+
+    pub fn delete_selected_snippet(&mut self) {
+        match self.selected_snippet {
+            Some(SnippetId::Draw(id)) => {
+                self.with_undo("delete drawing", |state| {
+                    state.snippets = state.snippets.without_snippet(id);
+                    state.selected_snippet = None;
+                });
+            }
+            Some(SnippetId::Talk(id)) => self.with_undo("delete audio", |state| {
+                state.audio_snippets = state.audio_snippets.without_snippet(id);
+                state.selected_snippet = None;
+            }),
+            None => {
+                log::error!("No snippet id to delete");
+            }
+        }
+    }
+
+    /// Sets the timeline mark to the current time.
+    pub fn set_mark(&mut self) {
+        self.with_undo("set mark", |state| state.mark = Some(state.time()));
+    }
+
+    /// Removes the current timeline mark.
+    pub fn clear_mark(&mut self) {
+        if self.mark.is_some() {
+            self.with_undo("clear mark", |state| state.mark = None);
+        }
+    }
+
     fn selected_effects(&self) -> Effects {
         let mut ret = Effects::default();
         if self.fade_enabled {

@@ -1,7 +1,7 @@
-use druid::{Color, FileInfo, Selector};
+use druid::{FileInfo, Selector};
 use std::path::PathBuf;
 
-use scribl_curves::{DrawSnippet, DrawSnippets, Time, TimeDiff};
+use scribl_curves::{DrawSnippets, Time, TimeDiff};
 
 use crate::audio::{AudioRecordingStatus, TalkSnippet, TalkSnippets};
 use crate::editor_state::SnippetId;
@@ -19,12 +19,6 @@ pub const PLAY: Selector = Selector::new("scribl.play");
 
 /// Stops recording, playing, or whatever else is going on.
 pub const STOP: Selector = Selector::new("scribl.stop");
-
-/// Adds a new snippet.
-pub const ADD_SNIPPET: Selector<DrawSnippet> = Selector::new("scribl.add-snippet");
-
-/// Deletes the currently selected snippet.
-pub const DELETE_SNIPPET: Selector = Selector::new("scribl.delete-snippet");
 
 /// Selects the snippet below (in the timeline) the currently selected snippet.
 pub const SELECT_SNIPPET_BELOW: Selector = Selector::new("scribl.select-snippet-below");
@@ -54,21 +48,11 @@ pub const SILENCE_AUDIO: Selector = Selector::new("scribl.silence-audio");
 /// Deletes the selected region of the current audio snippet, "sliding" the later parts backwards.
 pub const SNIP_AUDIO: Selector = Selector::new("scribl.delete-audio");
 
-/// Changes the current mark time. If the argument is `None`, the current time will be used
-/// instead.
-pub const SET_MARK: Selector<Option<Time>> = Selector::new("scribl.set-mark");
-
-/// Removes the current timeline mark.
-pub const CLEAR_MARK: Selector<()> = Selector::new("scribl.clear-mark");
-
 /// Changes the current animation time, assuming that the UI is in the idle state.
 pub const WARP_TIME_TO: Selector<Time> = Selector::new("scribl.warp-time-to");
 
 /// Changes the volume of the selected snippet (if it's a talk snippet).
 pub const MULTIPLY_VOLUME: Selector<f64> = Selector::new("scribl.multiply-volume");
-
-/// Changes the pen color.
-pub const CHOOSE_COLOR: Selector<Color> = Selector::new("scribl.choose-color");
 
 /// Exports the current animation as a video.
 pub const EXPORT_CURRENT: Selector<FileInfo> = Selector::new("scribl.export-current");

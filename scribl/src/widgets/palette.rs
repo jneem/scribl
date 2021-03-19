@@ -38,10 +38,6 @@ impl PaletteData {
         &self.selected
     }
 
-    pub fn select(&mut self, color: &Color) {
-        self.selected = color.clone();
-    }
-
     pub fn try_select_idx(&mut self, idx: usize) -> Result<(), ()> {
         if let Some(c) = self.colors.get(idx) {
             self.selected = c.0.clone();

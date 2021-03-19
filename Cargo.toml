@@ -14,4 +14,4 @@ opt-level = 3
 
 # for testing local changes to druid
 # [patch."https://github.com/linebender/druid"]
-# druid = { path = "../druid/druid" }
+# druid = { path = "../druid/druid", features=["im"] }

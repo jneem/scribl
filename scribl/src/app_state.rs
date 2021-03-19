@@ -37,13 +37,22 @@ impl AppState {
 
         self.editors.insert(id, state.clone());
 
-        let ret = WindowDesc::new(move || Editor::new().lens(EditorLens(id)))
+        let ret = WindowDesc::new(Editor::new().lens(EditorLens(id)))
             .title(LocalizedString::new("Scribl"))
-            .menu(menus::make_menu(&state))
+            .menu(|id, data, _env| menus::make_menu(id, data))
             .window_size((800.0, 600.0));
 
         self.windows.insert(ret.id, id);
         ret
+    }
+
+    pub fn editor(&self, id: WindowId) -> Option<&EditorState> {
+        self.windows.get(&id).and_then(|w| self.editors.get(w))
+    }
+
+    pub fn editor_mut(&mut self, id: WindowId) -> Option<&mut EditorState> {
+        let editors = &mut self.editors;
+        self.windows.get(&id).and_then(move |w| editors.get_mut(w))
     }
 
     pub fn remove_editor(&mut self, id: WindowId) {

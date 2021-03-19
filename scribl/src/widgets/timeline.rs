@@ -533,7 +533,6 @@ impl Widget<EditorState> for TimelineSnippet {
                     if self.hot && self.contains(ev.pos) {
                         data.selected_snippet = Some(self.id);
                         ctx.set_handled();
-                        ctx.set_menu(crate::menus::make_menu(data));
                     }
                     if let Some(drag_shift) = self.drag_shift {
                         self.drag_start = None;
@@ -727,7 +726,6 @@ impl Widget<EditorState> for TimelineInner {
                         .map(|a| a.0);
                     if id.is_some() {
                         data.selected_snippet = id;
-                        ctx.set_menu(crate::menus::make_menu(data));
                     }
                 } else if c.is(cmd::SELECT_SNIPPET_BELOW) {
                     ctx.set_handled();
@@ -740,7 +738,6 @@ impl Widget<EditorState> for TimelineInner {
                         .map(|a| a.0);
                     if id.is_some() {
                         data.selected_snippet = id;
-                        ctx.set_menu(crate::menus::make_menu(data));
                     }
                 }
             }

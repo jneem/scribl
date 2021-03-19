@@ -142,9 +142,6 @@ impl Widget<EditorState> for DrawingPane {
                 ctx.set_active(false);
                 if ev.button.is_left() && data.action.is_recording() {
                     data.finish_stroke();
-                    // We need to refresh the menus here because finish_stroke changes the undo
-                    // state.
-                    ctx.set_menu(crate::menus::make_menu(data));
                 }
             }
             Event::Wheel(ev) => {

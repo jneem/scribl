@@ -12,6 +12,6 @@ description = "Some druid widgets for the `scribl` animation program"
 
 [dependencies]
 anyhow = "1.0.34"
-druid = "0.7"
+druid = { git = "https://github.com/linebender/druid" }
 log = "0.4.11"
 
