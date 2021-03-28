@@ -1,9 +1,9 @@
 use druid::im::HashMap;
 use druid::{Data, Lens, LocalizedString, WidgetExt, WindowDesc, WindowId};
 
-use crate::editor_state::EditorState;
 use crate::menus;
 use crate::widgets::Editor;
+use crate::EditorState;
 
 #[derive(Clone, Data, Default, Lens)]
 pub struct AppState {

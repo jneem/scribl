@@ -141,11 +141,11 @@ mod tests {
 
     #[test]
     fn save_load() {
-        check_round_trip(&include_bytes!("../sample/intro.scb")[..]);
+        check_round_trip(&include_bytes!("../../sample/intro.scb")[..]);
     }
 
     #[test]
     fn save_load_v0() {
-        check_round_trip(&include_bytes!("../sample/intro_v0.scb")[..]);
+        check_round_trip(&include_bytes!("../../sample/intro_v0.scb")[..]);
     }
 }

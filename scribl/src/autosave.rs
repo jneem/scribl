@@ -5,7 +5,7 @@ use std::ffi::OsStr;
 use std::path::PathBuf;
 
 use crate::cmd::{AsyncSaveResult, FINISHED_ASYNC_SAVE};
-use crate::save_state::SaveFileData;
+use crate::SaveFileData;
 
 pub struct AutosaveData {
     pub path: Option<PathBuf>,

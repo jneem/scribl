@@ -5,18 +5,15 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use scribl_curves::{
-    DrawSnippet, DrawSnippetId, DrawSnippets, Effect, Effects, FadeEffect, StrokeInProgress,
-    StrokeSeq, StrokeStyle, Time, TimeDiff,
+    DrawSnippet, DrawSnippetId, DrawSnippets, StrokeInProgress, StrokeSeq, Time, TimeDiff,
 };
 
 use crate::audio::{TalkSnippetId, TalkSnippets};
 use crate::config::Config;
+use crate::data::{DenoiseSetting, Settings};
 use crate::encode::EncodingStatus;
-use crate::save_state::SaveFileData;
 use crate::undo::{UndoStack, UndoState};
-
-/// How far are they allowed to zoom in?
-pub const MAX_ZOOM: f64 = 8.0;
+use crate::SaveFileData;
 
 impl From<DrawSnippetId> for SnippetId {
     fn from(id: DrawSnippetId) -> SnippetId {
@@ -90,11 +87,11 @@ pub struct EditorState {
     pub snippets: DrawSnippets,
     pub audio_snippets: TalkSnippets,
     pub selected_snippet: Option<SnippetId>,
+    pub settings: Settings,
 
     pub mark: Option<Time>,
 
     pub action: CurrentAction,
-    pub recording_speed: RecordingSpeed,
 
     #[lens(ignore)]
     #[data(ignore)]
@@ -107,13 +104,6 @@ pub struct EditorState {
     #[lens(name = "time_lens")]
     time: Time,
 
-    /// Zoom level of the drawing pane. A zoom of 1.0 gives the best fit of the drawing into the
-    /// drawing pane; we only allow zooming in from there.
-    ///
-    /// This is stored here (rather than just in the drawing pane widget) in order
-    /// to support menu entries.
-    pub zoom: f64,
-
     /// Here is how our time-keeping works: whenever something changes the
     /// current "speed" (e.g, starting to scan, draw command, etc.), we store the
     /// current wall clock time and the current logical time. Then on every
@@ -123,20 +113,9 @@ pub struct EditorState {
     #[data(ignore)]
     time_snapshot: (Instant, Time),
 
-    /// When true, the "fade out" toggle button is pressed down.
-    pub fade_enabled: bool,
-
-    /// The current pen size, as selected in the UI.
-    pub pen_size: PenSize,
-
-    /// The current denoise setting, as selected in the UI.
-    pub denoise_setting: DenoiseSetting,
-
     /// The volume of the current audio input, if we're recording audio. This is on a logarithmic
     /// scale (and 0.0 is very loud).
     pub input_loudness: f64,
-
-    pub palette: crate::widgets::PaletteData,
 
     // There are several actions that we do asynchronously. Here, we have the most recent status of
     // these actions.
@@ -156,31 +135,19 @@ pub struct EditorState {
 
 impl EditorState {
     pub fn new(config: Config) -> EditorState {
-        let denoise_setting = if !config.audio_input.remove_noise {
-            DenoiseSetting::DenoiseOff
-        } else if config.audio_input.vad_threshold <= 0.0 {
-            DenoiseSetting::DenoiseOn
-        } else {
-            DenoiseSetting::Vad
-        };
         let mut ret = EditorState {
             snippets: DrawSnippets::default(),
             audio_snippets: TalkSnippets::default(),
+            settings: Settings::new(&config),
             selected_snippet: None,
             mark: None,
 
             action: CurrentAction::Idle,
-            recording_speed: RecordingSpeed::Slow,
             undo: Arc::new(RefCell::new(UndoStack::new())),
 
             time_snapshot: (Instant::now(), Time::ZERO),
             time: Time::ZERO,
-            zoom: 1.0,
-            fade_enabled: false,
-            pen_size: PenSize::Medium,
-            denoise_setting,
             input_loudness: -f64::INFINITY,
-            palette: crate::widgets::PaletteData::default(),
 
             status: AsyncOpsStatus::default(),
 
@@ -240,17 +207,6 @@ impl EditorState {
         if self.mark.is_some() {
             self.with_undo("clear mark", |state| state.mark = None);
         }
-    }
-
-    fn selected_effects(&self) -> Effects {
-        let mut ret = Effects::default();
-        if self.fade_enabled {
-            ret.add(Effect::Fade(FadeEffect {
-                pause: TimeDiff::from_micros(250_000),
-                fade: TimeDiff::from_micros(250_000),
-            }));
-        }
-        ret
     }
 
     /// Updates `self.time` according to the current wall clock time.
@@ -408,7 +364,7 @@ impl EditorState {
 
     pub fn finish_stroke(&mut self) {
         let prev_state = self.undo_state();
-        let style = self.cur_style();
+        let style = self.settings.cur_style();
         if let CurrentAction::Recording(rec_state) = &mut self.action {
             let stroke = std::mem::replace(&mut rec_state.new_stroke, StrokeInProgress::default());
             let start_time = stroke.start_time().unwrap_or(Time::ZERO);
@@ -442,14 +398,6 @@ impl EditorState {
             Some(&rec_state.new_stroke)
         } else {
             None
-        }
-    }
-
-    pub fn cur_style(&self) -> StrokeStyle {
-        StrokeStyle {
-            color: self.palette.selected_color().clone(),
-            thickness: self.pen_size.size_fraction(),
-            effects: self.selected_effects(),
         }
     }
 
@@ -602,7 +550,7 @@ impl EditorState {
         let mut config = self.config.audio_input.clone();
 
         // We allow the UI to override what's in the config file.
-        match self.denoise_setting {
+        match self.settings.denoise_setting {
             DenoiseSetting::DenoiseOn => {
                 config.remove_noise = true;
                 config.vad_threshold = 0.0;
@@ -695,50 +643,6 @@ impl CurrentAction {
     pub fn is_scanning(&self) -> bool {
         matches!(*self, CurrentAction::Scanning(_))
     }
-}
-
-#[derive(Clone, Copy, Data, PartialEq, Eq)]
-pub enum RecordingSpeed {
-    Paused,
-    Slower,
-    Slow,
-    Normal,
-}
-
-impl RecordingSpeed {
-    pub fn factor(&self) -> f64 {
-        match self {
-            RecordingSpeed::Paused => 0.0,
-            RecordingSpeed::Slower => 1.0 / 8.0,
-            RecordingSpeed::Slow => 1.0 / 3.0,
-            RecordingSpeed::Normal => 1.0,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Data, PartialEq, Eq)]
-pub enum PenSize {
-    Small,
-    Medium,
-    Big,
-}
-
-impl PenSize {
-    /// Returns the diameter of the pen, as a fraction of the width of the drawing.
-    pub fn size_fraction(&self) -> f64 {
-        match self {
-            PenSize::Small => 0.002,
-            PenSize::Medium => 0.004,
-            PenSize::Big => 0.012,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Data, PartialEq, Eq)]
-pub enum DenoiseSetting {
-    DenoiseOff,
-    DenoiseOn,
-    Vad,
 }
 
 /// The current state of the audio subsystem.

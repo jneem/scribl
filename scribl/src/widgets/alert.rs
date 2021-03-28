@@ -4,8 +4,7 @@ use druid::{SingleUse, Widget, WidgetExt};
 
 use scribl_widget::ModalHost;
 
-use crate::editor_state::CurrentAction;
-use crate::EditorState;
+use crate::{CurrentAction, EditorState};
 
 pub fn make_unsaved_changes_alert() -> impl Widget<EditorState> {
     let close =

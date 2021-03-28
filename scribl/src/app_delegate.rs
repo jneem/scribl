@@ -1,7 +1,7 @@
 use druid::{AppDelegate, Command, DelegateCtx, Env, Handled, Target, WindowId};
 
 use crate::app_state::AppState;
-use crate::editor_state::EditorState;
+use crate::EditorState;
 
 #[derive(Default)]
 pub struct Delegate {}

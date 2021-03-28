@@ -12,13 +12,13 @@ use scribl_widget::{ModalHost, RadioGroup, Separator, SunkenContainer, ToggleBut
 
 use crate::audio::AudioHandle;
 use crate::autosave::AutosaveData;
-use crate::cmd;
-use crate::editor_state::{
-    CurrentAction, DenoiseSetting, EditorState, PenSize, RecordingSpeed, SnippetId,
-};
-use crate::save_state::SaveFileData;
+use crate::data::Settings;
 use crate::widgets::{
     alert, icons, make_status_bar, AudioIndicator, DrawingPane, Palette, Timeline,
+};
+use crate::{
+    cmd, CurrentAction, DenoiseSetting, EditorState, PenSize, RecordingSpeed, SaveFileData,
+    SnippetId,
 };
 
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(60);
@@ -85,7 +85,9 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
         ],
         ICON_PADDING,
     )
-    .padding(SECONDARY_BUTTON_PADDING);
+    .padding(SECONDARY_BUTTON_PADDING)
+    .lens(Settings::recording_speed)
+    .lens(EditorState::settings);
 
     let rec_fade_button = ToggleButton::from_icon(
         &icons::FADE_OUT,
@@ -103,12 +105,13 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
         |_, data, _| *data = false,
     )
     .padding(SECONDARY_BUTTON_PADDING)
-    .lens(EditorState::fade_enabled);
+    .lens(Settings::fade_enabled)
+    .lens(EditorState::settings);
 
     let draw_button_group = Flex::column()
         .with_child(rec_button)
         .with_spacer(5.0)
-        .with_child(rec_speed_group.lens(EditorState::recording_speed))
+        .with_child(rec_speed_group)
         .with_spacer(5.0)
         .with_child(rec_fade_button)
         .padding(5.0)
@@ -123,7 +126,7 @@ fn make_pen_group() -> impl Widget<EditorState> {
     //   width the same as the pen_size_group width. TODO: make the padding values more convenient
     //   to customize, so this isn't some magic number
     let palette = Palette::new()
-        .lens(EditorState::palette)
+        .lens(Settings::palette)
         .padding(10.0)
         .background(theme::BACKGROUND_LIGHT)
         .rounded(theme::BUTTON_BORDER_RADIUS);
@@ -147,7 +150,8 @@ fn make_pen_group() -> impl Widget<EditorState> {
     Flex::column()
         .with_child(palette)
         .with_default_spacer()
-        .with_child(pen_size_group.lens(EditorState::pen_size))
+        .with_child(pen_size_group.lens(Settings::pen_size))
+        .lens(EditorState::settings)
 }
 
 fn make_audio_button_group() -> impl Widget<EditorState> {
@@ -189,12 +193,14 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
         ],
         ICON_PADDING,
     )
-    .padding(SECONDARY_BUTTON_PADDING);
+    .padding(SECONDARY_BUTTON_PADDING)
+    .lens(Settings::denoise_setting)
+    .lens(EditorState::settings);
 
     Flex::column()
         .with_child(rec_audio_button)
         .with_spacer(5.0)
-        .with_child(noise_group.lens(EditorState::denoise_setting))
+        .with_child(noise_group)
         .padding(5.0)
         .background(theme::BACKGROUND_LIGHT)
         .rounded(theme::BUTTON_BORDER_RADIUS)
@@ -347,11 +353,11 @@ impl Editor {
                         // '1' is the first color, '0' is the last.
                         let idx = (num + 9) % 10;
                         // If there is no color at that index, just fail silently.
-                        let _ = data.palette.try_select_idx(idx);
+                        let _ = data.settings.palette.try_select_idx(idx);
                     }
-                    'q' => data.pen_size = PenSize::Big,
-                    'w' => data.pen_size = PenSize::Medium,
-                    'e' => data.pen_size = PenSize::Small,
+                    'q' => data.settings.pen_size = PenSize::Big,
+                    'w' => data.settings.pen_size = PenSize::Medium,
+                    'e' => data.settings.pen_size = PenSize::Small,
                     _ => {}
                 }
             }
@@ -495,7 +501,7 @@ impl Editor {
             let prev_state = data.undo_state();
             // We don't request_anim_frame here because recording starts paused. Instead, we do
             // it in `DrawingPane` when the time actually starts.
-            data.start_recording(data.recording_speed.factor());
+            data.start_recording(data.settings.recording_speed.factor());
             data.push_transient_undo_state(prev_state, "start drawing");
             true
         } else if cmd.is(cmd::TALK) {
@@ -610,16 +616,16 @@ impl Editor {
             data.update_encoding_status(status);
             true
         } else if cmd.is(cmd::ZOOM_IN) {
-            data.zoom = (data.zoom * 1.25).min(crate::editor_state::MAX_ZOOM);
+            data.settings.zoom_in();
             true
         } else if cmd.is(cmd::ZOOM_OUT) {
-            data.zoom = (data.zoom / 1.25).max(1.0);
+            data.settings.zoom_out();
             true
         } else if cmd.is(cmd::ZOOM_RESET) {
-            data.zoom = 1.0;
+            data.settings.zoom_reset();
             true
         } else if let Some(status) = cmd.get(cmd::RECORDING_AUDIO_STATUS) {
-            let vad = data.denoise_setting != DenoiseSetting::Vad
+            let vad = data.settings.denoise_setting != DenoiseSetting::Vad
                 || status.vad >= data.config.audio_input.vad_threshold;
             data.input_loudness = if vad {
                 status.loudness as f64

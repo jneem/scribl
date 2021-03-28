@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use scribl_curves::{DrawSnippets, Time};
 
 use crate::audio::TalkSnippets;
-use crate::editor_state::{CurrentAction, SnippetId};
+use crate::{CurrentAction, SnippetId};
 
 const MAX_UNDO_STACK: usize = 128;
 

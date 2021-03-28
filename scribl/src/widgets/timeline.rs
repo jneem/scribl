@@ -11,9 +11,8 @@ use scribl_curves::{DrawSnippet, DrawSnippets, Time, TimeDiff};
 use scribl_widget::SunkenContainer;
 
 use crate::audio::{TalkSnippet, TalkSnippets};
-use crate::cmd;
-use crate::editor_state::{EditorState, SnippetId};
 use crate::snippet_layout::{self, SnippetShape};
+use crate::{cmd, EditorState, SnippetId};
 
 const PIXELS_PER_USEC: f64 = 40.0 / 1000000.0;
 const CURSOR_THICKNESS: f64 = 2.0;

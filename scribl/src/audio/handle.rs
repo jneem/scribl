@@ -6,7 +6,7 @@ use scribl_curves::Time;
 use super::thread::{audio_loop, Cmd};
 use super::{OutputData, TalkSnippets};
 use crate::config::AudioInput as InputConfig;
-use crate::editor_state::AudioState as State;
+use crate::data::AudioState as State;
 
 /// This is the main interface to an audio thread. It exposes various functions for playing and
 /// recording audio.

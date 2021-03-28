@@ -7,8 +7,7 @@ use druid::{
 };
 
 use crate::app_state::AppState;
-use crate::editor_state::{CurrentAction, SnippetId};
-use crate::{cmd, EditorState};
+use crate::{cmd, CurrentAction, EditorState, SnippetId};
 
 const SCRIBL_FILE_TYPE: FileSpec = FileSpec::new("Scribl animation (.scb)", &["scb"]);
 const EXPORT_FILE_TYPE: FileSpec = FileSpec::new("mp4 video (.mp4)", &["mp4"]);
@@ -118,7 +117,7 @@ fn edit_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
             .editor(id)
             .map(|e| format!("Undo {}", e.undo.borrow().undo_description().unwrap_or("")));
         s.unwrap_or(String::new())
-    };
+    }
 
     fn redo_desc(id: WindowId, data: &AppState) -> String {
         // FIXME: figure out how localization is expected to work
@@ -126,7 +125,7 @@ fn edit_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
             .editor(id)
             .map(|e| format!("Redo {}", e.undo.borrow().redo_description().unwrap_or("")));
         s.unwrap_or(String::new())
-    };
+    }
 
     let undo = MenuItem::new(move |data: &AppState, _env: &Env| undo_desc(id, data))
         .command(commands::UNDO)
@@ -274,13 +273,13 @@ fn view_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
     let zoom_in =
         MenuItem::new(LocalizedString::new("scribl-menu-view-zoom-in").with_placeholder("Zoom in"))
             .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::ZOOM_IN))
-            .active_if(id, move |data| data.zoom < crate::editor_state::MAX_ZOOM);
+            .active_if(id, move |data| data.settings.can_zoom_in());
 
     let zoom_out = MenuItem::new(
         LocalizedString::new("scribl-menu-view-zoom-out").with_placeholder("Zoom out"),
     )
     .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::ZOOM_OUT))
-    .active_if(id, move |data| data.zoom > 1.0);
+    .active_if(id, move |data| data.settings.can_zoom_out());
 
     let zoom_reset = MenuItem::new(
         LocalizedString::new("scribl-menu-view-zoom-reset").with_placeholder("Reset zoom"),

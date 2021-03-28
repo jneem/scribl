@@ -7,7 +7,8 @@ use std::path::Path;
 
 use scribl_curves::Time;
 
-use crate::editor_state::{AsyncOpsStatus, EditorState, FinishedStatus};
+use crate::data::{AsyncOpsStatus, FinishedStatus};
+use crate::EditorState;
 
 const LINE_HEIGHT_FACTOR: f64 = 1.2;
 const X_PADDING: f64 = 5.0;

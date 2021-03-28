@@ -11,13 +11,17 @@ mod autosave;
 mod cmd;
 mod config;
 mod cursor;
-mod editor_state;
+mod data;
 mod encode;
 mod menus;
-mod save_state;
 mod snippet_layout;
 mod undo;
 mod widgets;
+
+pub use data::{
+    CurrentAction, DenoiseSetting, EditorState, PenSize, RecordingSpeed, SaveFileData, ScriblState,
+    SnippetId, MAX_ZOOM,
+};
 
 const BUTTON_BACKGROUND_DISABLED: Key<Color> = Key::new("button_background_disabled");
 const BUTTON_FOREGROUND_DISABLED: Key<Color> = Key::new("button_foreground_disabled");
@@ -30,7 +34,6 @@ const BUTTON_GROUP_BORDER_WIDTH: Key<f64> = Key::new("scribl-button-group-border
 pub const TEXT_SIZE_SMALL: Key<f64> = Key::new("scribl-text-size-small");
 
 use app_state::AppState;
-use editor_state::EditorState;
 
 const MAJOR: u32 = pkg_version::pkg_version_major!();
 const MINOR: u32 = pkg_version::pkg_version_minor!();
@@ -73,7 +76,7 @@ fn main() {
     let config = crate::config::load_config();
 
     let initial_editor = if let Some(path) = matches.value_of("FILE") {
-        match crate::save_state::SaveFileData::load_from_path(path) {
+        match crate::SaveFileData::load_from_path(path) {
             Ok(save_file) => {
                 let mut e = EditorState::from_save_file(save_file, config);
                 e.save_path = Some(path.into());

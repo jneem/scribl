@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use scribl_curves::{DrawSnippets, Time, TimeDiff};
 
 use crate::audio::{AudioRecordingStatus, TalkSnippet, TalkSnippets};
-use crate::editor_state::SnippetId;
 use crate::encode::EncodingStatus;
-use crate::save_state::SaveFileData;
+use crate::SaveFileData;
+use crate::SnippetId;
 
 /// Starts recording a drawing.
 pub const DRAW: Selector = Selector::new("scribl.draw");

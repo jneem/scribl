@@ -7,7 +7,7 @@ use druid::{
 use scribl_curves::{DrawCursor, Time};
 
 use crate::cursor::CursorCache;
-use crate::editor_state::EditorState;
+use crate::EditorState;
 
 // The drawing coordinates are chosen so that the width of the image is always
 // 1.0. For now we also fix the height, but eventually we will support other aspect
@@ -47,7 +47,8 @@ impl DrawingPane {
     }
 
     fn cursor(&mut self, data: &EditorState, window_id: &WindowHandle) -> &Cursor {
-        self.cursors.pen(window_id, data.palette.selected_color())
+        self.cursors
+            .pen(window_id, data.settings.palette.selected_color())
     }
 
     fn recompute_paper_rect(&mut self, size: Size, zoom: f64) {
@@ -110,14 +111,15 @@ impl Widget<EditorState> for DrawingPane {
                         if let Some(last_point) = last_point {
                             invalid = invalid.union_pt(self.from_image_coords() * last_point);
                         }
-                        let pen_width = data.pen_size.size_fraction() * self.from_image_scale();
+                        let pen_width =
+                            data.settings.pen_size.size_fraction() * self.from_image_scale();
                         ctx.request_paint_rect(invalid.inset(pen_width).expand());
 
                         data.add_point_to_stroke(self.to_image_coords() * ev.pos, time);
                     } else {
                         // Pan the view.
-                        self.offset -= (ev.pos - self.last_mouse_pos) / data.zoom;
-                        self.recompute_paper_rect(ctx.size(), data.zoom);
+                        self.offset -= (ev.pos - self.last_mouse_pos) / data.settings.zoom;
+                        self.recompute_paper_rect(ctx.size(), data.settings.zoom);
                         ctx.request_paint();
                         // TODO: change the mouse cursor
                     }
@@ -145,15 +147,15 @@ impl Widget<EditorState> for DrawingPane {
                 }
             }
             Event::Wheel(ev) => {
-                let zoom = (data.zoom * (-ev.wheel_delta.y / 500.0).exp())
-                    .max(1.0)
-                    .min(crate::editor_state::MAX_ZOOM);
-                let zoom_factor = zoom / data.zoom;
+                let old_zoom = data.settings.zoom;
+                let zoom =
+                    (old_zoom * (-ev.wheel_delta.y / 500.0).exp()).clamp(1.0, crate::MAX_ZOOM);
+                let zoom_factor = zoom / old_zoom;
 
                 // Try to translate so that the mouse stays over whatever part of the drawing it's
                 // currently over.
-                self.offset += ev.pos.to_vec2() / data.zoom * (zoom_factor - 1.0);
-                data.zoom = zoom;
+                self.offset += ev.pos.to_vec2() / old_zoom * (zoom_factor - 1.0);
+                data.settings.zoom = zoom;
                 self.recompute_paper_rect(ctx.size(), zoom);
                 ctx.request_paint();
             }
@@ -204,8 +206,8 @@ impl Widget<EditorState> for DrawingPane {
             self.cursor.advance_to(data.time(), data.time());
         }
 
-        if old_data.zoom != data.zoom {
-            self.recompute_paper_rect(ctx.size(), data.zoom);
+        if old_data.settings.zoom != data.settings.zoom {
+            self.recompute_paper_rect(ctx.size(), data.settings.zoom);
             ctx.request_paint();
         }
     }
@@ -230,7 +232,7 @@ impl Widget<EditorState> for DrawingPane {
         _env: &Env,
     ) -> Size {
         let size = bc.max();
-        self.recompute_paper_rect(size, data.zoom);
+        self.recompute_paper_rect(size, data.settings.zoom);
         size
     }
 
@@ -278,7 +280,7 @@ impl Widget<EditorState> for DrawingPane {
                 curve.render(ctx.render_ctx, data.time());
             }
             if let Some(snip) = data.new_stroke() {
-                snip.render(ctx.render_ctx, data.cur_style(), data.time());
+                snip.render(ctx.render_ctx, data.settings.cur_style(), data.time());
             }
         });
     }
