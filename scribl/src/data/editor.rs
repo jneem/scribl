@@ -4,13 +4,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use scribl_curves::{
-    DrawSnippet, DrawSnippetId, DrawSnippets, StrokeInProgress, StrokeSeq, Time, TimeDiff,
-};
+use scribl_curves::{DrawSnippet, DrawSnippetId, StrokeInProgress, StrokeSeq, Time, TimeDiff};
 
 use crate::audio::{TalkSnippetId, TalkSnippets};
 use crate::config::Config;
-use crate::data::{DenoiseSetting, Settings};
+use crate::data::{DenoiseSetting, ScriblState, Settings};
 use crate::encode::EncodingStatus;
 use crate::undo::{UndoStack, UndoState};
 use crate::SaveFileData;
@@ -84,8 +82,7 @@ pub enum SnippetId {
 /// This data contains the state of an editor window.
 #[derive(Clone, Data, Lens)]
 pub struct EditorState {
-    pub snippets: DrawSnippets,
-    pub audio_snippets: TalkSnippets,
+    pub scribl: ScriblState,
     pub selected_snippet: Option<SnippetId>,
     pub settings: Settings,
 
@@ -136,8 +133,7 @@ pub struct EditorState {
 impl EditorState {
     pub fn new(config: Config) -> EditorState {
         let mut ret = EditorState {
-            snippets: DrawSnippets::default(),
-            audio_snippets: TalkSnippets::default(),
+            scribl: ScriblState::default(),
             settings: Settings::new(&config),
             selected_snippet: None,
             mark: None,
@@ -173,9 +169,7 @@ impl EditorState {
 
     pub fn add_draw_snippet(&mut self, snip: DrawSnippet) {
         self.with_undo_at("add drawing", snip.start_time(), |state| {
-            let (new_snippets, new_id) = state.snippets.with_new_snippet(snip);
-            state.snippets = new_snippets;
-            state.selected_snippet = Some(new_id.into());
+            state.selected_snippet = Some(state.scribl.add_draw_snippet(snip).into());
         });
     }
 
@@ -183,12 +177,12 @@ impl EditorState {
         match self.selected_snippet {
             Some(SnippetId::Draw(id)) => {
                 self.with_undo("delete drawing", |state| {
-                    state.snippets = state.snippets.without_snippet(id);
+                    state.scribl.delete_draw_snippet(id);
                     state.selected_snippet = None;
                 });
             }
             Some(SnippetId::Talk(id)) => self.with_undo("delete audio", |state| {
-                state.audio_snippets = state.audio_snippets.without_snippet(id);
+                state.scribl.delete_talk_snippet(id);
                 state.selected_snippet = None;
             }),
             None => {
@@ -403,8 +397,7 @@ impl EditorState {
 
     pub fn from_save_file(data: SaveFileData, config: Config) -> EditorState {
         let mut ret = EditorState {
-            snippets: data.snippets.clone(),
-            audio_snippets: data.audio_snippets.clone(),
+            scribl: ScriblState::from_save_file(&data),
             undo: Arc::new(RefCell::new(UndoStack::new())),
             ..EditorState::new(config)
         };
@@ -414,8 +407,8 @@ impl EditorState {
 
     pub fn undo_state(&self) -> UndoState {
         UndoState {
-            snippets: self.snippets.clone(),
-            audio_snippets: self.audio_snippets.clone(),
+            snippets: self.scribl.draw.clone(),
+            audio_snippets: self.scribl.talk.clone(),
             selected_snippet: self.selected_snippet.clone(),
             mark: self.mark,
             time: self.time,
@@ -438,8 +431,7 @@ impl EditorState {
     }
 
     fn restore_undo_state(&mut self, undo: UndoState) {
-        self.snippets = undo.snippets;
-        self.audio_snippets = undo.audio_snippets;
+        self.scribl.restore_undo_state(&undo);
         self.selected_snippet = undo.selected_snippet;
         self.mark = undo.mark;
         self.warp_time_to(undo.time);
@@ -540,7 +532,7 @@ impl EditorState {
     pub fn audio_state(&self) -> AudioState {
         use CurrentAction::*;
 
-        let snips = self.audio_snippets.clone();
+        let snips = self.scribl.talk.clone();
         let play = |velocity: f64| AudioState::Playing {
             start_time: self.time_snapshot.1,
             snips,

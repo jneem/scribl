@@ -180,8 +180,8 @@ impl Widget<EditorState> for DrawingPane {
             ctx.set_cursor(&Cursor::Arrow);
         }
 
-        if !old_data.snippets.same(&data.snippets) {
-            self.cursor = data.snippets.create_cursor(data.time());
+        if !old_data.scribl.draw.same(&data.scribl.draw) {
+            self.cursor = data.scribl.draw.create_cursor(data.time());
             ctx.request_paint();
         } else if old_data.time() != data.time() {
             let start_time = old_data.time().min(data.time());
@@ -191,7 +191,7 @@ impl Widget<EditorState> for DrawingPane {
             // they differ then we didn't get here.
             // TODO: consider invalidating everything if there are many bboxes.
             let transform = self.from_image_coords();
-            for bbox in self.cursor.bboxes(&data.snippets) {
+            for bbox in self.cursor.bboxes(&data.scribl.draw) {
                 ctx.request_paint_rect(transform * bbox);
             }
             if let Some(strokes) = &data.new_stroke_seq() {
@@ -220,7 +220,7 @@ impl Widget<EditorState> for DrawingPane {
         _env: &Env,
     ) {
         if matches!(event, LifeCycle::WidgetAdded) {
-            self.cursor = data.snippets.create_cursor(data.time());
+            self.cursor = data.scribl.draw.create_cursor(data.time());
         }
     }
 
@@ -272,7 +272,8 @@ impl Widget<EditorState> for DrawingPane {
 
             ctx.transform(self.from_image_coords().into());
             for id in self.cursor.active_ids() {
-                data.snippets
+                data.scribl
+                    .draw
                     .snippet(id)
                     .render(ctx.render_ctx, data.time());
             }

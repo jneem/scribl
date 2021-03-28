@@ -10,6 +10,7 @@ use crate::audio::TalkSnippets;
 use crate::EditorState;
 
 /// This is the data that we put into the saved files.
+// TODO: how disruptive would it be to move to bincode? It's apparently much faster than CBOR.
 #[derive(Clone, Data, Deserialize, Serialize)]
 pub struct SaveFileData {
     /// This is the version of the save file format. Every time we change the format, this gets
@@ -55,8 +56,8 @@ impl SaveFileData {
     pub fn from_editor_state(data: &EditorState) -> SaveFileData {
         SaveFileData {
             version: 1,
-            snippets: data.snippets.clone(),
-            audio_snippets: data.audio_snippets.clone(),
+            snippets: data.scribl.draw.clone(),
+            audio_snippets: data.scribl.talk.clone(),
             aspect_ratio: (4, 3),
             width: 1.0,
         }

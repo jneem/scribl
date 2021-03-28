@@ -1,12 +1,11 @@
 use druid::{FileInfo, Selector};
 use std::path::PathBuf;
 
-use scribl_curves::{DrawSnippets, Time, TimeDiff};
+use scribl_curves::{Time, TimeDiff};
 
-use crate::audio::{AudioRecordingStatus, TalkSnippet, TalkSnippets};
+use crate::audio::{AudioRecordingStatus, TalkSnippet};
 use crate::encode::EncodingStatus;
-use crate::SaveFileData;
-use crate::SnippetId;
+use crate::{SaveFileData, ScriblState, SnippetId};
 
 /// Starts recording a drawing.
 pub const DRAW: Selector = Selector::new("scribl.draw");
@@ -93,8 +92,7 @@ pub struct AsyncSaveResult {
 
 #[derive(Clone)]
 pub struct ExportCmd {
-    pub snippets: DrawSnippets,
-    pub audio_snippets: TalkSnippets,
+    pub scribl: ScriblState,
     pub filename: PathBuf,
     pub config: crate::config::Export,
 }

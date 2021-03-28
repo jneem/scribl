@@ -123,8 +123,7 @@ fn main() {
 fn encode(data: EditorState, path: &str) {
     let config = crate::config::load_config();
     let export = cmd::ExportCmd {
-        snippets: data.snippets,
-        audio_snippets: data.audio_snippets,
+        scribl: data.scribl,
         filename: path.into(),
         config: config.export,
     };

@@ -409,8 +409,8 @@ struct TimelineSnippet {
 impl TimelineSnippet {
     fn snip(&self, data: &EditorState) -> Snip {
         match self.id {
-            SnippetId::Draw(id) => Snip::Drawing(data.snippets.snippet(id).clone()),
-            SnippetId::Talk(id) => Snip::Audio(data.audio_snippets.snippet(id).clone()),
+            SnippetId::Draw(id) => Snip::Drawing(data.scribl.draw.snippet(id).clone()),
+            SnippetId::Talk(id) => Snip::Audio(data.scribl.talk.snippet(id).clone()),
         }
     }
 
@@ -767,11 +767,11 @@ impl Widget<EditorState> for TimelineInner {
         data: &EditorState,
         env: &Env,
     ) {
-        if !data.snippets.same(&old_data.snippets)
-            || !data.audio_snippets.same(&old_data.audio_snippets)
+        if !data.scribl.draw.same(&old_data.scribl.draw)
+            || !data.scribl.talk.same(&old_data.scribl.talk)
         {
             ctx.request_layout();
-            self.recreate_children(&data.snippets, &data.audio_snippets);
+            self.recreate_children(&data.scribl.draw, &data.scribl.talk);
             ctx.children_changed();
         } else {
             // Don't call update on the children if we just changed them -- we need to let
@@ -800,7 +800,7 @@ impl Widget<EditorState> for TimelineInner {
     ) {
         match event {
             LifeCycle::WidgetAdded => {
-                self.recreate_children(&data.snippets, &data.audio_snippets);
+                self.recreate_children(&data.scribl.draw, &data.scribl.talk);
                 ctx.children_changed();
             }
             _ => {}

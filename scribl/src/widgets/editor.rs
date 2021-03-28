@@ -394,9 +394,7 @@ impl Editor {
         let ret = if cmd.is(cmd::ADD_AUDIO_SNIPPET) {
             let prev_state = data.undo_state();
             let snip = cmd.get_unchecked(cmd::ADD_AUDIO_SNIPPET);
-            let (new_snippets, new_id) = data.audio_snippets.with_new_snippet(snip.clone());
-            data.audio_snippets = new_snippets;
-            data.selected_snippet = Some(new_id.into());
+            data.selected_snippet = Some(data.scribl.add_talk_snippet(snip.clone()).into());
             data.push_undo_state(prev_state.with_time(snip.start_time()), "add audio");
             true
         } else if let Some(export) = cmd.get(cmd::EXPORT) {
@@ -423,7 +421,7 @@ impl Editor {
         } else if cmd.is(cmd::TRUNCATE_SNIPPET) {
             if let Some(SnippetId::Draw(id)) = data.selected_snippet {
                 let prev_state = data.undo_state();
-                data.snippets = data.snippets.with_truncated_snippet(id, data.time());
+                data.scribl.draw = data.scribl.draw.with_truncated_snippet(id, data.time());
                 data.push_undo_state(prev_state, "truncate drawing");
             } else {
                 log::error!("cannot truncate, nothing selected");
@@ -433,7 +431,7 @@ impl Editor {
             if let (Some(mark_time), Some(SnippetId::Draw(id))) = (data.mark, data.selected_snippet)
             {
                 let prev_state = data.undo_state();
-                data.snippets = data.snippets.with_new_lerp(id, data.time(), mark_time);
+                data.scribl.draw = data.scribl.draw.with_new_lerp(id, data.time(), mark_time);
                 data.warp_time_to(mark_time);
                 data.push_undo_state(prev_state, "warp drawing");
             } else {
@@ -448,12 +446,12 @@ impl Editor {
             match id {
                 SnippetId::Draw(id) => {
                     let prev_state = data.undo_state();
-                    data.snippets = data.snippets.with_shifted_snippet(*id, *shift);
+                    data.scribl.draw = data.scribl.draw.with_shifted_snippet(*id, *shift);
                     data.push_undo_state(prev_state, "time-shift drawing");
                 }
                 SnippetId::Talk(id) => {
                     let prev_state = data.undo_state();
-                    data.audio_snippets = data.audio_snippets.with_shifted_snippet(*id, *shift);
+                    data.scribl.talk = data.scribl.talk.with_shifted_snippet(*id, *shift);
                     data.push_undo_state(prev_state, "time-shift speech");
                 }
             }
@@ -462,8 +460,9 @@ impl Editor {
             if let Some(SnippetId::Talk(id)) = data.selected_snippet {
                 if let Some(mark_time) = data.mark {
                     let prev_state = data.undo_state();
-                    data.audio_snippets =
-                        data.audio_snippets
+                    data.scribl.talk =
+                        data.scribl
+                            .talk
                             .with_silenced_snippet(id, mark_time, data.time());
                     data.push_undo_state(prev_state, "silence speech");
                 }
@@ -473,10 +472,11 @@ impl Editor {
             if let Some(SnippetId::Talk(id)) = data.selected_snippet {
                 if let Some(mark_time) = data.mark {
                     let prev_state = data.undo_state();
-                    data.audio_snippets =
-                        data.audio_snippets
+                    data.scribl.talk =
+                        data.scribl
+                            .talk
                             .with_snipped_snippet(id, mark_time, data.time());
-                    if !data.audio_snippets.has_snippet(id) {
+                    if !data.scribl.talk.has_snippet(id) {
                         data.selected_snippet = None;
                     }
                     data.push_undo_state(prev_state, "snip speech");
@@ -527,7 +527,7 @@ impl Editor {
                 } else {
                     "decrease volume"
                 };
-                data.audio_snippets = data.audio_snippets.with_multiplied_snippet(id, mult);
+                data.scribl.talk = data.scribl.talk.with_multiplied_snippet(id, mult);
                 data.push_undo_state(prev_state, desc);
             }
             true
@@ -537,8 +537,7 @@ impl Editor {
                 path.set_extension("mp4");
             }
             let export = cmd::ExportCmd {
-                snippets: data.snippets.clone(),
-                audio_snippets: data.audio_snippets.clone(),
+                scribl: data.scribl.clone(),
                 filename: path,
                 config: data.config.export.clone(),
             };

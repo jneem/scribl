@@ -299,14 +299,15 @@ pub fn do_encode_blocking(
     progress: Sender<EncodingStatus>,
 ) -> Result<(), anyhow::Error> {
     let end_time = cmd
-        .snippets
+        .scribl
+        .draw
         .last_draw_time()
-        .max(cmd.audio_snippets.end_time())
+        .max(cmd.scribl.talk.end_time())
         + TimeDiff::from_micros(200000);
     let num_frames = end_time.as_video_frame(cmd.config.fps);
     main_loop(create_pipeline(
-        cmd.snippets,
-        cmd.audio_snippets,
+        cmd.scribl.draw,
+        cmd.scribl.talk,
         num_frames as u32,
         &cmd.filename,
         cmd.config,
