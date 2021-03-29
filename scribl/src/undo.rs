@@ -1,4 +1,5 @@
-use std::collections::VecDeque;
+use druid::im::Vector;
+use druid::Data;
 
 use scribl_curves::{DrawSnippets, Time};
 
@@ -10,7 +11,7 @@ const MAX_UNDO_STACK: usize = 128;
 /// This is the part of the editor state that gets restored when we undo/redo.
 /// Note that undoing/redoing might also affect other parts of the editor state
 /// (for example, if we undo while drawing, we pause the clock).
-#[derive(Clone, Default)]
+#[derive(Clone, Data, Default)]
 pub struct UndoState {
     pub snippets: DrawSnippets,
     pub audio_snippets: TalkSnippets,
@@ -27,6 +28,7 @@ impl UndoState {
     }
 }
 
+#[derive(Clone, Data)]
 struct UndoData {
     // The state to restore when redoing this operation.
     redo_state: UndoState,
@@ -47,11 +49,11 @@ struct UndoData {
     transient: bool,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Data)]
 pub struct UndoStack {
     // Holds the stack of undo states. We push new states to the front, so `stack[0]` is the newest
     // possible state.
-    stack: VecDeque<UndoData>,
+    stack: Vector<UndoData>,
     // The index of the current position in the stack. When this is zero, it means that nothing was
     // undone. When this is `stack.len()`, it means there is nothing left to undo.
     current_state: usize,
@@ -69,7 +71,7 @@ impl UndoStack {
     /// Creates a new, empty undo stack.
     pub fn new() -> UndoStack {
         UndoStack {
-            stack: VecDeque::new(),
+            stack: Vector::new(),
             current_state: 0,
         }
     }
@@ -83,7 +85,7 @@ impl UndoStack {
     ) {
         // In case the current state is not the newest one, remove all the newer ones from the
         // stack.
-        self.stack.drain(0..self.current_state);
+        self.stack = self.stack.skip(self.current_state);
 
         // In case the top of the stack is transient and this one isn't, remove all the transient ones.
         if !transient {
@@ -92,7 +94,7 @@ impl UndoStack {
                 .iter()
                 .position(|s| !s.transient)
                 .unwrap_or(self.stack.len());
-            self.stack.drain(..last_permanent);
+            self.stack = self.stack.skip(last_permanent);
         }
 
         let new_state = UndoData {

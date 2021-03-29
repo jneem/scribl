@@ -115,7 +115,7 @@ fn edit_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
         // FIXME: figure out how localization is expected to work
         let s = data
             .editor(id)
-            .map(|e| format!("Undo {}", e.undo.borrow().undo_description().unwrap_or("")));
+            .map(|e| format!("Undo {}", e.undo.undo_description().unwrap_or("")));
         s.unwrap_or(String::new())
     }
 
@@ -123,18 +123,18 @@ fn edit_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
         // FIXME: figure out how localization is expected to work
         let s = data
             .editor(id)
-            .map(|e| format!("Redo {}", e.undo.borrow().redo_description().unwrap_or("")));
+            .map(|e| format!("Redo {}", e.undo.redo_description().unwrap_or("")));
         s.unwrap_or(String::new())
     }
 
     let undo = MenuItem::new(move |data: &AppState, _env: &Env| undo_desc(id, data))
         .command(commands::UNDO)
-        .active_if(id, move |data| data.undo.borrow().can_undo())
+        .active_if(id, move |data| data.undo.can_undo())
         .hotkey(SysMods::Cmd, "z");
 
     let redo = MenuItem::new(move |data: &AppState, _env: &Env| redo_desc(id, data))
         .command(commands::REDO)
-        .active_if(id, move |data| data.undo.borrow().can_redo())
+        .active_if(id, move |data| data.undo.can_redo())
         .hotkey(SysMods::CmdShift, "z");
 
     let draw =

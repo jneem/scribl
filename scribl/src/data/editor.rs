@@ -1,5 +1,4 @@
 use druid::{Data, Lens, Point};
-use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -91,8 +90,7 @@ pub struct EditorState {
     pub action: CurrentAction,
 
     #[lens(ignore)]
-    #[data(ignore)]
-    pub undo: Arc<RefCell<UndoStack>>,
+    pub undo: UndoStack,
 
     /// The current (logical) animation time.
     ///
@@ -139,7 +137,7 @@ impl EditorState {
             mark: None,
 
             action: CurrentAction::Idle,
-            undo: Arc::new(RefCell::new(UndoStack::new())),
+            undo: UndoStack::new(),
 
             time_snapshot: (Instant::now(), Time::ZERO),
             time: Time::ZERO,
@@ -398,7 +396,7 @@ impl EditorState {
     pub fn from_save_file(data: SaveFileData, config: Config) -> EditorState {
         let mut ret = EditorState {
             scribl: ScriblState::from_save_file(&data),
-            undo: Arc::new(RefCell::new(UndoStack::new())),
+            undo: UndoStack::new(),
             ..EditorState::new(config)
         };
         ret.saved_data = Some(data);
@@ -418,16 +416,12 @@ impl EditorState {
 
     pub fn push_undo_state(&mut self, prev_state: UndoState, description: impl ToString) {
         self.undo
-            .borrow_mut()
             .push(prev_state, self.undo_state(), description.to_string());
     }
 
     pub fn push_transient_undo_state(&mut self, prev_state: UndoState, description: impl ToString) {
-        self.undo.borrow_mut().push_transient(
-            prev_state,
-            self.undo_state(),
-            description.to_string(),
-        );
+        self.undo
+            .push_transient(prev_state, self.undo_state(), description.to_string());
     }
 
     fn restore_undo_state(&mut self, undo: UndoState) {
@@ -460,14 +454,14 @@ impl EditorState {
     }
 
     pub fn undo(&mut self) {
-        let state = self.undo.borrow_mut().undo();
+        let state = self.undo.undo();
         if let Some(state) = state {
             self.restore_undo_state(state);
         }
     }
 
     pub fn redo(&mut self) {
-        let state = self.undo.borrow_mut().redo();
+        let state = self.undo.redo();
         if let Some(state) = state {
             self.restore_undo_state(state);
         }
