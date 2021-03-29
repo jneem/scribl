@@ -39,6 +39,13 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            profile: minimal
+            override: true
+
       - name: Install deps
         run: |
           sudo apt-get update
