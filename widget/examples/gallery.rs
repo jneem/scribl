@@ -16,7 +16,7 @@ struct State {
 }
 
 pub fn main() {
-    let window = WindowDesc::new(build_root)
+    let window = WindowDesc::new(build_root())
         .title("Hello, widgets!")
         .window_size((400.0, 400.0));
 
