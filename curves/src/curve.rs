@@ -109,8 +109,9 @@ impl PartialEq for StrokeStyle {
 /// A `StrokeSeq` is a sequence of strokes, each of which is a continuous curve. Each stroke can
 /// have its own style (thickness, color, effects). The strokes in a `StrokeSeq` are non-decreasing
 /// in time: one stroke ends before another begins.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Data, Debug, Default)]
 pub struct StrokeSeq {
+    #[data(same_fn = "Vector::ptr_eq")]
     strokes: Vector<Stroke>,
 }
 
@@ -126,6 +127,10 @@ pub struct Stroke {
 impl StrokeSeq {
     pub fn new() -> StrokeSeq {
         StrokeSeq::default()
+    }
+
+    pub fn len(&self) -> usize {
+        self.strokes.len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -354,6 +359,13 @@ pub struct StrokeRef<'a> {
 }
 
 impl<'a> StrokeRef<'a> {
+    /// Returns a bounding box of the entire stroke.
+    pub fn bbox(&self) -> Rect {
+        self.elements
+            .bounding_box()
+            .inset(self.style.thickness / 2.0)
+    }
+
     /// Returns a bounding box of everything that is drawn in the interval
     /// `[start_time, end_time)`.
     pub fn changes_bbox(&self, start_time: Time, end_time: Time) -> Rect {

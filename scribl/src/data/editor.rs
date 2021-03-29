@@ -1,6 +1,5 @@
 use druid::{Data, Lens, Point};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Instant;
 
 use scribl_curves::{DrawSnippet, DrawSnippetId, StrokeInProgress, StrokeSeq, Time, TimeDiff};
@@ -69,7 +68,7 @@ pub struct RecordingState {
     pub time_factor: f64,
     pub paused: bool,
     pub new_stroke: StrokeInProgress,
-    pub new_stroke_seq: Arc<StrokeSeq>,
+    pub new_stroke_seq: StrokeSeq,
 }
 
 #[derive(Copy, Clone, Data, Debug, Eq, Hash, PartialEq)]
@@ -238,7 +237,7 @@ impl EditorState {
             time_factor,
             paused: true,
             new_stroke: StrokeInProgress::default(),
-            new_stroke_seq: Arc::new(StrokeSeq::default()),
+            new_stroke_seq: StrokeSeq::default(),
         });
         self.take_time_snapshot();
     }
@@ -251,7 +250,7 @@ impl EditorState {
         self.take_time_snapshot();
 
         if let CurrentAction::Recording(rec_state) = old_action {
-            let seq = rec_state.new_stroke_seq.as_ref().clone();
+            let seq = rec_state.new_stroke_seq.clone();
             if seq.is_empty() {
                 None
             } else {
@@ -363,9 +362,9 @@ impl EditorState {
 
             // Note that cloning and appending to a StrokeSeq is cheap, because it uses im::Vector
             // internally.
-            let mut seq = rec_state.new_stroke_seq.as_ref().clone();
+            let mut seq = rec_state.new_stroke_seq.clone();
             seq.append_stroke(stroke, style, 0.0005, std::f64::consts::PI / 4.0);
-            rec_state.new_stroke_seq = Arc::new(seq);
+            rec_state.new_stroke_seq = seq.clone();
 
             self.push_transient_undo_state(prev_state.with_time(start_time), "add stroke");
         } else {

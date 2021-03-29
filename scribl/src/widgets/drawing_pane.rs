@@ -206,6 +206,27 @@ impl Widget<EditorState> for DrawingPane {
             self.cursor.advance_to(data.time(), data.time());
         }
 
+        // FIXME: how to quickly find the symmetric difference of the stroke sequences?
+        // This assumes that stroke sequences only change by appending, so it suffices to check the
+        // length.
+        let old_sseq_len = old_data.new_stroke_seq().map_or(0, |s| s.len());
+        let sseq_len = data.new_stroke_seq().map_or(0, |s| s.len());
+        if old_sseq_len != sseq_len {
+            let transform = self.from_image_coords();
+            // The unwraps are ok because the longer sequence cannot be None.
+            let longer = if sseq_len > old_sseq_len {
+                data.new_stroke_seq().unwrap()
+            } else {
+                old_data.new_stroke_seq().unwrap()
+            };
+            for stroke in longer.strokes().skip(sseq_len.min(old_sseq_len)) {
+                let rect = stroke.bbox();
+                if rect.area() != 0.0 {
+                    ctx.request_paint_rect(transform * rect);
+                }
+            }
+        }
+
         if old_data.settings.zoom != data.settings.zoom {
             self.recompute_paper_rect(ctx.size(), data.settings.zoom);
             ctx.request_paint();

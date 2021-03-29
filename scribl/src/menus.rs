@@ -128,12 +128,12 @@ fn edit_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
     }
 
     let undo = MenuItem::new(move |data: &AppState, _env: &Env| undo_desc(id, data))
-        .command(commands::UNDO)
+        .action(id, |_, data| data.undo())
         .active_if(id, move |data| data.undo.can_undo())
         .hotkey(SysMods::Cmd, "z");
 
     let redo = MenuItem::new(move |data: &AppState, _env: &Env| redo_desc(id, data))
-        .command(commands::REDO)
+        .action(id, |_, data| data.redo())
         .active_if(id, move |data| data.undo.can_redo())
         .hotkey(SysMods::CmdShift, "z");
 
