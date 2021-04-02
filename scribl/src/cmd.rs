@@ -7,18 +7,6 @@ use crate::audio::{AudioRecordingStatus, TalkSnippet};
 use crate::encode::EncodingStatus;
 use crate::{SaveFileData, ScriblState, SnippetId};
 
-/// Starts recording a drawing.
-pub const DRAW: Selector = Selector::new("scribl.draw");
-
-/// Starts recording audio.
-pub const TALK: Selector = Selector::new("scribl.talk");
-
-/// Starts playing.
-pub const PLAY: Selector = Selector::new("scribl.play");
-
-/// Stops recording, playing, or whatever else is going on.
-pub const STOP: Selector = Selector::new("scribl.stop");
-
 /// Selects the snippet below (in the timeline) the currently selected snippet.
 pub const SELECT_SNIPPET_BELOW: Selector = Selector::new("scribl.select-snippet-below");
 

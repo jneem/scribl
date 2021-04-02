@@ -56,8 +56,8 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
             .to_owned()
         },
         |state: &EditorState| state.action.is_recording(),
-        |ctx, _, _| ctx.submit_command(cmd::DRAW),
-        |ctx, _, _| ctx.submit_command(cmd::STOP),
+        |_, state, _| state.draw(),
+        |_, state, _| state.finish_action(),
     );
 
     let rec_speed_group = RadioGroup::icon_column(
@@ -169,8 +169,8 @@ fn make_audio_button_group() -> impl Widget<EditorState> {
     let rec_audio_button = ToggleButton::from_widget(
         audio_indicator,
         |state: &EditorState| state.action.is_recording_audio(),
-        |ctx, _, _| ctx.submit_command(cmd::TALK),
-        |ctx, _, _| ctx.submit_command(cmd::STOP),
+        |_, state, _| state.talk(),
+        |_, state, _| state.finish_action(),
     );
 
     let noise_group = RadioGroup::icon_column(
@@ -221,8 +221,8 @@ impl Editor {
                 .to_owned()
             },
             |state: &EditorState| state.action.is_playing(),
-            |ctx, _, _| ctx.submit_command(cmd::PLAY),
-            |ctx, _, _| ctx.submit_command(cmd::STOP),
+            |_, state, _| state.play(),
+            |_, state, _| state.finish_action(),
         );
 
         let draw_button_group = make_draw_button_group();
@@ -294,7 +294,7 @@ impl Editor {
                 KbKey::ArrowLeft
             };
             if ev.key != direction && ev.key != KbKey::Shift {
-                data.stop_scanning();
+                data.finish_action();
             }
             ctx.set_handled();
             if ev.key == KbKey::ArrowRight || ev.key == KbKey::ArrowLeft {
@@ -334,7 +334,7 @@ impl Editor {
         match &ev.key {
             KbKey::ArrowRight | KbKey::ArrowLeft => {
                 if data.action.is_scanning() {
-                    data.stop_scanning();
+                    data.finish_action();
                 }
                 ctx.set_handled();
             }
@@ -360,24 +360,6 @@ impl Editor {
                     'e' => data.settings.pen_size = PenSize::Small,
                     _ => {}
                 }
-            }
-            _ => {}
-        }
-    }
-
-    fn stop_current_action(&mut self, data: &mut EditorState) {
-        match data.action {
-            CurrentAction::Playing => data.stop_playing(),
-            CurrentAction::Recording(_) => {
-                if let Some(new_snippet) = data.stop_recording() {
-                    data.add_draw_snippet(new_snippet);
-                }
-            }
-            CurrentAction::RecordingAudio(_) => {
-                data.stop_recording_audio();
-            }
-            CurrentAction::Scanning(_) => {
-                data.stop_scanning();
             }
             _ => {}
         }
@@ -482,27 +464,6 @@ impl Editor {
                     data.push_undo_state(prev_state, "snip speech");
                 }
             }
-            true
-        } else if cmd.is(cmd::PLAY) {
-            self.stop_current_action(data);
-            data.start_playing();
-            ctx.request_anim_frame();
-            true
-        } else if cmd.is(cmd::DRAW) {
-            self.stop_current_action(data);
-            let prev_state = data.undo_state();
-            // We don't request_anim_frame here because recording starts paused. Instead, we do
-            // it in `DrawingPane` when the time actually starts.
-            data.start_recording(data.settings.recording_speed.factor());
-            data.push_transient_undo_state(prev_state, "start drawing");
-            true
-        } else if cmd.is(cmd::TALK) {
-            self.stop_current_action(data);
-            data.start_recording_audio();
-            ctx.request_anim_frame();
-            true
-        } else if cmd.is(cmd::STOP) {
-            self.stop_current_action(data);
             true
         } else if cmd.is(cmd::WARP_TIME_TO) {
             if data.action.is_idle() {

@@ -139,25 +139,25 @@ fn edit_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
 
     let draw =
         MenuItem::new(LocalizedString::new("scribl-menu-edit-draw").with_placeholder("Draw"))
-            .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::DRAW))
+            .action(id, |_, data| data.draw())
             .active_if(id, move |data| !data.action.is_recording())
             .hotkey(SysMods::None, " ");
 
     let talk =
         MenuItem::new(LocalizedString::new("scribl-menu-edit-talk").with_placeholder("Talk"))
-            .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::TALK))
+            .action(id, |_, data| data.talk())
             .active_if(id, move |data| !data.action.is_recording_audio())
             .hotkey(SysMods::Shift, " ");
 
     let play =
         MenuItem::new(LocalizedString::new("scribl-menu-edit-play").with_placeholder("Play"))
-            .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::PLAY))
+            .action(id, |_, data| data.play())
             .active_if(id, move |data| !data.action.is_playing())
             .hotkey(SysMods::None, KbKey::Enter);
 
     let stop =
         MenuItem::new(LocalizedString::new("scribl-menu-edit-stop").with_placeholder("Stop"))
-            .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::STOP))
+            .action(id, |_, data| data.finish_action())
             .active_if(id, move |data| match data.action {
                 CurrentAction::Playing => true,
                 CurrentAction::Recording(_) => true,

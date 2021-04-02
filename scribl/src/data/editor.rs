@@ -158,6 +158,12 @@ impl EditorState {
         self.push_undo_state(prev_state, action_text);
     }
 
+    fn with_transient_undo(&mut self, action_text: &str, f: impl FnOnce(&mut EditorState)) {
+        let prev_state = self.undo_state();
+        f(self);
+        self.push_transient_undo_state(prev_state, action_text);
+    }
+
     fn with_undo_at(&mut self, action_text: &str, time: Time, f: impl FnOnce(&mut EditorState)) {
         let prev_state = self.undo_state();
         f(self);
@@ -230,21 +236,9 @@ impl EditorState {
         self.time_snapshot = (Instant::now(), self.time);
     }
 
-    pub fn start_recording(&mut self, time_factor: f64) {
-        assert!(matches!(self.action, CurrentAction::Idle));
-
-        self.action = CurrentAction::Recording(RecordingState {
-            time_factor,
-            paused: true,
-            new_stroke: StrokeInProgress::default(),
-            new_stroke_seq: StrokeSeq::default(),
-        });
-        self.take_time_snapshot();
-    }
-
     /// Stops recording drawing, returning the snippet that we just finished recording (if it was
     /// non-empty).
-    pub fn stop_recording(&mut self) -> Option<DrawSnippet> {
+    fn stop_recording(&mut self) -> Option<DrawSnippet> {
         self.finish_stroke();
         let old_action = std::mem::replace(&mut self.action, CurrentAction::Idle);
         self.take_time_snapshot();
@@ -262,34 +256,6 @@ impl EditorState {
         }
     }
 
-    pub fn start_playing(&mut self) {
-        assert!(matches!(self.action, CurrentAction::Idle));
-        self.action = CurrentAction::Playing;
-        self.take_time_snapshot();
-    }
-
-    pub fn stop_playing(&mut self) {
-        assert!(matches!(self.action, CurrentAction::Playing));
-        self.action = CurrentAction::Idle;
-        self.take_time_snapshot();
-    }
-
-    pub fn start_recording_audio(&mut self) {
-        assert!(matches!(self.action, CurrentAction::Idle));
-        self.action = CurrentAction::RecordingAudio(self.time);
-        self.take_time_snapshot();
-    }
-
-    /// Stops recording audio.
-    ///
-    /// If all goes well, the audio thread will soon send a command containing the newly recorded
-    /// audio.
-    pub fn stop_recording_audio(&mut self) {
-        self.action = CurrentAction::Idle;
-        self.input_loudness = -f64::INFINITY;
-        self.take_time_snapshot();
-    }
-
     pub fn scan(&mut self, velocity: f64) {
         match self.action {
             CurrentAction::Scanning(_) | CurrentAction::Idle => {
@@ -302,32 +268,14 @@ impl EditorState {
         self.take_time_snapshot();
     }
 
-    pub fn stop_scanning(&mut self) {
-        match self.action {
-            CurrentAction::Scanning(_) => {
-                self.action = CurrentAction::Idle;
-                self.take_time_snapshot();
-            }
-            _ => log::error!("not scanning"),
-        }
-    }
-
     /// We're starting to load a saved file, so disable user interaction, playing, etc.
     pub fn set_loading(&mut self) {
-        match self.action {
-            CurrentAction::Scanning(_) => self.stop_scanning(),
-            CurrentAction::Recording(_) => {
-                self.stop_recording();
-            }
-            CurrentAction::Playing => self.stop_playing(),
-            CurrentAction::RecordingAudio(_) => {
-                self.stop_recording_audio();
-            }
-            CurrentAction::Idle => {}
-            CurrentAction::WaitingToExit => {}
-            CurrentAction::Loading => {}
+        if let CurrentAction::Recording(_) = self.action {
+            // If they're drawing, just discard it.
+            self.stop_recording();
         }
         self.action = CurrentAction::Loading;
+        self.take_time_snapshot();
     }
 
     pub fn warp_time_to(&mut self, time: Time) {
@@ -558,6 +506,49 @@ impl EditorState {
             },
             _ => AudioState::Idle,
         }
+    }
+
+    pub fn draw(&mut self) {
+        self.finish_action();
+        self.with_transient_undo("start drawing", |state| {
+            state.action = CurrentAction::Recording(RecordingState {
+                time_factor: state.settings.recording_speed.factor(),
+                paused: true,
+                new_stroke: StrokeInProgress::default(),
+                new_stroke_seq: StrokeSeq::default(),
+            });
+            state.take_time_snapshot();
+        });
+    }
+
+    pub fn play(&mut self) {
+        self.finish_action();
+        self.action = CurrentAction::Playing;
+        self.take_time_snapshot();
+    }
+
+    pub fn talk(&mut self) {
+        self.finish_action();
+        self.action = CurrentAction::RecordingAudio(self.time);
+        self.take_time_snapshot();
+    }
+
+    pub fn finish_action(&mut self) {
+        match self.action {
+            CurrentAction::Recording(_) => {
+                if let Some(new_snippet) = self.stop_recording() {
+                    self.add_draw_snippet(new_snippet);
+                }
+            }
+            CurrentAction::RecordingAudio(_) => {
+                self.input_loudness = -f64::INFINITY;
+            }
+            _ => {}
+        }
+        // Note that the editor widget will see this and is in charge of notifying the audio thread
+        // if appropriate (i.e. if it needs to stop recordin audio, or stop playing audio).
+        self.action = CurrentAction::Idle;
+        self.take_time_snapshot();
     }
 }
 
