@@ -199,7 +199,7 @@ fn render_loop(
 
     {
         let mut ctx = bitmap.render_context();
-        ctx.clear(Color::WHITE);
+        ctx.clear(None, Color::WHITE);
         ctx.finish()
             .map_err(|e| anyhow!("failed to finish context: {}", e))?;
     }
@@ -244,7 +244,7 @@ fn render_loop(
             ctx.with_save(|ctx| {
                 ctx.clip(bbox);
                 ctx.transform(transform.into());
-                ctx.clear(Color::WHITE);
+                ctx.clear(None, Color::WHITE);
                 for id in cursor.active_ids() {
                     snippets.snippet(id).render(ctx, time);
                 }

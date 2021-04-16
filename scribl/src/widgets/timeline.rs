@@ -859,7 +859,7 @@ impl Widget<EditorState> for TimelineInner {
                 mark_line,
                 &Color::WHITE,
                 1.0,
-                &StrokeStyle::new().dash(vec![2.0, 2.0], 0.0),
+                &StrokeStyle::new().dash_pattern(&[2.0, 2.0]),
             );
         }
 

@@ -65,8 +65,8 @@ impl StrokeInProgress {
     /// Renders the part of this stroke that is visible at the time `time`.
     pub fn render(&self, ctx: &mut impl RenderContext, style: StrokeStyle, time: Time) {
         let stroke_style = piet::StrokeStyle {
-            line_join: Some(LineJoin::Round),
-            line_cap: Some(LineCap::Round),
+            line_join: LineJoin::Round,
+            line_cap: LineCap::Round,
             ..piet::StrokeStyle::new()
         };
 
@@ -210,8 +210,8 @@ impl StrokeSeq {
     /// Renders the part of this stroke sequence that is visible at time `time`.
     pub fn render(&self, ctx: &mut impl RenderContext, time: Time) {
         let stroke_style = piet::StrokeStyle {
-            line_join: Some(LineJoin::Round),
-            line_cap: Some(LineCap::Round),
+            line_join: LineJoin::Round,
+            line_cap: LineCap::Round,
             ..piet::StrokeStyle::new()
         };
 
