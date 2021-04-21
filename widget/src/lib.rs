@@ -42,17 +42,21 @@ pub fn configure_env(e: &mut Env) {
 mod icon;
 mod lens;
 mod modal;
+mod on_monitor;
 mod radio;
 mod separator;
 mod shadow;
 mod sunken_container;
 pub(crate) mod toggle_button;
+mod tooltip;
 
 pub use icon::{Icon, IconWidget};
 pub use lens::{read_map, ReadMap};
-pub use modal::{ModalHost, TooltipExt, TooltipHost};
+pub use modal::ModalHost;
+pub use on_monitor::{OnMonitor, OnMonitorExt};
 pub use radio::RadioGroup;
 pub use separator::Separator;
 pub use shadow::Shadow;
 pub use sunken_container::SunkenContainer;
 pub use toggle_button::{ShadowlessToggleButton, ToggleButton};
+pub use tooltip::{TooltipController, TooltipExt};

@@ -56,12 +56,9 @@ impl AppState {
     }
 
     pub fn remove_editor(&mut self, id: WindowId) {
-        if let Some(editor_id) = self.windows.get(&id) {
+        if let Some(editor_id) = self.windows.remove(&id) {
             self.editors.remove(&editor_id);
             log::info!("removed editor {}", editor_id);
-        } else {
-            log::error!("tried to remove a nonexistent editor");
         }
-        self.windows.remove(&id);
     }
 }
