@@ -1,36 +1,10 @@
 name: Rust
 
-on:
-  push:
-    branches: [ trunk ]
-  pull_request:
-    branches: [ trunk ]
+on: [push, pull_request]
 
 jobs:
-  update-deps:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - id: cargo-deps
-        name: Cache dependency crates
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: cargo-deps-${{ hashFiles('Cargo.lock') }}
-
-      - if: steps.cargo-deps.outputs.cache-hit != 'true'
-        name: Fetch dependencies
-        run: cargo fetch
-
   test:
-    needs: update-deps
     runs-on: ${{ matrix.os }}
-    env:
-      CARGO_INCREMENTAL: 0
     strategy:
       matrix:
         os: [ubuntu-latest, windows-2019]
@@ -39,12 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: actions-rs/toolchain@v1
         with:
             toolchain: stable
             profile: minimal
             override: true
+
+      - uses: Swatinem/rust-cache@v1
 
       - name: Install deps
         run: |
@@ -57,15 +32,6 @@ jobs:
             choco install pkgconfiglite
             choco install gstreamer gstreamer-devel
         if: contains(matrix.os, 'windows')
-
-      - name: Restore dependency crates
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: cargo-deps-${{ hashFiles('Cargo.lock') }}
 
       - name: Build
         run: cargo build --locked --verbose
