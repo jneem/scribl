@@ -536,7 +536,7 @@ impl Widget<EditorState> for TimelineSnippet {
                     if let Some(drag_shift) = self.drag_shift {
                         self.drag_start = None;
                         self.drag_shift = None;
-                        ctx.submit_command(cmd::SHIFT_SNIPPET.with((self.id, drag_shift)));
+                        data.shift_snippet(self.id, drag_shift);
                         ctx.request_paint();
                     }
                 }

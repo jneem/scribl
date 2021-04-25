@@ -18,7 +18,6 @@ use crate::widgets::{
 };
 use crate::{
     cmd, CurrentAction, DenoiseSetting, EditorState, PenSize, RecordingSpeed, SaveFileData,
-    SnippetId,
 };
 
 const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(60);
@@ -400,88 +399,11 @@ impl Editor {
             }
 
             true
-        } else if cmd.is(cmd::TRUNCATE_SNIPPET) {
-            if let Some(SnippetId::Draw(id)) = data.selected_snippet {
-                let prev_state = data.undo_state();
-                data.scribl.draw = data.scribl.draw.with_truncated_snippet(id, data.time());
-                data.push_undo_state(prev_state, "truncate drawing");
-            } else {
-                log::error!("cannot truncate, nothing selected");
-            }
-            true
-        } else if cmd.is(cmd::LERP_SNIPPET) {
-            if let (Some(mark_time), Some(SnippetId::Draw(id))) = (data.mark, data.selected_snippet)
-            {
-                let prev_state = data.undo_state();
-                data.scribl.draw = data.scribl.draw.with_new_lerp(id, data.time(), mark_time);
-                data.warp_time_to(mark_time);
-                data.push_undo_state(prev_state, "warp drawing");
-            } else {
-                log::error!(
-                    "cannot lerp, mark time {:?}, selected {:?}",
-                    data.mark,
-                    data.selected_snippet
-                );
-            }
-            true
-        } else if let Some((id, shift)) = cmd.get(cmd::SHIFT_SNIPPET) {
-            match id {
-                SnippetId::Draw(id) => {
-                    let prev_state = data.undo_state();
-                    data.scribl.draw = data.scribl.draw.with_shifted_snippet(*id, *shift);
-                    data.push_undo_state(prev_state, "time-shift drawing");
-                }
-                SnippetId::Talk(id) => {
-                    let prev_state = data.undo_state();
-                    data.scribl.talk = data.scribl.talk.with_shifted_snippet(*id, *shift);
-                    data.push_undo_state(prev_state, "time-shift speech");
-                }
-            }
-            true
-        } else if cmd.is(cmd::SILENCE_AUDIO) {
-            if let Some(SnippetId::Talk(id)) = data.selected_snippet {
-                if let Some(mark_time) = data.mark {
-                    let prev_state = data.undo_state();
-                    data.scribl.talk =
-                        data.scribl
-                            .talk
-                            .with_silenced_snippet(id, mark_time, data.time());
-                    data.push_undo_state(prev_state, "silence speech");
-                }
-            }
-            true
-        } else if cmd.is(cmd::SNIP_AUDIO) {
-            if let Some(SnippetId::Talk(id)) = data.selected_snippet {
-                if let Some(mark_time) = data.mark {
-                    let prev_state = data.undo_state();
-                    data.scribl.talk =
-                        data.scribl
-                            .talk
-                            .with_snipped_snippet(id, mark_time, data.time());
-                    if !data.scribl.talk.has_snippet(id) {
-                        data.selected_snippet = None;
-                    }
-                    data.push_undo_state(prev_state, "snip speech");
-                }
-            }
-            true
         } else if cmd.is(cmd::WARP_TIME_TO) {
             if data.action.is_idle() {
                 data.warp_time_to(*cmd.get_unchecked(cmd::WARP_TIME_TO));
             } else {
                 log::warn!("not warping: state is {:?}", data.action)
-            }
-            true
-        } else if let Some(&mult) = cmd.get(cmd::MULTIPLY_VOLUME) {
-            if let Some(SnippetId::Talk(id)) = data.selected_snippet {
-                let prev_state = data.undo_state();
-                let desc = if mult > 1.0 {
-                    "increase volume"
-                } else {
-                    "decrease volume"
-                };
-                data.scribl.talk = data.scribl.talk.with_multiplied_snippet(id, mult);
-                data.push_undo_state(prev_state, desc);
             }
             true
         } else if let Some(info) = cmd.get(cmd::EXPORT_CURRENT) {
@@ -566,15 +488,6 @@ impl Editor {
         } else if cmd.is(cmd::ENCODING_STATUS) {
             let status = cmd.get_unchecked(cmd::ENCODING_STATUS);
             data.update_encoding_status(status);
-            true
-        } else if cmd.is(cmd::ZOOM_IN) {
-            data.settings.zoom_in();
-            true
-        } else if cmd.is(cmd::ZOOM_OUT) {
-            data.settings.zoom_out();
-            true
-        } else if cmd.is(cmd::ZOOM_RESET) {
-            data.settings.zoom_reset();
             true
         } else if let Some(status) = cmd.get(cmd::RECORDING_AUDIO_STATUS) {
             let vad = data.settings.denoise_setting != DenoiseSetting::Vad

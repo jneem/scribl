@@ -193,7 +193,7 @@ fn edit_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
     let warp = MenuItem::new(
         LocalizedString::new("scribl-menu-edit-warp").with_placeholder("Warp snippet"),
     )
-    .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::LERP_SNIPPET))
+    .action(id, |_, data| data.warp_snippet())
     .hotkey(SysMods::None, "w")
     .active_if(id, move |data| {
         data.mark.is_some() && matches!(data.selected_snippet, Some(SnippetId::Draw(_)))
@@ -202,12 +202,14 @@ fn edit_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
     let trunc = MenuItem::new(
         LocalizedString::new("scribl-menu-edit-truncate").with_placeholder("Truncate snippet"),
     )
-    .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::TRUNCATE_SNIPPET))
+    .action(id, |_, data| data.truncate_snippet())
     .hotkey(SysMods::None, "t")
-    .active_if(id, move |data| data.selected_snippet.is_some());
+    .active_if(id, move |data| {
+        matches!(data.selected_snippet, Some(SnippetId::Draw(_)))
+    });
 
     let delete = MenuItem::new(
-        LocalizedString::new("scribl-menu-edit-delete").with_placeholder("Delete selected"),
+        LocalizedString::new("scribl-menu-edit-delete").with_placeholder("Delete snippet"),
     )
     .action(id, move |_, data| data.delete_selected_snippet())
     .hotkey(SysMods::None, KbKey::Delete)
@@ -220,7 +222,7 @@ fn edit_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
         LocalizedString::new("scribl-menu-edit-increase-volume")
             .with_placeholder("Increase volume"),
     )
-    .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::MULTIPLY_VOLUME.with(1.1)))
+    .action(id, |_, data| data.multiply_volume(1.1))
     .hotkey(SysMods::None, "+")
     .active_if(id, talk_selected);
 
@@ -228,25 +230,22 @@ fn edit_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
         LocalizedString::new("scribl-menu-edit-decrease-volume")
             .with_placeholder("Decrease volume"),
     )
-    .on_activate(|ctx, _: &mut AppState, _| {
-        ctx.submit_command(cmd::MULTIPLY_VOLUME.with(1.0 / 1.1))
-    })
+    .action(id, |_, data| data.multiply_volume(1.0 / 1.1))
     .hotkey(SysMods::None, "-")
     .active_if(id, talk_selected);
 
     let silence = MenuItem::new(
-        LocalizedString::new("scribl-menu-edit-silence").with_placeholder("Silence selected audio"),
+        LocalizedString::new("scribl-menu-edit-silence").with_placeholder("Silence range"),
     )
-    .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::SILENCE_AUDIO))
+    .action(id, |_, data| data.silence_audio())
     .hotkey(SysMods::None, KbKey::Backspace)
     .active_if(id, talk_selected);
 
-    let snip = MenuItem::new(
-        LocalizedString::new("scribl-menu-edit-snip").with_placeholder("Snip selected audio"),
-    )
-    .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::SNIP_AUDIO))
-    .hotkey(SysMods::Shift, KbKey::Backspace)
-    .active_if(id, talk_selected);
+    let snip =
+        MenuItem::new(LocalizedString::new("scribl-menu-edit-snip").with_placeholder("Snip range"))
+            .action(id, |_, data| data.snip_audio())
+            .hotkey(SysMods::Shift, KbKey::Backspace)
+            .active_if(id, talk_selected);
 
     Menu::new(LocalizedString::new("common-menu-edit-menu"))
         .entry(undo)
@@ -272,19 +271,19 @@ fn edit_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
 fn view_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
     let zoom_in =
         MenuItem::new(LocalizedString::new("scribl-menu-view-zoom-in").with_placeholder("Zoom in"))
-            .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::ZOOM_IN))
+            .action(id, |_, data| data.settings.zoom_in())
             .active_if(id, move |data| data.settings.can_zoom_in());
 
     let zoom_out = MenuItem::new(
         LocalizedString::new("scribl-menu-view-zoom-out").with_placeholder("Zoom out"),
     )
-    .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::ZOOM_OUT))
+    .action(id, |_, data| data.settings.zoom_out())
     .active_if(id, move |data| data.settings.can_zoom_out());
 
     let zoom_reset = MenuItem::new(
         LocalizedString::new("scribl-menu-view-zoom-reset").with_placeholder("Reset zoom"),
     )
-    .on_activate(|ctx, _: &mut AppState, _| ctx.submit_command(cmd::ZOOM_RESET));
+    .action(id, |_, data| data.settings.zoom_reset());
 
     Menu::new(LocalizedString::new("scribl-menu-view-menu").with_placeholder("View"))
         .entry(zoom_in)

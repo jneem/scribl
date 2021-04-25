@@ -194,6 +194,95 @@ impl EditorState {
         }
     }
 
+    /// Truncates the currently selected snippet at the current time.
+    ///
+    /// This only has an effect if the current snippet is a drawing.
+    pub fn truncate_snippet(&mut self) {
+        if let Some(SnippetId::Draw(id)) = self.selected_snippet {
+            self.with_undo("truncate drawing", |data| {
+                data.scribl.draw = data.scribl.draw.with_truncated_snippet(id, data.time());
+            });
+        } else {
+            log::error!("cannot truncate, nothing selected");
+        }
+    }
+
+    /// "Time-warps" the selected snippet.
+    ///
+    /// The image that used to be displayed at the marked time will now be displayed at the current
+    /// time instead.
+    pub fn warp_snippet(&mut self) {
+        if let (Some(mark_time), Some(SnippetId::Draw(id))) = (self.mark, self.selected_snippet) {
+            self.with_undo("warp drawing", |data| {
+                data.scribl.draw = data.scribl.draw.with_new_lerp(id, data.time(), mark_time);
+                data.warp_time_to(mark_time);
+            });
+        } else if self.mark.is_none() {
+            log::error!("cannot warp, no marked time");
+        } else {
+            log::error!("cannot warp, nothing selected");
+        }
+    }
+
+    /// Shifts the given snippet in time.
+    pub fn shift_snippet(&mut self, id: SnippetId, by: TimeDiff) {
+        match id {
+            SnippetId::Draw(id) => {
+                self.with_undo("time-shift drawing", |data| {
+                    data.scribl.draw = data.scribl.draw.with_shifted_snippet(id, by);
+                });
+            }
+            SnippetId::Talk(id) => {
+                self.with_undo("time-shift speech", |data| {
+                    data.scribl.talk = data.scribl.talk.with_shifted_snippet(id, by);
+                });
+            }
+        }
+    }
+
+    /// Silences the currently selected range of audio.
+    pub fn silence_audio(&mut self) {
+        if let (Some(mark_time), Some(SnippetId::Talk(id))) = (self.mark, self.selected_snippet) {
+            self.with_undo("silence speech", |data| {
+                data.scribl.talk =
+                    data.scribl
+                        .talk
+                        .with_silenced_snippet(id, mark_time, data.time());
+            });
+        }
+    }
+
+    /// Deletes the selected portion of audio.
+    ///
+    /// If this snippet has more audio after the deleted portion, it will be "moved back."
+    pub fn snip_audio(&mut self) {
+        if let (Some(mark_time), Some(SnippetId::Talk(id))) = (self.mark, self.selected_snippet) {
+            self.with_undo("snip speech", |data| {
+                data.scribl.talk =
+                    data.scribl
+                        .talk
+                        .with_snipped_snippet(id, mark_time, data.time());
+                if !data.scribl.talk.has_snippet(id) {
+                    data.selected_snippet = None;
+                }
+            });
+        }
+    }
+
+    /// Multiplies the volume of the selected audio snippet by the given factor.
+    pub fn multiply_volume(&mut self, factor: f64) {
+        if let Some(SnippetId::Talk(id)) = self.selected_snippet {
+            let text = if factor > 1.0 {
+                "increase volume"
+            } else {
+                "decrease volume"
+            };
+            self.with_undo(text, |data| {
+                data.scribl.talk = data.scribl.talk.with_multiplied_snippet(id, factor);
+            });
+        }
+    }
+
     /// Sets the timeline mark to the current time.
     pub fn set_mark(&mut self) {
         self.with_undo("set mark", |state| state.mark = Some(state.time()));
