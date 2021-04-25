@@ -84,7 +84,7 @@ fn file_menu(window_id: WindowId, _data: &AppState) -> Menu<AppState> {
                     .allowed_types(vec![EXPORT_FILE_TYPE])
                     .title("Export to video")
                     .button_text("Export")
-                    .accept_command(cmd::EXPORT_CURRENT);
+                    .accept_command(cmd::EXPORT);
                 if let Some(save_path) = &data.save_path {
                     if let Some(save_name) = save_path.file_stem() {
                         if let Some(save_name) = save_name.to_str() {

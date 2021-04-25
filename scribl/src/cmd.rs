@@ -24,10 +24,7 @@ pub const ADD_AUDIO_SNIPPET: Selector<TalkSnippet> = Selector::new("scribl.add-a
 pub const WARP_TIME_TO: Selector<Time> = Selector::new("scribl.warp-time-to");
 
 /// Exports the current animation as a video.
-pub const EXPORT_CURRENT: Selector<FileInfo> = Selector::new("scribl.export-current");
-
-/// Exports the specified animation data as a video.
-pub const EXPORT: Selector<ExportCmd> = Selector::new("scribl.export");
+pub const EXPORT: Selector<FileInfo> = Selector::new("scribl.export");
 
 /// While the video is encoding asynchronously, it periodically sends these commands.
 pub const ENCODING_STATUS: Selector<EncodingStatus> = Selector::new("scribl.encoding-status");

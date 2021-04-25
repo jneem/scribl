@@ -364,6 +364,26 @@ impl Editor {
         }
     }
 
+    fn export(&self, ctx: &mut EventCtx, data: &mut EditorState, export: cmd::ExportCmd) {
+        if data.status.in_progress.encoding.is_some() {
+            log::warn!("already encoding, not doing another one");
+        } else {
+            // This is a little wasteful, but it's probably fine. We spin up a thread to
+            // translate between the Receiver that encode_blocking sends to, and the
+            // ExtEventSink that sends commands to us.
+            let export = export.clone();
+            let (tx, rx) = crossbeam_channel::unbounded();
+            let window_id = ctx.window_id();
+            let ext_cmd = ctx.get_external_handle();
+            std::thread::spawn(move || {
+                while let Ok(msg) = rx.recv() {
+                    let _ = ext_cmd.submit_command(cmd::ENCODING_STATUS, Box::new(msg), window_id);
+                }
+            });
+            std::thread::spawn(move || crate::encode::encode_blocking(export, tx));
+        }
+    }
+
     fn handle_command(
         &mut self,
         ctx: &mut EventCtx,
@@ -378,27 +398,6 @@ impl Editor {
             data.selected_snippet = Some(data.scribl.add_talk_snippet(snip.clone()).into());
             data.push_undo_state(prev_state.with_time(snip.start_time()), "add audio");
             true
-        } else if let Some(export) = cmd.get(cmd::EXPORT) {
-            if data.status.in_progress.encoding.is_some() {
-                log::warn!("already encoding, not doing another one");
-            } else {
-                // This is a little wasteful, but it's probably fine. We spin up a thread to
-                // translate between the Receiver that encode_blocking sends to, and the
-                // ExtEventSink that sends commands to us.
-                let export = export.clone();
-                let (tx, rx) = crossbeam_channel::unbounded();
-                let window_id = ctx.window_id();
-                let ext_cmd = ctx.get_external_handle();
-                std::thread::spawn(move || {
-                    while let Ok(msg) = rx.recv() {
-                        let _ =
-                            ext_cmd.submit_command(cmd::ENCODING_STATUS, Box::new(msg), window_id);
-                    }
-                });
-                std::thread::spawn(move || crate::encode::encode_blocking(export, tx));
-            }
-
-            true
         } else if cmd.is(cmd::WARP_TIME_TO) {
             if data.action.is_idle() {
                 data.warp_time_to(*cmd.get_unchecked(cmd::WARP_TIME_TO));
@@ -406,7 +405,7 @@ impl Editor {
                 log::warn!("not warping: state is {:?}", data.action)
             }
             true
-        } else if let Some(info) = cmd.get(cmd::EXPORT_CURRENT) {
+        } else if let Some(info) = cmd.get(cmd::EXPORT) {
             let mut path = info.path().to_owned();
             if path.extension().is_none() {
                 path.set_extension("mp4");
@@ -416,7 +415,7 @@ impl Editor {
                 filename: path,
                 config: data.config.export.clone(),
             };
-            ctx.submit_command(cmd::EXPORT.with(export));
+            self.export(ctx, data, export);
             true
         } else if cmd.is(druid::commands::SAVE_FILE_AS) || cmd.is(druid::commands::SAVE_FILE) {
             let mut path = if let Some(info) = cmd.get(druid::commands::SAVE_FILE_AS) {
