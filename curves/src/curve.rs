@@ -33,6 +33,9 @@ pub struct StrokeInProgress {
     #[data(ignore)]
     times: Arc<RefCell<Vec<Time>>>,
 
+    // FIXME: horrible name
+    straight_idx: Option<usize>,
+
     // Data comparison is done using the number of points, which grows with every modification.
     len: usize,
 }
@@ -47,9 +50,29 @@ impl StrokeInProgress {
         if let Some(last) = self.times.borrow().last() {
             assert!(*last <= t);
         }
-        self.points.borrow_mut().push(p);
-        self.times.borrow_mut().push(t);
+        if self.straight_idx.is_some()
+            && self.points.borrow().len() > self.straight_idx.unwrap() + 1
+        {
+            *self.points.borrow_mut().last_mut().unwrap() = p;
+            *self.times.borrow_mut().last_mut().unwrap() = t;
+        } else {
+            self.points.borrow_mut().push(p);
+            self.times.borrow_mut().push(t);
+        }
         self.len += 1;
+    }
+
+    pub fn set_straight(&mut self, straight: bool) {
+        if straight {
+            let points = self.points.borrow();
+            self.straight_idx = if points.is_empty() {
+                Some(0)
+            } else {
+                Some(points.len() - 1)
+            };
+        } else {
+            self.straight_idx = None;
+        }
     }
 
     /// Returns the last point in the stroke.

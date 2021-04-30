@@ -115,7 +115,15 @@ impl Widget<EditorState> for DrawingPane {
                             data.settings.pen_size.size_fraction() * self.from_image_scale();
                         ctx.request_paint_rect(invalid.inset(pen_width).expand());
 
-                        data.add_point_to_stroke(self.to_image_coords() * ev.pos, time);
+                        data.add_point_to_stroke(
+                            self.to_image_coords() * ev.pos,
+                            time,
+                            ev.mods.shift(),
+                        );
+                        // FIXME: HACK
+                        if ev.mods.shift() {
+                            ctx.request_paint();
+                        }
                     } else {
                         // Pan the view.
                         self.offset -= (ev.pos - self.last_mouse_pos) / data.settings.zoom;
@@ -136,7 +144,11 @@ impl Widget<EditorState> for DrawingPane {
                 self.last_mouse_pos = ev.pos;
                 if data.action.is_recording() {
                     let time = data.accurate_time();
-                    data.add_point_to_stroke(self.to_image_coords() * ev.pos, time);
+                    data.add_point_to_stroke(
+                        self.to_image_coords() * ev.pos,
+                        time,
+                        ev.mods.shift(),
+                    );
                     ctx.request_anim_frame();
                 }
             }

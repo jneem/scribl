@@ -67,6 +67,7 @@ pub struct AsyncOpsStatus {
 pub struct RecordingState {
     pub time_factor: f64,
     pub paused: bool,
+    pub straight: bool,
     pub new_stroke: StrokeInProgress,
     pub new_stroke_seq: StrokeSeq,
 }
@@ -372,9 +373,14 @@ impl EditorState {
         self.take_time_snapshot();
     }
 
-    pub fn add_point_to_stroke(&mut self, p: Point, t: Time) {
+    pub fn add_point_to_stroke(&mut self, p: Point, t: Time, straight: bool) {
         let mut unpause = false;
         if let CurrentAction::Recording(rec_state) = &mut self.action {
+            if straight != rec_state.straight {
+                rec_state.straight = straight;
+                dbg!(straight);
+                rec_state.new_stroke.set_straight(straight);
+            }
             rec_state.new_stroke.add_point(p, t);
             if rec_state.paused {
                 rec_state.paused = false;
@@ -395,6 +401,7 @@ impl EditorState {
         let style = self.settings.cur_style();
         if let CurrentAction::Recording(rec_state) = &mut self.action {
             let stroke = std::mem::replace(&mut rec_state.new_stroke, StrokeInProgress::default());
+            rec_state.straight = false;
             let start_time = stroke.start_time().unwrap_or(Time::ZERO);
 
             // Note that cloning and appending to a StrokeSeq is cheap, because it uses im::Vector
@@ -603,6 +610,7 @@ impl EditorState {
             state.action = CurrentAction::Recording(RecordingState {
                 time_factor: state.settings.recording_speed.factor(),
                 paused: true,
+                straight: false,
                 new_stroke: StrokeInProgress::default(),
                 new_stroke_seq: StrokeSeq::default(),
             });
