@@ -107,12 +107,33 @@ fn make_draw_button_group() -> impl Widget<EditorState> {
     .lens(Settings::fade_enabled)
     .lens(EditorState::settings);
 
+    let shape_detect_button = ToggleButton::from_icon(
+        &icons::SHAPES,
+        ICON_PADDING,
+        |state: &bool, _env: &Env| {
+            if *state {
+                "Disable shape detection"
+            } else {
+                "Enable shape detection"
+            }
+            .to_owned()
+        },
+        |&b: &bool| b,
+        |_, data, _| *data = true,
+        |_, data, _| *data = false,
+    )
+    .padding(SECONDARY_BUTTON_PADDING)
+    .lens(Settings::shape_detect)
+    .lens(EditorState::settings);
+
     let draw_button_group = Flex::column()
         .with_child(rec_button)
         .with_spacer(5.0)
         .with_child(rec_speed_group)
         .with_spacer(5.0)
         .with_child(rec_fade_button)
+        .with_spacer(5.0)
+        .with_child(shape_detect_button)
         .padding(5.0)
         .background(theme::BACKGROUND_LIGHT)
         .rounded(theme::BUTTON_BORDER_RADIUS);

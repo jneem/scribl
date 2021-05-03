@@ -394,13 +394,19 @@ impl EditorState {
         let prev_state = self.undo_state();
         let style = self.settings.cur_style();
         if let CurrentAction::Recording(rec_state) = &mut self.action {
-            let stroke = std::mem::replace(&mut rec_state.new_stroke, StrokeInProgress::default());
+            let stroke = std::mem::replace(&mut rec_state.new_stroke, StrokeInProgress::new());
             let start_time = stroke.start_time().unwrap_or(Time::ZERO);
 
             // Note that cloning and appending to a StrokeSeq is cheap, because it uses im::Vector
             // internally.
             let mut seq = rec_state.new_stroke_seq.clone();
-            seq.append_stroke(stroke, style, 0.0005, std::f64::consts::PI / 4.0);
+            seq.append_stroke(
+                stroke,
+                style,
+                self.settings.shape_detect,
+                0.0005,
+                std::f64::consts::PI / 4.0,
+            );
             rec_state.new_stroke_seq = seq.clone();
 
             self.push_transient_undo_state(prev_state.with_time(start_time), "add stroke");
@@ -474,7 +480,7 @@ impl EditorState {
         // the state is recording but paused.
         if let CurrentAction::Recording(mut rec_state) = undo.action {
             rec_state.paused = true;
-            rec_state.new_stroke = StrokeInProgress::default();
+            rec_state.new_stroke = StrokeInProgress::new();
 
             if !rec_state.new_stroke_seq.is_empty() {
                 // This is even more of a special-case hack: the end of the last-drawn curve is
@@ -603,7 +609,7 @@ impl EditorState {
             state.action = CurrentAction::Recording(RecordingState {
                 time_factor: state.settings.recording_speed.factor(),
                 paused: true,
-                new_stroke: StrokeInProgress::default(),
+                new_stroke: StrokeInProgress::new(),
                 new_stroke_seq: StrokeSeq::default(),
             });
             state.take_time_snapshot();

@@ -227,6 +227,16 @@ impl Widget<EditorState> for DrawingPane {
             }
         }
 
+        if let (Some(old_stroke), Some(new_stroke)) = (old_data.new_stroke(), data.new_stroke()) {
+            if new_stroke.is_empty() && !old_stroke.is_empty() {
+                let transform = self.from_image_coords();
+                let rect = old_stroke
+                    .bbox()
+                    .inset(old_data.settings.cur_style().thickness / 2.0);
+                ctx.request_paint_rect(transform * rect);
+            }
+        }
+
         if old_data.settings.zoom != data.settings.zoom {
             self.recompute_paper_rect(ctx.size(), data.settings.zoom);
             ctx.request_paint();

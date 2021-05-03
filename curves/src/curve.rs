@@ -25,19 +25,27 @@ mod serde_color {
 /// While drawing, this stores one continuous poly-line (from pen-down to
 /// pen-up). Because we expect lots of fast changes to this, it uses interior
 /// mutability to avoid repeated allocations.
-#[derive(Clone, Data, Debug, Default)]
+#[derive(Clone, Data, Debug)]
 pub struct StrokeInProgress {
     #[data(ignore)]
-    points: Arc<RefCell<Vec<Point>>>,
+    pub(crate) points: Arc<RefCell<Vec<Point>>>,
 
     #[data(ignore)]
-    times: Arc<RefCell<Vec<Time>>>,
+    pub(crate) times: Arc<RefCell<Vec<Time>>>,
 
     // Data comparison is done using the number of points, which grows with every modification.
     len: usize,
 }
 
 impl StrokeInProgress {
+    pub fn new() -> StrokeInProgress {
+        StrokeInProgress {
+            points: Default::default(),
+            times: Default::default(),
+            len: 0,
+        }
+    }
+
     /// Adds a point, drawn at the given time (which must be at or after the previous last time).
     ///
     /// # Panics
@@ -55,6 +63,11 @@ impl StrokeInProgress {
     /// Returns the last point in the stroke.
     pub fn last_point(&self) -> Option<Point> {
         self.points.borrow().last().copied()
+    }
+
+    /// Returns true if this stroke has no points in it.
+    pub fn is_empty(&self) -> bool {
+        self.points.borrow().is_empty()
     }
 
     /// Returns the time of the first point in the stroke.
@@ -86,6 +99,43 @@ impl StrokeInProgress {
             style.color
         };
         ctx.stroke_styled(&path, &color, style.thickness, &stroke_style);
+    }
+
+    fn to_path(
+        &self,
+        shape_detect: bool,
+        distance_threshold: f64,
+        angle_threshold: f64,
+    ) -> Option<(BezPath, Vec<Time>)> {
+        if shape_detect {
+            if let Some(shape) = crate::shape_detect::detect(&self) {
+                return Some((shape.path, shape.times));
+            }
+        }
+
+        let points = self.points.borrow();
+        let times = self.times.borrow();
+        if points.is_empty() {
+            return None;
+        }
+
+        let point_indices = crate::simplify::simplify(&points[..], distance_threshold);
+        let times: Vec<Time> = point_indices.iter().map(|&i| times[i]).collect();
+        let points: Vec<Point> = point_indices.iter().map(|&i| points[i]).collect();
+        let path = crate::smooth::smooth(&points, 0.4, angle_threshold);
+        Some((path, times))
+    }
+
+    pub fn bbox(&self) -> Rect {
+        if self.is_empty() {
+            Rect::ZERO
+        } else {
+            let mut ret = Rect::from_origin_size(self.points.borrow()[0], (0.0, 0.0));
+            for p in self.points.borrow().iter() {
+                ret = ret.union_pt(*p);
+            }
+            ret
+        }
     }
 }
 
@@ -171,24 +221,18 @@ impl StrokeSeq {
         &mut self,
         stroke: StrokeInProgress,
         style: StrokeStyle,
+        shape_detect: bool,
         distance_threshold: f64,
         angle_threshold: f64,
     ) {
-        let points = stroke.points.borrow();
-        let times = stroke.times.borrow();
-        if points.is_empty() {
-            return;
+        if let Some((path, times)) =
+            stroke.to_path(shape_detect, distance_threshold, angle_threshold)
+        {
+            if !self.is_empty() {
+                assert!(self.last_time() <= times[0]);
+            }
+            self.append_path(path, times, style);
         }
-
-        if !self.is_empty() {
-            assert!(self.last_time() <= times[0]);
-        }
-
-        let point_indices = crate::simplify::simplify(&points[..], distance_threshold);
-        let times: Vec<Time> = point_indices.iter().map(|&i| times[i]).collect();
-        let points: Vec<Point> = point_indices.iter().map(|&i| points[i]).collect();
-        let path = crate::smooth::smooth(&points, 0.4, angle_threshold);
-        self.append_path(path, times, style);
     }
 
     /// Returns an iterator over all the strokes in this sequence.
@@ -485,17 +529,17 @@ pub mod tests {
             thickness: 1.0,
             effects: Effects::default(),
         };
-        let mut s = StrokeInProgress::default();
+        let mut s = StrokeInProgress::new();
         s.add_point(p(0.0, 0.0), t(1));
         s.add_point(p(1.0, 1.0), t(2));
         s.add_point(p(2.0, 2.0), t(3));
-        c.append_stroke(s, style.clone(), 0.01, 2.0);
+        c.append_stroke(s, style.clone(), false, 0.01, 2.0);
 
-        let mut s = StrokeInProgress::default();
+        let mut s = StrokeInProgress::new();
         s.add_point(p(4.0, 4.0), t(6));
         s.add_point(p(1.0, 1.0), t(7));
         s.add_point(p(2.0, 2.0), t(8));
-        c.append_stroke(s, style.clone(), 0.01, 2.0);
+        c.append_stroke(s, style.clone(), false, 0.01, 2.0);
 
         c
     }

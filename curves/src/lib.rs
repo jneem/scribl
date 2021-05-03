@@ -3,6 +3,7 @@ mod draw_snippet;
 mod effect;
 mod lerp;
 pub mod save;
+mod shape_detect;
 mod simplify;
 mod smooth;
 mod span_cursor;
