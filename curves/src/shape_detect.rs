@@ -16,6 +16,10 @@ pub(crate) fn detect(stroke: &StrokeInProgress) -> Option<Shape> {
     detect_line(stroke)
 }
 
+fn threshold_factor(len: f64) -> f64 {
+    1.0 / (1.0 + len)
+}
+
 fn detect_line(stroke: &StrokeInProgress) -> Option<Shape> {
     let points = stroke.points.borrow();
     if points.len() < 2 {
@@ -46,16 +50,23 @@ fn detect_line(stroke: &StrokeInProgress) -> Option<Shape> {
         (residual.hypot2() + tang_extra.powi(2)).sqrt()
     };
 
-    if points.iter().any(|p| d(p) > dist * MAX_LINE_DEVIATION) {
+    if points
+        .iter()
+        .any(|p| d(p) > dist * MAX_LINE_DEVIATION * threshold_factor(dist))
+    {
         None
     } else {
-        let angle = snap_angle(tang.atan2());
+        let angle = snap_angle(tang.atan2(), dist);
         let tang = Vec2::from_angle(angle);
         let end = start + tang * dist;
 
         let mut path = BezPath::new();
         path.move_to(start);
-        path.line_to(end);
+        path.curve_to(
+            start + tang * dist / 3.0,
+            start + tang * dist * 2.0 / 3.0,
+            end,
+        );
         let times = stroke.times.borrow();
         assert!(times.len() > 2);
 
@@ -68,10 +79,10 @@ fn detect_line(stroke: &StrokeInProgress) -> Option<Shape> {
 }
 
 // `angle` is assumed to be between -\pi and \pi.
-fn snap_angle(angle: f64) -> f64 {
+fn snap_angle(angle: f64, dist: f64) -> f64 {
     for &th in &ANGLE_DEGREES {
         let th = th * PI / 180.0;
-        if (angle - th).abs() < ANGLE_TOLERANCE {
+        if (angle - th).abs() < ANGLE_TOLERANCE * threshold_factor(dist) {
             return th;
         }
     }
