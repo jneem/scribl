@@ -289,9 +289,9 @@ impl Widget<EditorState> for Timeline {
             };
 
             if delta_x != 0.0 {
+                self.clip_box_mut().pan_by(Vec2 { x: delta_x, y: 0.0 });
                 ctx.request_paint();
             }
-            self.clip_box_mut().pan_by(Vec2 { x: delta_x, y: 0.0 });
         }
         self.inner.update(ctx, data, env);
         self.update_visible_times(ctx.size());
@@ -845,12 +845,11 @@ impl Widget<EditorState> for TimelineInner {
             }
         }
 
-        // Round the cursor position to half-pixels, for a nice crisp line.
-        let cursor_x = (pix_x(data.time()) + 0.5).round() - 0.5;
+        let cursor_x = pix_x(data.time());
 
         // Draw the mark.
         if let Some(mark_time) = data.mark {
-            let mark_x = (pix_x(mark_time) + 0.5).round() - 0.5;
+            let mark_x = pix_x(mark_time);
             let rect = Rect::new(cursor_x, 0.0, mark_x, size.height);
             ctx.fill(rect, &SELECTION_FILL_COLOR);
             let mark_line = Line::new((mark_x, 0.0), (mark_x, size.height));
