@@ -3,6 +3,7 @@ use std::f64::consts::PI;
 
 use crate::{StrokeInProgress, Time};
 
+const MIN_DISTANCE: f64 = 0.1;
 const MAX_LINE_DEVIATION: f64 = 0.05;
 const ANGLE_TOLERANCE: f64 = 5.0 * PI / 180.0;
 const ANGLE_DEGREES: [f64; 9] = [-180.0, -135.0, -90.0, -45.0, 0.0, 45.0, 90.0, 135.0, 180.0];
@@ -29,7 +30,7 @@ fn detect_line(stroke: &StrokeInProgress) -> Option<Shape> {
     let start = points[0];
     let end = points.last().unwrap();
     let dist = start.distance(*end);
-    if dist < 1e-6 {
+    if dist < MIN_DISTANCE {
         return None;
     }
 
