@@ -161,8 +161,7 @@ impl PartialEq for StrokeStyle {
 /// in time: one stroke ends before another begins.
 #[derive(Clone, Data, Debug, Default)]
 pub struct StrokeSeq {
-    #[data(same_fn = "Vector::ptr_eq")]
-    strokes: Vector<Stroke>,
+    strokes: Vector<Arc<Stroke>>,
 }
 
 /// A `Stroke` consists of a single, non-empty, continuous path made up of cubic segments. Each
@@ -202,11 +201,12 @@ impl StrokeSeq {
     /// Returns all the elements in this `StrokeSeq`. The return value will contain only `MoveTo`
     /// (for the first element of each stroke) and `CurveTo`.
     pub(crate) fn elts(&self) -> impl Iterator<Item = &Stroke> {
-        self.strokes.iter()
+        self.strokes.iter().map(|x| x.as_ref())
     }
 
     pub(crate) fn append_path(&mut self, path: BezPath, times: Vec<Time>, style: StrokeStyle) {
-        self.strokes.push_back(Stroke { path, times, style });
+        self.strokes
+            .push_back(Arc::new(Stroke { path, times, style }));
     }
 
     /// Appends a `StrokeInProgress` to this stroke sequence.
