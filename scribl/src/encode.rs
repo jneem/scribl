@@ -243,8 +243,8 @@ fn render_loop(
             let mut ctx = bitmap.render_context();
             ctx.with_save(|ctx| {
                 ctx.clip(bbox);
+                ctx.fill(bbox, &Color::WHITE);
                 ctx.transform(transform.into());
-                ctx.clear(None, Color::WHITE);
                 for id in cursor.active_ids() {
                     snippets.snippet(id).render(ctx, time);
                 }
