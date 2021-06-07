@@ -521,7 +521,6 @@ impl Widget<EditorState> for TimelineSnippet {
                 ctx.set_active(true);
                 if ev.mods.shift() {
                     self.drag_start = Some(x_pix(ev.pos.x));
-                    ctx.request_focus();
                 }
                 ctx.request_paint();
                 ctx.set_handled();
