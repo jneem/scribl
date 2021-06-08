@@ -472,23 +472,6 @@ impl Editor {
                 data.set_loading();
             }
             true
-        } else if cmd.is(druid::commands::CLOSE_WINDOW) {
-            if matches!(data.action, CurrentAction::WaitingToExit) {
-                // By not handling the CLOSE_WINDOW command, we're telling druid to really close
-                // it.
-                false
-            } else if data.changed_since_last_save() {
-                ctx.submit_command(ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
-                    alert::make_unsaved_changes_alert(),
-                ))));
-                true
-            } else {
-                data.action = CurrentAction::WaitingToExit;
-                ctx.submit_command(ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
-                    alert::make_waiting_to_exit_alert(),
-                ))));
-                true
-            }
         } else if cmd.is(cmd::FINISHED_ASYNC_LOAD) {
             let result = cmd.get_unchecked(cmd::FINISHED_ASYNC_LOAD);
             data.update_load_status(result);
@@ -584,6 +567,23 @@ impl Widget<EditorState> for Editor {
             Event::AnimFrame(_) => {
                 if data.action.time_factor() != 0.0 {
                     data.update_time();
+                }
+            }
+            Event::WindowCloseRequested => {
+                if matches!(data.action, CurrentAction::WaitingToExit) {
+                    // By not handling the request, we're telling druid to really close it.
+                } else if data.changed_since_last_save() {
+                    ctx.submit_command(ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
+                        alert::make_unsaved_changes_alert(),
+                    ))));
+                    ctx.set_handled();
+                } else {
+                    dbg!("intercepted close");
+                    data.action = CurrentAction::WaitingToExit;
+                    ctx.submit_command(ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
+                        alert::make_waiting_to_exit_alert(),
+                    ))));
+                    ctx.set_handled();
                 }
             }
             _ => {}

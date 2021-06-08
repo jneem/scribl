@@ -29,6 +29,8 @@ pub struct InProgressStatus {
     #[data(same_fn = "PartialEq::eq")]
     pub saving: Option<PathBuf>,
     #[data(same_fn = "PartialEq::eq")]
+    pub autosaving: Option<PathBuf>,
+    #[data(same_fn = "PartialEq::eq")]
     pub loading: Option<PathBuf>,
 }
 
@@ -543,10 +545,16 @@ impl EditorState {
     }
 
     pub fn update_save_status(&mut self, save: &crate::cmd::AsyncSaveResult) {
-        self.status.in_progress.saving = None;
+        if save.autosave {
+            self.status.in_progress.autosaving = None;
+        } else {
+            self.status.in_progress.saving = None;
+        }
         self.status.last_finished = match &save.error {
             None => {
-                self.saved_data = Some(save.data.clone());
+                if !save.autosave {
+                    self.saved_data = Some(save.data.clone());
+                }
                 Some(FinishedStatus::Saved {
                     path: save.path.clone(),
                     // TODO: time should be when it started saving?
