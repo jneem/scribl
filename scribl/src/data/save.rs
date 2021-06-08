@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use druid::Data;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
+use std::io::{BufReader, BufWriter};
 use std::path::Path;
 
 use scribl_curves::DrawSnippets;
@@ -64,7 +65,7 @@ impl SaveFileData {
     }
 
     pub fn load_from_path<P: AsRef<Path>>(path: P) -> anyhow::Result<SaveFileData> {
-        let file = File::open(path.as_ref())?;
+        let file = BufReader::new(File::open(path.as_ref())?);
         SaveFileData::load_from(file)
     }
 
@@ -103,8 +104,8 @@ impl SaveFileData {
             std::fs::create_dir_all(parent)?;
         }
 
-        let tmp_file = File::create(&tmp_path)?;
-        self.save_to(tmp_file)?;
+        let write = BufWriter::new(File::create(&tmp_path)?);
+        self.save_to(write)?;
         std::fs::rename(tmp_path, path)?;
 
         Ok(())
