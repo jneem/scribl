@@ -18,7 +18,7 @@ pub const RECORDING_AUDIO_STATUS: Selector<AudioRecordingStatus> =
     Selector::new("scribl.recording-audio-status");
 
 /// Adds a new audio snippet.
-pub const ADD_AUDIO_SNIPPET: Selector<TalkSnippet> = Selector::new("scribl.add-audio-snippet");
+pub const ADD_TALK_SNIPPET: Selector<TalkSnippetCmd> = Selector::new("scribl.add-talk-snippet");
 
 /// Changes the current animation time, assuming that the UI is in the idle state.
 pub const WARP_TIME_TO: Selector<Time> = Selector::new("scribl.warp-time-to");
@@ -58,4 +58,10 @@ pub struct ExportCmd {
     pub scribl: ScriblState,
     pub filename: PathBuf,
     pub config: crate::config::Export,
+}
+
+pub struct TalkSnippetCmd {
+    pub snip: TalkSnippet,
+    /// The start time of the talk snippet *before* it got trimmed.
+    pub orig_start: Time,
 }

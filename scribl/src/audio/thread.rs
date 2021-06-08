@@ -345,8 +345,9 @@ pub fn audio_loop(cmd: Receiver<Cmd>, sink: ExtEventSink, target: Target) {
                             .min(1.0 / rec.peak.max(1.0 / 500.0));
 
                         let snip = TalkSnippet::new(rec.buf, time, multiplier as f32);
-                        if let Some(snip) = snip.trimmed() {
-                            let _ = sink.submit_command(cmd::ADD_AUDIO_SNIPPET, snip, target);
+                        if let Some(trimmed) = snip.trimmed() {
+                            let cmd = cmd::TalkSnippetCmd { snip: trimmed, orig_start: snip.start_time() };
+                            let _ = sink.submit_command(cmd::ADD_TALK_SNIPPET, cmd, target);
                         }
                     }
                     Err(_) => {

@@ -412,16 +412,15 @@ impl Editor {
         data: &mut EditorState,
         _env: &Env,
     ) -> bool {
-        // TODO: change to match if/when that is supported.
-        let ret = if cmd.is(cmd::ADD_AUDIO_SNIPPET) {
+        let ret = if let Some(snip_cmd) = cmd.get(cmd::ADD_TALK_SNIPPET) {
+            let snip = snip_cmd.snip.clone();
             let prev_state = data.undo_state();
-            let snip = cmd.get_unchecked(cmd::ADD_AUDIO_SNIPPET);
-            data.selected_snippet = Some(data.scribl.add_talk_snippet(snip.clone()).into());
-            data.push_undo_state(prev_state.with_time(snip.start_time()), "add audio");
+            data.selected_snippet = Some(data.scribl.add_talk_snippet(snip).into());
+            data.push_undo_state(prev_state.with_time(snip_cmd.orig_start), "add audio");
             true
-        } else if cmd.is(cmd::WARP_TIME_TO) {
+        } else if let Some(time) = cmd.get(cmd::WARP_TIME_TO) {
             if data.action.is_idle() {
-                data.warp_time_to(*cmd.get_unchecked(cmd::WARP_TIME_TO));
+                data.warp_time_to(*time);
             } else {
                 log::warn!("not warping: state is {:?}", data.action)
             }
