@@ -198,6 +198,27 @@ impl StrokeSeq {
         *self.strokes.last().unwrap().times.last().unwrap()
     }
 
+    /// If this stroke sequence ever becomes invisible (e.g. because all of the strokes in it
+    /// fade out), this is the time at which it becomes invisible.
+    pub fn end_time(&self) -> Option<Time> {
+        self.strokes()
+            .map(|stroke| {
+                stroke
+                    .style
+                    .effects
+                    .fade()
+                    .map(|f| stroke.times[0] + f.pause + f.fade)
+            })
+            .reduce(|t1, t2| {
+                if let (Some(t1), Some(t2)) = (t1, t2) {
+                    Some(t1.max(t2))
+                } else {
+                    None
+                }
+            })
+            .flatten()
+    }
+
     /// Returns all the elements in this `StrokeSeq`. The return value will contain only `MoveTo`
     /// (for the first element of each stroke) and `CurveTo`.
     pub(crate) fn elts(&self) -> impl Iterator<Item = &Stroke> {

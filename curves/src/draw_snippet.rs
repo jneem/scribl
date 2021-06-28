@@ -7,7 +7,9 @@ use std::sync::Arc;
 use crate::{span_cursor, Lerp, StrokeSeq, Time, TimeDiff};
 
 /// Snippets are identified by unique ids.
-#[derive(Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Deserialize, Serialize, Clone, Copy, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd,
+)]
 #[serde(transparent)]
 pub struct DrawSnippetId(pub(crate) u64);
 
@@ -63,11 +65,12 @@ impl DrawSnippet {
         let end = strokes.last_time();
         let lerp = Lerp::identity(start, end);
         let times = lerp_times(&strokes, &lerp);
+        let end = strokes.end_time();
         DrawSnippet {
             strokes: Arc::new(strokes),
             lerp: Arc::new(lerp),
             times: Arc::new(times),
-            end: None,
+            end,
         }
     }
 
