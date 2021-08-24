@@ -578,7 +578,6 @@ impl Widget<EditorState> for Editor {
                     ))));
                     ctx.set_handled();
                 } else {
-                    dbg!("intercepted close");
                     data.action = CurrentAction::WaitingToExit;
                     ctx.submit_command(ModalHost::SHOW_MODAL.with(SingleUse::new(Box::new(
                         alert::make_waiting_to_exit_alert(),
