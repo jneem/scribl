@@ -87,14 +87,8 @@ impl UndoStack {
         // stack.
         self.stack = self.stack.skip(self.current_state);
 
-        // In case the top of the stack is transient and this one isn't, remove all the transient ones.
         if !transient {
-            let last_permanent = self
-                .stack
-                .iter()
-                .position(|s| !s.transient)
-                .unwrap_or(self.stack.len());
-            self.stack = self.stack.skip(last_permanent);
+            self.pop_transients();
         }
 
         let new_state = UndoData {
@@ -133,6 +127,19 @@ impl UndoStack {
         description: String,
     ) {
         self.do_push(undo_state, redo_state, description, true);
+    }
+
+    /// When we create transient undo states, it's with the intention of eventually replacing them
+    /// with a real undo state (like, while drawing we create transient undo states and then
+    /// eventually replace them with the whole snippet). But sometimes we cancel the action instead
+    /// of completing it, and then we need to clear all the transient ones.
+    pub fn pop_transients(&mut self) {
+        let last_permanent = self
+            .stack
+            .iter()
+            .position(|s| !s.transient)
+            .unwrap_or(self.stack.len());
+        self.stack = self.stack.skip(last_permanent);
     }
 
     /// If there is a most recent action to undo, rewinds the undo stack to that action and returns

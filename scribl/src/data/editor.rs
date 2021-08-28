@@ -468,6 +468,10 @@ impl EditorState {
             .push_transient(prev_state, self.undo_state(), description.to_string());
     }
 
+    pub fn pop_transient_undo_states(&mut self) {
+        self.undo.pop_transients();
+    }
+
     fn restore_undo_state(&mut self, undo: UndoState) {
         self.scribl.restore_undo_state(&undo);
         self.selected_snippet = undo.selected_snippet;
@@ -641,6 +645,8 @@ impl EditorState {
             CurrentAction::Recording(_) => {
                 if let Some(new_snippet) = self.stop_recording() {
                     self.add_draw_snippet(new_snippet);
+                } else {
+                    self.pop_transient_undo_states();
                 }
             }
             CurrentAction::RecordingAudio(_) => {
