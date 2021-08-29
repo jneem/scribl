@@ -44,6 +44,9 @@ jobs:
 
       - name: Build
         run: |
+          dir C:/
+          dir C:/gstreamer/
+          dir C:/gstreamer/1.0/
           dir C:/gstreamer/1.0/x86_64/lib/pkgconfig
           cargo build --locked --verbose
         env:
