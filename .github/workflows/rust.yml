@@ -43,13 +43,7 @@ jobs:
         if: contains(matrix.os, 'ubuntu')
 
       - name: Build
-        run: |
-          dir C:/
-          dir C:/gstreamer/
-          dir C:/gstreamer/1.0/
-          dir C:/gstreamer/1.0/msvc_x86_64/
-          dir C:/gstreamer/1.0/msvc_x86_64/lib/pkgconfig
-          cargo build --locked --verbose
+        run: cargo build --locked --verbose
         env:
             PKG_CONFIG: C:/ProgramData/chocolatey/bin/pkg-config.exe
             PKG_CONFIG_PATH: C:/gstreamer/1.0/msvc_x86_64/lib/pkgconfig
