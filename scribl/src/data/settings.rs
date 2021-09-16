@@ -23,9 +23,6 @@ pub struct Settings {
     /// When true, the "fade out" toggle button is pressed down.
     pub fade_enabled: bool,
 
-    /// When true, we attempt to detect basic shapes.
-    pub shape_detect: bool,
-
     /// The current pen size, as selected in the UI.
     pub pen_size: PenSize,
 
@@ -50,7 +47,6 @@ impl Settings {
             recording_speed: RecordingSpeed::Slow,
             zoom: 1.0,
             fade_enabled: false,
-            shape_detect: true,
             pen_size: PenSize::Medium,
             palette: crate::widgets::PaletteData::default(),
         }

@@ -330,7 +330,7 @@ impl EditorState {
     /// Stops recording drawing, returning the snippet that we just finished recording (if it was
     /// non-empty).
     fn stop_recording(&mut self) -> Option<DrawSnippet> {
-        self.finish_stroke();
+        self.finish_stroke(false);
         let old_action = std::mem::replace(&mut self.action, CurrentAction::Idle);
         self.take_time_snapshot();
 
@@ -392,7 +392,7 @@ impl EditorState {
         }
     }
 
-    pub fn finish_stroke(&mut self) {
+    pub fn finish_stroke(&mut self, shape_detect: bool) {
         let prev_state = self.undo_state();
         let style = self.settings.cur_style();
         if let CurrentAction::Recording(rec_state) = &mut self.action {
@@ -405,7 +405,7 @@ impl EditorState {
             seq.append_stroke(
                 stroke,
                 style,
-                self.settings.shape_detect,
+                shape_detect,
                 0.0005,
                 std::f64::consts::PI / 4.0,
             );

@@ -143,7 +143,7 @@ impl Widget<EditorState> for DrawingPane {
             Event::MouseUp(ev) => {
                 ctx.set_active(false);
                 if ev.button.is_left() && data.action.is_recording() {
-                    data.finish_stroke();
+                    data.finish_stroke(ev.mods.shift());
                 }
             }
             Event::Wheel(ev) => {

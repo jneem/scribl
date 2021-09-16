@@ -3,7 +3,7 @@ use std::f64::consts::PI;
 
 use crate::{StrokeInProgress, Time};
 
-const MIN_DISTANCE: f64 = 0.1;
+const MIN_DISTANCE: f64 = 1e-4;
 const MAX_LINE_DEVIATION: f64 = 0.05;
 const ANGLE_TOLERANCE: f64 = 5.0 * PI / 180.0;
 const ANGLE_DEGREES: [f64; 9] = [-180.0, -135.0, -90.0, -45.0, 0.0, 45.0, 90.0, 135.0, 180.0];
