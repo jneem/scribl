@@ -101,12 +101,7 @@ impl StrokeInProgress {
         ctx.stroke_styled(&path, &color, style.thickness, &stroke_style);
     }
 
-    fn to_path(
-        &self,
-        shape_detect: bool,
-        distance_threshold: f64,
-        angle_threshold: f64,
-    ) -> Option<(BezPath, Vec<Time>)> {
+    fn to_path(&self, shape_detect: bool, distance_threshold: f64) -> Option<(BezPath, Vec<Time>)> {
         if shape_detect {
             if let Some(shape) = crate::shape_detect::detect(&self) {
                 return Some((shape.path, shape.times));
@@ -122,7 +117,7 @@ impl StrokeInProgress {
         let point_indices = crate::simplify::simplify(&points[..], distance_threshold);
         let times: Vec<Time> = point_indices.iter().map(|&i| times[i]).collect();
         let points: Vec<Point> = point_indices.iter().map(|&i| points[i]).collect();
-        let path = crate::smooth::smooth(&points, 0.4, angle_threshold);
+        let path = crate::smooth::smooth(&points, 0.33);
         Some((path, times))
     }
 
@@ -244,11 +239,8 @@ impl StrokeSeq {
         style: StrokeStyle,
         shape_detect: bool,
         distance_threshold: f64,
-        angle_threshold: f64,
     ) {
-        if let Some((path, times)) =
-            stroke.to_path(shape_detect, distance_threshold, angle_threshold)
-        {
+        if let Some((path, times)) = stroke.to_path(shape_detect, distance_threshold) {
             if !self.is_empty() {
                 assert!(self.last_time() <= times[0]);
             }
@@ -554,13 +546,13 @@ pub mod tests {
         s.add_point(p(0.0, 0.0), t(1));
         s.add_point(p(1.0, 1.0), t(2));
         s.add_point(p(2.0, 2.0), t(3));
-        c.append_stroke(s, style.clone(), false, 0.01, 2.0);
+        c.append_stroke(s, style.clone(), false, 0.01);
 
         let mut s = StrokeInProgress::new();
         s.add_point(p(4.0, 4.0), t(6));
         s.add_point(p(1.0, 1.0), t(7));
         s.add_point(p(2.0, 2.0), t(8));
-        c.append_stroke(s, style.clone(), false, 0.01, 2.0);
+        c.append_stroke(s, style.clone(), false, 0.01);
 
         c
     }

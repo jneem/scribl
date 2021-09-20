@@ -1,4 +1,4 @@
-use druid::kurbo::{Line, Point};
+use druid::kurbo::{Line, Point, Rect};
 
 // Squared distance from the point `p` to the line *segment* `line`.
 fn sq_distance(p: Point, line: Line) -> f64 {
@@ -36,6 +36,15 @@ pub fn simplify(points: &[Point], eps: f64) -> Vec<usize> {
     } else if points.len() == 1 {
         return vec![0];
     }
+
+    // For small shapes, we ensure that eps is no more than 2% of the max side-length of the
+    // bounding box.
+    let mut bbox = Rect::from_origin_size(points[0], (0.0, 0.0));
+    for p in points {
+        bbox = bbox.union_pt(*p);
+    }
+    let size = bbox.width().max(bbox.height());
+    let eps = eps.min(size * 0.02);
 
     // We're using the RDP algorithm, which is a recursive divide-and-conquer
     // algorithm. Each recursive call needs to know its beginning and ending

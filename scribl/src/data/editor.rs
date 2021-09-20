@@ -402,13 +402,7 @@ impl EditorState {
             // Note that cloning and appending to a StrokeSeq is cheap, because it uses im::Vector
             // internally.
             let mut seq = rec_state.new_stroke_seq.clone();
-            seq.append_stroke(
-                stroke,
-                style,
-                shape_detect,
-                0.0005,
-                std::f64::consts::PI / 4.0,
-            );
+            seq.append_stroke(stroke, style, shape_detect, 0.0005);
             rec_state.new_stroke_seq = seq.clone();
 
             self.push_transient_undo_state(prev_state.with_time(start_time), "add stroke");
