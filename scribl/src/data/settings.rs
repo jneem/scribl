@@ -47,7 +47,7 @@ impl Settings {
             recording_speed: RecordingSpeed::Slow,
             zoom: 1.0,
             fade_enabled: false,
-            pen_size: PenSize::Medium,
+            pen_size: PenSize::Small,
             palette: crate::widgets::PaletteData::default(),
         }
     }
