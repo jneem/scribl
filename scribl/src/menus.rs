@@ -129,12 +129,19 @@ fn edit_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
 
     let undo = MenuItem::new(move |data: &AppState, _env: &Env| undo_desc(id, data))
         .action(id, |_, data| data.undo())
-        .active_if(id, move |data| data.undo.can_undo())
+        .active_if(id, move |data| {
+            // This test for is_recording_audio is a bit of a hack, because I haven't figured out a
+            // good thing to do if they undo while recording audio. The current structure doesn't
+            // allow us to distinguish between finishing recording and cancelling the recording.
+            data.undo.can_undo() && !data.action.is_recording_audio()
+        })
         .hotkey(SysMods::Cmd, "z");
 
     let redo = MenuItem::new(move |data: &AppState, _env: &Env| redo_desc(id, data))
         .action(id, |_, data| data.redo())
-        .active_if(id, move |data| data.undo.can_redo())
+        .active_if(id, move |data| {
+            data.undo.can_redo() && !data.action.is_recording_audio()
+        })
         .hotkey(SysMods::CmdShift, "z");
 
     let draw =
