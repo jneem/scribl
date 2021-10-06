@@ -140,19 +140,19 @@ fn edit_menu(id: WindowId, _data: &AppState) -> Menu<AppState> {
     let draw =
         MenuItem::new(LocalizedString::new("scribl-menu-edit-draw").with_placeholder("Draw"))
             .action(id, |_, data| data.draw())
-            .active_if(id, move |data| !data.action.is_recording())
+            .active_if(id, move |data| data.action.is_idle())
             .hotkey(SysMods::None, " ");
 
     let talk =
         MenuItem::new(LocalizedString::new("scribl-menu-edit-talk").with_placeholder("Talk"))
             .action(id, |_, data| data.talk())
-            .active_if(id, move |data| !data.action.is_recording_audio())
+            .active_if(id, move |data| data.action.is_idle())
             .hotkey(SysMods::Shift, " ");
 
     let play =
         MenuItem::new(LocalizedString::new("scribl-menu-edit-play").with_placeholder("Play"))
             .action(id, |_, data| data.play())
-            .active_if(id, move |data| !data.action.is_playing())
+            .active_if(id, move |data| data.action.is_idle())
             .hotkey(SysMods::None, KbKey::Enter);
 
     let stop =

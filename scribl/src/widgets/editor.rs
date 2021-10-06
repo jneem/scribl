@@ -301,7 +301,7 @@ impl Editor {
             }
         }
 
-        match ev.key {
+        match &ev.key {
             KbKey::ArrowRight | KbKey::ArrowLeft => {
                 let speed = if ev.mods.shift() { 3.0 } else { 1.5 };
                 let dir = if ev.key == KbKey::ArrowRight {
@@ -318,6 +318,24 @@ impl Editor {
             }
             KbKey::Shift if data.action.is_scanning() => {
                 data.scan(3.0 * data.action.time_factor().signum());
+            }
+            // If they press the "wrong" stop button (e.g. if they're recording audio but press
+            // "Space"), then the menu shortcut won't see it, but we want to stop anyway.
+            KbKey::Enter => {
+                if data.action.is_recording()
+                    || data.action.is_playing()
+                    || data.action.is_recording_audio()
+                {
+                    data.finish_action();
+                }
+            }
+            KbKey::Character(c) if c == " " => {
+                if data.action.is_recording()
+                    || data.action.is_playing()
+                    || data.action.is_recording_audio()
+                {
+                    data.finish_action();
+                }
             }
             _ => {}
         }
