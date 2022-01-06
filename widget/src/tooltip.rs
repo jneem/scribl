@@ -71,21 +71,12 @@ impl<T: Data, W: Widget<T>> Controller<T, W> for TooltipController<T> {
                     let elapsed = Instant::now().duration_since(last_mouse_move);
                     if elapsed > TOOLTIP_DELAY_CHECK {
                         self.text.resolve(data, env);
-                        let insets = ctx.window().content_insets();
                         let win_id = ctx.new_sub_window(
                             WindowConfig::default()
                                 .show_titlebar(false)
                                 .window_size_policy(WindowSizePolicy::Content)
-                                .set_level(WindowLevel::Tooltip)
-                                .set_position(
-                                    ctx.window().get_position()
-                                        // I *think* this is right in general, because the mouse
-                                        // position is relative to the inset origin. It certainly
-                                        // seems right on GTK.
-                                        + Vec2::new(insets.x0, insets.y0)
-                                        + last_mouse_pos.to_vec2()
-                                        + TOOLTIP_OFFSET,
-                                ),
+                                .set_level(WindowLevel::Tooltip(ctx.window().clone()))
+                                .set_position(last_mouse_pos + TOOLTIP_OFFSET),
                             // FIXME: we'd like to use the actual label text instead of
                             // resolving, but LabelText isn't Clone
                             Label::new(self.text.display_text())
