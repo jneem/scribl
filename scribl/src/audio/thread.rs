@@ -15,8 +15,8 @@ use scribl_curves::Time;
 use crate::cmd;
 
 use super::{
-    create_appsrc, AudioRecording, AudioRecordingStatus, InputConfig, OutputData, TalkSnippet,
-    SAMPLE_RATE,
+    create_appsrc, create_gst_elt, AudioRecording, AudioRecordingStatus, InputConfig, OutputData,
+    TalkSnippet, SAMPLE_RATE,
 };
 
 // We don't simply drop frames where voice was not detected: doing so tends to cut off consonants
@@ -370,11 +370,11 @@ fn create_input_pipeline(
     status_tx: Sender<AudioRecordingStatus>,
 ) -> Result<gst::Pipeline> {
     let pipeline = gst::Pipeline::new(None);
-    let src = gst::ElementFactory::make("autoaudiosrc", Some("record-source"))?;
-    let resample = gst::ElementFactory::make("audioresample", Some("record-resample"))?;
-    let convert = gst::ElementFactory::make("audioconvert", Some("record-convert"))?;
-    let queue = gst::ElementFactory::make("queue", Some("record-queue"))?;
-    let sink = gst::ElementFactory::make("appsink", Some("record-sink"))?;
+    let src = create_gst_elt("autoaudiosrc", "record-source")?;
+    let resample = create_gst_elt("audioresample", "record-resample")?;
+    let convert = create_gst_elt("audioconvert", "record-convert")?;
+    let queue = create_gst_elt("queue", "record-queue")?;
+    let sink = create_gst_elt("appsink", "record-sink")?;
     pipeline.add_many(&[&src, &resample, &convert, &queue, &sink])?;
     gst::Element::link_many(&[&src, &resample, &convert, &queue, &sink])?;
 
@@ -470,11 +470,11 @@ fn create_input_pipeline(
 fn create_output_pipeline(rx: Receiver<OutputData>) -> Result<gst::Pipeline> {
     let pipeline = gst::Pipeline::new(None);
     let src = create_appsrc(rx, "playback-source")?;
-    let scale = gst::ElementFactory::make("scaletempo", Some("playback-scale"))?;
-    let resample = gst::ElementFactory::make("audioresample", Some("playback-resample"))?;
-    let convert = gst::ElementFactory::make("audioconvert", Some("playback-convert"))?;
-    let queue = gst::ElementFactory::make("queue", Some("playback-queue"))?;
-    let sink = gst::ElementFactory::make("autoaudiosink", Some("playback-sink"))?;
+    let scale = create_gst_elt("scaletempo", "playback-scale")?;
+    let resample = create_gst_elt("audioresample", "playback-resample")?;
+    let convert = create_gst_elt("audioconvert", "playback-convert")?;
+    let queue = create_gst_elt("queue", "playback-queue")?;
+    let sink = create_gst_elt("autoaudiosink", "playback-sink")?;
 
     pipeline.add_many(&[&src, &scale, &resample, &convert, &queue, &sink])?;
     gst::Element::link_many(&[&src, &scale, &resample, &convert, &queue, &sink])?;

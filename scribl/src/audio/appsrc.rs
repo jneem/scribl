@@ -8,12 +8,12 @@ use gstreamer_audio as gst_audio;
 
 use scribl_curves::{Cursor, Time};
 
-use super::{OutputData, SAMPLE_RATE};
+use super::{create_gst_elt, OutputData, SAMPLE_RATE};
 
 /// Creates a gstreamer AppSrc element that mixes our audio and provides it to a gstreamer
 /// pipeline.
 pub fn create_appsrc(rx: Receiver<OutputData>, name: &str) -> Result<gst::Element> {
-    let src = gst::ElementFactory::make("appsrc", Some(name))?;
+    let src = create_gst_elt("appsrc", name)?;
     let src = src
         .dynamic_cast::<gst_app::AppSrc>()
         .map_err(|_| anyhow!("bug: couldn't cast src to an AppSrc"))?;

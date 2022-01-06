@@ -1,5 +1,8 @@
 //! This module is in charge of audio (both recording and playback).
 
+use anyhow::{Context, Result};
+use gstreamer as gst;
+
 use scribl_curves::Time;
 
 use crate::config::AudioInput as InputConfig;
@@ -58,4 +61,13 @@ impl OutputData {
     fn forwards(&self) -> bool {
         self.velocity > 0.0
     }
+}
+
+fn create_gst_elt(kind: &str, name: &str) -> Result<gst::Element> {
+    gst::ElementFactory::make(kind, Some(name)).with_context(|| {
+        format!(
+            "tried to create {}, of type {}. You are probably missing a gstreamer plugin",
+            name, kind
+        )
+    })
 }
