@@ -12,18 +12,18 @@ repository = "https://github.com/jneem/scribl"
 
 [dependencies]
 anyhow = "1.0.27"
-clap = "2.33.0"
-console = { version = "0.14.0", default-features = false }
+clap = "3.2"
+console = { version = "0.15.0", default-features = false }
 directories-next = "2.0"
 druid = { git = "https://github.com/linebender/druid", features = ["im"] }
 ebur128 = "0.1.1"
-env_logger = "0.8.2"
+env_logger = "0.9"
 gstreamer = "0.18"
 gstreamer-app = "0.18"
 gstreamer-audio = "0.18"
 gstreamer-video = "0.18"
 log = "0.4.8"
-nnnoiseless = { version = "0.3.0", default-features = false }
+nnnoiseless = { version = "0.5.0", default-features = false }
 pkg-version = "1.0.0"
 scribl_curves = { version = "0.3", path = "../curves/" }
 scribl_widget = { version = "0.3", path = "../widget/" }
