@@ -20,7 +20,9 @@ pub struct Time(i64);
 pub struct TimeDiff(i64);
 
 /// An interval of times.
-#[derive(Copy, Clone, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(
+    Copy, Clone, Data, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize,
+)]
 pub struct TimeSpan {
     start: Time,
     end: Time,
