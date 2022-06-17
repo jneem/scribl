@@ -119,7 +119,7 @@ impl AudioState {
         self.output_data.start_time = time;
         let result = || -> Result<()> {
             if let Some(pipe) = self.output_pipeline.as_ref() {
-                if let Some(sink) = pipe.get_by_name("playback-sink") {
+                if let Some(sink) = pipe.by_name("playback-sink") {
                     // The "scaletempo" gstreamer plugin has some issues with playing backwards. We
                     // avoid them by always playing forwards, but adapting our appsrc to produce
                     // the samples backwards.
@@ -127,9 +127,9 @@ impl AudioState {
                         velocity.abs(),
                         gst::SeekFlags::FLUSH,
                         gst::SeekType::Set,
-                        gst::ClockTime::from_useconds(time.as_micros() as u64),
+                        Some(gst::ClockTime::from_useconds(time.as_micros() as u64)),
                         gst::SeekType::Set,
-                        gst::ClockTime::none(),
+                        None,
                     )?;
                 }
             }
@@ -410,7 +410,7 @@ fn create_input_pipeline(
             }
         };
 
-        let buffer = match sample.get_buffer() {
+        let buffer = match sample.buffer() {
             Some(b) => b,
             None => {
                 log::error!("Failed to get sample buffer");

@@ -33,11 +33,11 @@ impl<'a> From<gst::message::Error<'a>> for PipelineError {
     fn from(e: gst::message::Error<'a>) -> PipelineError {
         PipelineError {
             src: e
-                .get_src()
-                .map(|s| String::from(s.get_path_string()))
+                .src()
+                .map(|s| String::from(s.path_string()))
                 .unwrap_or_else(|| "None".to_owned()),
-            error: e.get_error().to_string(),
-            debug: e.get_debug().unwrap_or_else(|| "No debug info".to_owned()),
+            error: e.error().to_string(),
+            debug: e.debug().unwrap_or_else(|| "No debug info".to_owned()),
         }
     }
 }
@@ -86,7 +86,7 @@ fn create_pipeline(
     let mux = make_elt("mp4mux", "encode-mux")?;
     let sink = make_elt("filesink", "encode-sink")?;
 
-    v_encode.set_property("bitrate", &config.bitrate)?;
+    v_encode.set_property("bitrate", &config.bitrate);
 
     pipeline.add_many(&[&v_src, &v_convert, &v_encode, &v_queue1, &v_queue2])?;
     pipeline.add_many(&[&a_src, &a_convert, &a_encode, &a_queue1, &a_queue2])?;
@@ -102,7 +102,7 @@ fn create_pipeline(
             .to_str()
             .ok_or(anyhow!("this filename is too weird"))?
             .to_value(),
-    )?;
+    );
 
     let height = config.height;
     let width = (height as f64 * ASPECT_RATIO).round() as u32;
@@ -120,18 +120,22 @@ fn create_pipeline(
         .dynamic_cast::<gst_app::AppSrc>()
         .map_err(|_| anyhow!("bug: couldn't cast v_src to an AppSrc"))?;
     v_src.set_caps(Some(&video_info.to_caps()?));
-    v_src.set_property_format(gst::Format::Time);
+    v_src.set_format(gst::Format::Time);
 
     let (tx, rx) = unbounded();
     // gstreamer's callbacks need Sync, not just Send.
     let tx = Arc::new(std::sync::Mutex::new(tx));
     let tx_clone = Arc::clone(&tx);
-    v_src.connect_need_data(move |_, _| {
-        let _ = tx.lock().unwrap().send(RenderLoopCmd::NeedsData);
-    });
-    v_src.connect_enough_data(move |_| {
-        let _ = tx_clone.lock().unwrap().send(RenderLoopCmd::EnoughData);
-    });
+    v_src.set_callbacks(
+        gst_app::AppSrcCallbacks::builder()
+            .need_data(move |_, _| {
+                let _ = tx.lock().unwrap().send(RenderLoopCmd::NeedsData);
+            })
+            .enough_data(move |_| {
+                let _ = tx_clone.lock().unwrap().send(RenderLoopCmd::EnoughData);
+            })
+            .build(),
+    );
     std::thread::spawn(move || {
         render_loop(
             rx,
@@ -153,10 +157,10 @@ fn create_pipeline(
 fn main_loop(pipeline: gst::Pipeline) -> Result<(), anyhow::Error> {
     pipeline.set_state(gst::State::Playing)?;
     let bus = pipeline
-        .get_bus()
+        .bus()
         .ok_or_else(|| anyhow!("couldn't get pipeline bus"))?;
 
-    for msg in bus.iter_timed(gst::CLOCK_TIME_NONE) {
+    for msg in bus.iter_timed(gst::ClockTime::NONE) {
         use gst::MessageView::*;
 
         match msg.view() {

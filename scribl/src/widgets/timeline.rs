@@ -226,7 +226,7 @@ struct TimelineInner {
 impl Timeline {
     pub fn new() -> Timeline {
         let inner = TimelineInner::default();
-        let clip = ClipBox::new(inner)
+        let clip = ClipBox::managed(inner)
             .constrain_horizontal(false)
             .constrain_vertical(true);
         Timeline {
@@ -242,6 +242,7 @@ impl Timeline {
         self.inner.widget_mut().child_mut()
     }
 
+    // TODO: druid now has a mechanism for this (SCROLL_TO_VIEW). Use it.
     fn update_visible_times(&mut self, size: Size) {
         let offset = self.clip_box().viewport_origin().x;
         self.clip_box_mut()

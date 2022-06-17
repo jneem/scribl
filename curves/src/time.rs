@@ -1,6 +1,6 @@
 use druid::Data;
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
+use std::convert::TryInto;
 
 /// The clock of a scribl.
 // This is measured in microseconds from the beginning. We enforce that the value is non-negative,
@@ -41,7 +41,7 @@ impl Time {
     }
 
     pub fn as_gst_clock_time(&self) -> gstreamer::ClockTime {
-        u64::try_from(self.as_micros()).unwrap() * gstreamer::USECOND
+        gstreamer::ClockTime::from_useconds(self.as_micros().try_into().unwrap())
     }
 
     pub fn from_video_frame(frame: u32, fps: f64) -> Time {

@@ -19,7 +19,7 @@ pub fn create_appsrc(rx: Receiver<OutputData>, name: &str) -> Result<gst::Elemen
         .map_err(|_| anyhow!("bug: couldn't cast src to an AppSrc"))?;
     let audio_info = AudioInfo::builder(AudioFormat::S16le, SAMPLE_RATE as u32, 1).build()?;
     src.set_caps(Some(&audio_info.to_caps()?));
-    src.set_property_format(gst::Format::Time);
+    src.set_format(gst::Format::Time);
     src.set_stream_type(gst_app::AppStreamType::RandomAccess);
 
     let mut data = OutputData::new();
